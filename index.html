@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GradeOS Simulator v0.4</title>
+<title>GradeOS Simulator v0.5</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -127,7 +127,7 @@ body{background:#0a1520;color:#dce8f5;font-family:'Segoe UI',Arial,sans-serif;ov
 <body>
 
 <div id="topbar">
-  <div id="logo">GRADE<span>OS</span> <span style="font-size:10px;color:#4a7aa0;font-weight:400">v0.4</span></div>
+  <div id="logo">GRADE<span>OS</span> <span style="font-size:10px;color:#4a7aa0;font-weight:400">v0.5</span></div>
 
   <div class="tg">
     <span class="tg-label">Machine</span>
@@ -146,6 +146,7 @@ body{background:#0a1520;color:#dce8f5;font-family:'Segoe UI',Arial,sans-serif;ov
     <button class="tb" id="b-bestfit" onclick="setTool('bestfit')">📐 Best-Fit</button>
     <button class="tb" id="b-batter" onclick="setTool('batter')" title="Batter slope: click crest line, auto-generate slope at H:V ratio">⛰ Batter</button>
     <button class="tb" id="b-irrig" onclick="setTool('irrig')" title="Irrigation bay: auto-balance cut/fill on a drained grade">💧 Irrig Bay</button>
+    <button class="tb" id="b-section" onclick="setTool('section')" title="Cross-section profile: click two points to see ground vs design elevation">✂ Profile</button>
   </div>
 
   <div class="tg">
@@ -178,9 +179,12 @@ body{background:#0a1520;color:#dce8f5;font-family:'Segoe UI',Arial,sans-serif;ov
     <button class="tb act" id="b-cutsim" onclick="toggleCutSim()" title="Live blade cuts terrain as you drive">🔪 Cut Sim</button>
     <button class="tb" id="b-flow" onclick="toggleFlow()" title="Show stormwater drainage flow paths (D8 algorithm)">💧 Flow</button>
     <button class="tb" id="b-slope-warn" onclick="toggleSlopeWarn()" title="Highlight steep slopes (>30°) — potential instability risk">⚠ Steep</button>
+    <button class="tb" id="b-tol" onclick="toggleTol()" title="Grade tolerance overlay — green=on grade, yellow/orange/red=off grade">✓ Tol</button>
   </div>
 
   <div class="tg" style="margin-left:auto">
+    <button class="tb" onclick="doUndo()" title="Undo last design change (Ctrl+Z)">↩ Undo</button>
+    <button class="tb" onclick="doRedo()" title="Redo (Ctrl+Y)">↪ Redo</button>
     <button class="tb blu" onclick="document.getElementById('gps-import').click()" title="Import GPS/survey CSV">📡 Import GPS</button>
     <input type="file" id="gps-import" accept=".csv,.gpx,.txt" style="display:none" onchange="handleImportFile(event)">
     <button class="tb red" onclick="clearAll()">🗑 Clear</button>
@@ -234,6 +238,16 @@ body{background:#0a1520;color:#dce8f5;font-family:'Segoe UI',Arial,sans-serif;ov
     <div id="xsec-box">
       <div id="xsec-title">Cross Section</div>
       <canvas id="xsec-canvas" width="244" height="130"></canvas>
+    </div>
+
+    <!-- Section Profile panel -->
+    <div id="prof-panel" style="display:none;position:absolute;bottom:8px;left:50%;transform:translateX(-50%);width:620px;max-width:calc(100vw - 260px);background:rgba(6,11,20,0.97);border:1px solid #1e4a7a;border-radius:6px;padding:10px 12px;z-index:150;pointer-events:all;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <span style="color:#e8a020;font-weight:700;font-size:11px;letter-spacing:1.5px;text-transform:uppercase">✂ Cross-Section Profile</span>
+        <button onclick="closeProfPanel()" style="background:#0a1f35;border:1px solid #1e4a7a;color:#7aabcc;cursor:pointer;font-size:10px;padding:2px 8px;border-radius:3px">✕</button>
+      </div>
+      <canvas id="prof-canvas" width="580" height="190" style="width:100%;border-radius:3px;display:block;"></canvas>
+      <div id="prof-info" style="color:#7aabcc;font-size:10px;margin-top:5px;text-align:center;font-family:monospace;letter-spacing:0.5px;"></div>
     </div>
 
     <!-- Legend -->
@@ -731,6 +745,7 @@ function rebuildDesMesh(){
   desMesh.rotation.x=-Math.PI/2;
   scene.add(desMesh);
   calcVol();
+  buildTolMesh();
   document.getElementById('st-dpts').textContent=designCount;
 }
 
@@ -1049,7 +1064,7 @@ function genTerrain(type){
   sessionCutVol=0;sessionFillVol=0;prodOnTime=0;remainingCutVol=0;
   const sc=document.getElementById('st-cut');if(sc)sc.textContent='0.0m³';
   const pd=document.getElementById('st-prod');if(pd)pd.style.display='none';
-  rebuildTerrMesh();clearDesign();genContours();buildFlowLines();buildSlopeWarn();
+  rebuildTerrMesh();clearDesign();genContours();buildFlowLines();buildSlopeWarn();buildTolMesh();
   document.getElementById('st-terrain').textContent={flat:'Flat Paddock',hilly:'Hilly Farm',valley:'Valley',
     dam_site:'Dam Site',embankment:'Embankment',cut_hill:'Cut Hill',irrig_bay:'Irrigation Bay'}[type];
 }
@@ -1068,7 +1083,7 @@ threeCanvas.addEventListener('click',e=>{
       setTP(`${alignment.length} pts. <button class="btn grn" onclick="openPF()">Open Profile Editor</button><button class="btn" style="margin-top:4px" onclick="clearAlign()">Clear</button>`);
     return;
   }
-  if(['flat','slope','crown','dam','bestfit'].includes(tool)){handleDesignClick(p);return;}
+  if(['flat','slope','crown','dam','bestfit','batter','irrig','section'].includes(tool)){handleDesignClick(p);return;}
   if(FEATURE_TOOLS.includes(tool)){handleFeatureClick(p);return;}
 });
 threeCanvas.addEventListener('dblclick',e=>{
@@ -1088,18 +1103,22 @@ threeCanvas.addEventListener('dblclick',e=>{
 function handleDesignClick(p){
   if(!toolState.p1){
     toolState.p1=p;
-    const sp=new THREE.Mesh(new THREE.SphereGeometry(0.4,8,8),new THREE.MeshBasicMaterial({color:0xffffff}));
+    const markerCol=tool==='section'?0xe8a020:0xffffff;
+    const sp=new THREE.Mesh(new THREE.SphereGeometry(0.4,8,8),new THREE.MeshBasicMaterial({color:markerCol}));
     sp.position.set(p.x,gElev(p.x,p.z)+0.4,p.z);scene.add(sp);toolState.sp=sp;
     document.getElementById('st-hint').textContent=tool==='batter'
-      ?`Crest set at ${gElev(p.x,p.z).toFixed(2)}m — now click in the fall direction to define batter extent.`
+      ?`Crest set at ${gElev(p.x,p.z).toFixed(2)}m — now click in the fall direction.`
+      :tool==='section'
+      ?`Profile start: ${gElev(p.x,p.z).toFixed(2)}m — click end point of section line.`
       :'Click second corner to define area.';
   }else{
     const p1=toolState.p1,p2=p;
     if(toolState.sp)scene.remove(toolState.sp);
     toolState={};
-    if(tool==='batter'){applyBatter(p1,p2);}
-    else if(tool==='irrig'){applyIrrigBay(p1,p2);}
-    else{applyTool(p1,p2);rebuildDesMesh();document.getElementById('st-hint').textContent='Design applied.';}
+    if(tool==='section'){drawSectionProfile(p1,p2);}
+    else if(tool==='batter'){pushUndo();applyBatter(p1,p2);}
+    else if(tool==='irrig'){pushUndo();applyIrrigBay(p1,p2);}
+    else{pushUndo();applyTool(p1,p2);rebuildDesMesh();document.getElementById('st-hint').textContent='Design applied.';}
   }
 }
 
@@ -1632,7 +1651,12 @@ function updateTextRibbon(lmm,cmm,rmm,grade,elev,xslope){
 // MACHINE SIMULATOR
 // ═══════════════════════════════════════════════════════════════════
 const keys={};
-document.addEventListener('keydown',e=>{keys[e.key]=true;if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key))e.preventDefault();});
+document.addEventListener('keydown',e=>{
+  keys[e.key]=true;
+  if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key))e.preventDefault();
+  if(e.ctrlKey&&e.key==='z'){e.preventDefault();doUndo();}
+  if(e.ctrlKey&&(e.key==='y'||e.key==='Y')){e.preventDefault();doRedo();}
+});
 document.addEventListener('keyup',e=>{keys[e.key]=false;});
 
 function toggleMachine(){
@@ -1884,6 +1908,9 @@ function clearAsBuilt(){
 // ═══════════════════════════════════════════════════════════════════
 // Haul route arrow (cut centroid → fill centroid)
 let haulArrow=null;
+let showTol=false;let tolMesh=null;
+let sectionLineMesh=null;
+const undoStack=[];const redoStack=[];const MAX_UNDO=20;
 function updateHaulArrow(cutCx,cutCz,fillCx,fillCz,haulDist){
   if(haulArrow){scene.remove(haulArrow);haulArrow.geometry.dispose();haulArrow=null;}
   if(haulDist<2||isNaN(cutCx)||isNaN(fillCx))return;
@@ -1938,6 +1965,186 @@ function calcVol(){
   }
   const pp=document.getElementById('vc-progpct');if(pp)pp.textContent=pct+'%';
   const pt=document.getElementById('vc-proginTol');if(pt)pt.textContent=inTol.toLocaleString()+' / '+total.toLocaleString()+' cells ±25mm';
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// CROSS-SECTION PROFILE TOOL
+// ═══════════════════════════════════════════════════════════════════
+function drawSectionProfile(p1,p2){
+  // 3D section line on terrain
+  if(sectionLineMesh){scene.remove(sectionLineMesh);sectionLineMesh.geometry.dispose();sectionLineMesh=null;}
+  const slPts=[new THREE.Vector3(p1.x,gElev(p1.x,p1.z)+0.25,p1.z),new THREE.Vector3(p2.x,gElev(p2.x,p2.z)+0.25,p2.z)];
+  const slGeo=new THREE.BufferGeometry().setFromPoints(slPts);
+  sectionLineMesh=new THREE.Line(slGeo,new THREE.LineBasicMaterial({color:0xe8a020,linewidth:2}));
+  scene.add(sectionLineMesh);
+  const panel=document.getElementById('prof-panel');
+  panel.style.display='block';
+  const canvas=document.getElementById('prof-canvas');
+  const ctx=canvas.getContext('2d');
+  const W=canvas.width,H=canvas.height;
+  const SAMPLES=400;
+  const ddx=p2.x-p1.x,ddz=p2.z-p1.z;
+  const totalDist=Math.sqrt(ddx*ddx+ddz*ddz);
+  if(totalDist<0.5){
+    ctx.fillStyle='#060b15';ctx.fillRect(0,0,W,H);
+    ctx.fillStyle='#e05050';ctx.font='13px monospace';ctx.fillText('Section too short — click further apart.',20,H/2);return;
+  }
+  const groundPts=[],desPts=[];
+  for(let s=0;s<=SAMPLES;s++){
+    const t=s/SAMPLES;
+    const wx=p1.x+ddx*t,wz=p1.z+ddz*t;
+    const dist=t*totalDist;
+    groundPts.push({d:dist,h:gElev(wx,wz)});
+    desPts.push({d:dist,h:dElev(wx,wz)});
+  }
+  const allH=groundPts.map(p=>p.h);
+  const desH=desPts.filter(p=>p.h!==null).map(p=>p.h);
+  if(desH.length)allH.push(...desH);
+  const minH=Math.min(...allH)-0.4;
+  const maxH=Math.max(...allH)+0.4;
+  const hRange=Math.max(maxH-minH,0.5);
+  const ML=44,MR=10,MT=12,MB=26;
+  const cW=W-ML-MR,cH=H-MT-MB;
+  const px=d=>ML+(d/totalDist)*cW;
+  const py=h=>MT+cH-((h-minH)/hRange)*cH;
+  ctx.fillStyle='#060b15';ctx.fillRect(0,0,W,H);
+  // Subtle grid
+  ctx.strokeStyle='#0d1e30';ctx.lineWidth=1;
+  const hStep=hRange<1.5?0.25:hRange<4?0.5:hRange<10?1:2;
+  ctx.font='9px monospace';ctx.fillStyle='#3a6a90';
+  for(let h=Math.ceil(minH/hStep)*hStep;h<=maxH+0.001;h+=hStep){
+    const y=py(h);ctx.beginPath();ctx.moveTo(ML,y);ctx.lineTo(ML+cW,y);ctx.stroke();
+    ctx.fillText(h.toFixed(hStep<1?2:1),2,y+3);
+  }
+  const dStep=totalDist<25?5:totalDist<60?10:totalDist<120?20:50;
+  for(let d=0;d<=totalDist+0.01;d+=dStep){
+    const x=px(d);ctx.beginPath();ctx.moveTo(x,MT);ctx.lineTo(x,MT+cH);ctx.stroke();
+    ctx.fillText(d.toFixed(0)+'m',x-8,H-5);
+  }
+  // Cut/fill shading
+  const hasDesign=desH.length>0;
+  if(hasDesign){
+    for(let s=0;s<SAMPLES;s++){
+      const g0=groundPts[s],g1=groundPts[s+1];
+      const d0=desPts[s],d1=desPts[s+1];
+      if(d0.h===null||d1.h===null)continue;
+      ctx.fillStyle=g0.h>d0.h?'rgba(30,90,200,0.38)':'rgba(200,65,25,0.38)';
+      ctx.beginPath();
+      ctx.moveTo(px(g0.d),py(g0.h));ctx.lineTo(px(g1.d),py(g1.h));
+      ctx.lineTo(px(d1.d),py(d1.h));ctx.lineTo(px(d0.d),py(d0.h));
+      ctx.closePath();ctx.fill();
+    }
+    ctx.strokeStyle='#e8a020';ctx.lineWidth=1.5;ctx.setLineDash([5,3]);
+    ctx.beginPath();let started=false;
+    for(const p of desPts){
+      if(p.h===null){started=false;continue;}
+      if(!started){ctx.moveTo(px(p.d),py(p.h));started=true;}else ctx.lineTo(px(p.d),py(p.h));
+    }
+    ctx.stroke();ctx.setLineDash([]);
+  }
+  ctx.strokeStyle='#7ec8e3';ctx.lineWidth=2;
+  ctx.beginPath();groundPts.forEach((p,i)=>i===0?ctx.moveTo(px(p.d),py(p.h)):ctx.lineTo(px(p.d),py(p.h)));ctx.stroke();
+  ctx.strokeStyle='#1e4a7a';ctx.lineWidth=1;ctx.strokeRect(ML,MT,cW,cH);
+  // Sample mid-point cut/fill depth
+  const midG=groundPts[Math.floor(SAMPLES/2)].h;
+  const midD=desPts[Math.floor(SAMPLES/2)].h;
+  const midDiffMm=midD!==null?Math.round((midG-midD)*1000):null;
+  const startElev=groundPts[0].h,endElev=groundPts[SAMPLES].h;
+  const terrainSlope=totalDist>0?((startElev-endElev)/totalDist*100).toFixed(1):0;
+  const info=document.getElementById('prof-info');
+  info.innerHTML=
+    `<span style="color:#7ec8e3">— Ground</span>&ensp;`
+    +(hasDesign?`<span style="color:#e8a020">-- Design</span>&ensp;<span style="color:rgba(30,90,200,0.9)">■ Cut</span>&ensp;<span style="color:rgba(200,65,25,0.9)">■ Fill</span>&ensp;`:'')
+    +`Length: <b>${totalDist.toFixed(1)} m</b>&ensp;`
+    +`Terrain Slope: <b>${terrainSlope}%</b>`
+    +(midDiffMm!==null?`&ensp;Mid Δ: <b style="color:${Math.abs(midDiffMm)<=50?'#66bb6a':'#ef5350'}">${midDiffMm > 0 ? '+':''}${midDiffMm} mm</b>`:'');
+  document.getElementById('st-hint').textContent=`Profile drawn: ${totalDist.toFixed(1)}m section — slope ${terrainSlope}%`;
+}
+function closeProfPanel(){
+  document.getElementById('prof-panel').style.display='none';
+  if(sectionLineMesh){scene.remove(sectionLineMesh);sectionLineMesh.geometry.dispose();sectionLineMesh=null;}
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// GRADE TOLERANCE OVERLAY
+// ═══════════════════════════════════════════════════════════════════
+function buildTolMesh(){
+  if(tolMesh){scene.remove(tolMesh);tolMesh.geometry.dispose();tolMesh=null;}
+  if(!showTol||designCount===0)return;
+  const tolInp=document.getElementById('tol-mm-inp');
+  const tolM=(tolInp?parseFloat(tolInp.value)||50:50)/1000;
+  const verts=[],colors=[];
+  const addQuad=(gx,gz,r,g,b)=>{
+    const x=(gx-GR/2)*CS,z=(gz-GR/2)*CS;
+    const y=ground[gi(gx,gz)]+0.13;
+    const x1=(gx+1-GR/2)*CS,z1=(gz+1-GR/2)*CS;
+    verts.push(x,y,z,x1,y,z,x1,y,z1,x,y,z,x1,y,z1,x,y,z1);
+    for(let k=0;k<6;k++)colors.push(r,g,b);
+  };
+  for(let gz=0;gz<GR;gz++) for(let gx=0;gx<GR;gx++){
+    const i=gi(gx,gz);if(!hasD[i])continue;
+    const diff=ground[i]-(design[i]+vOffset);
+    const a=Math.abs(diff);
+    let r,g,b;
+    if(a<=tolM){r=0.20;g=0.80;b=0.25;}          // green — on grade
+    else if(a<=tolM*2){r=0.92;g=0.78;b=0.08;}    // yellow
+    else if(a<=tolM*4){r=0.95;g=0.40;b=0.08;}    // orange
+    else{r=0.85;g=0.12;b=0.12;}                   // red — way off
+    addQuad(gx,gz,r,g,b);
+  }
+  if(verts.length===0)return;
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));
+  geo.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
+  const mat=new THREE.MeshBasicMaterial({vertexColors:true,transparent:true,opacity:0.72,depthWrite:false});
+  tolMesh=new THREE.Mesh(geo,mat);
+  scene.add(tolMesh);
+}
+function toggleTol(){
+  showTol=!showTol;
+  document.getElementById('b-tol').classList.toggle('act',showTol);
+  // Dynamically inject tolerance input next to button if not there
+  if(!document.getElementById('tol-mm-inp')){
+    const btn=document.getElementById('b-tol');
+    const wrap=document.createElement('span');
+    wrap.id='tol-wrap';wrap.style.cssText='display:inline-flex;align-items:center;gap:2px;';
+    const inp=document.createElement('input');
+    inp.type='number';inp.id='tol-mm-inp';inp.value=50;inp.min=5;inp.max=500;inp.step=5;
+    inp.style.cssText='width:46px;background:#0a1f35;border:1px solid #1e4a7a;color:#dce8f5;padding:2px 4px;border-radius:3px;font-size:11px;';
+    inp.title='Tolerance band (mm)';
+    inp.addEventListener('change',()=>buildTolMesh());
+    const lbl=document.createElement('span');
+    lbl.textContent='mm';lbl.style.cssText='color:#4a7aa0;font-size:10px;';
+    wrap.appendChild(inp);wrap.appendChild(lbl);
+    btn.insertAdjacentElement('afterend',wrap);
+  }
+  buildTolMesh();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// UNDO / REDO
+// ═══════════════════════════════════════════════════════════════════
+function pushUndo(){
+  undoStack.push({ground:ground.slice(),design:design.slice(),hasD:hasD.slice(),designCount:designCount});
+  if(undoStack.length>MAX_UNDO)undoStack.shift();
+  redoStack.length=0;
+}
+function applyUndoState(s){
+  ground.set(s.ground);design.set(s.design);hasD.set(s.hasD);designCount=s.designCount;
+  terrainDirty=true;
+  rebuildTerrMesh();rebuildDesMesh();genContours();buildFlowLines();buildSlopeWarn();buildTolMesh();calcVol();
+}
+function doUndo(){
+  if(!undoStack.length){document.getElementById('st-hint').textContent='Nothing to undo.';return;}
+  redoStack.push({ground:ground.slice(),design:design.slice(),hasD:hasD.slice(),designCount:designCount});
+  applyUndoState(undoStack.pop());
+  document.getElementById('st-hint').textContent=`Undo applied (${undoStack.length} left).`;
+}
+function doRedo(){
+  if(!redoStack.length){document.getElementById('st-hint').textContent='Nothing to redo.';return;}
+  undoStack.push({ground:ground.slice(),design:design.slice(),hasD:hasD.slice(),designCount:designCount});
+  applyUndoState(redoStack.pop());
+  document.getElementById('st-hint').textContent='Redo applied.';
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -2616,7 +2823,7 @@ const TOOL_HTML={
             <p style="font-size:10px;color:#4a7aa0">Mark shelter belts and riparian vegetation for awareness during grading.</p>`,
 };
 
-const TOOL_BTNS=['nav','flat','slope','crown','align','dam','bestfit','batter','irrig','bank','channel','waterway','pivot','boundary','treeline'];
+const TOOL_BTNS=['nav','flat','slope','crown','align','dam','bestfit','batter','irrig','section','bank','channel','waterway','pivot','boundary','treeline'];
 function setTool(name){
   tool=name;toolState={};
   // Cancel any in-progress feature draft when switching tools
@@ -2628,6 +2835,7 @@ function setTool(name){
     align:'Alignment + Profile',dam:'Dam Designer',bestfit:'Best-Fit Grade',
     batter:'Batter / Slope Designer',
     irrig:'Irrigation Bay — Auto-Balance',
+    section:'Cross-Section Profile',
     bank:'Bank / Levee',channel:'Channel / Drain',waterway:'Natural Waterway',
     pivot:'Centre Pivot',boundary:'Paddock Boundary',treeline:'Tree Line'
   }[name]||name;
@@ -2643,6 +2851,7 @@ function setTool(name){
     bestfit:'Click two corners to auto-calculate best-fit grade',
     batter:'Click crest point, then click slope-fall direction to generate batter design',
     irrig:'Click two corners of irrigation bay — system auto-balances cut/fill at the drain grade',
+    section:'Click start point, then end point — draws 2D elevation profile with ground vs design',
     bank:'Click to place bank/levee points · Double-click to finish',
     channel:'Click to place channel points · Double-click to finish',
     waterway:'Click to place waterway points · Double-click to finish',
