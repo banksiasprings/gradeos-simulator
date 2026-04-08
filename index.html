@@ -168,13 +168,15 @@ body{background:#0a1520;color:#dce8f5;font-family:'Segoe UI',Arial,sans-serif;ov
     <button class="tb act" id="b-ctr" onclick="toggleContours()">〰 Contours</button>
     <button class="tb" id="b-survey" onclick="toggleSurvey()" title="Show survey coverage">📡 Survey</button>
     <button class="tb" id="b-split" onclick="toggleSplit()" title="Split screen blade view">⧉ Split</button>
+    <button class="tb act" id="b-cutsim" onclick="toggleCutSim()" title="Live blade cuts terrain as you drive">🔪 Cut Sim</button>
   </div>
 
   <div class="tg" style="margin-left:auto">
     <button class="tb blu" onclick="document.getElementById('gps-import').click()" title="Import GPS/survey CSV">📡 Import GPS</button>
     <input type="file" id="gps-import" accept=".csv,.gpx,.txt" style="display:none" onchange="handleImportFile(event)">
     <button class="tb red" onclick="clearAll()">🗑 Clear</button>
-    <button class="tb grn" onclick="exportCSV()">📥 CSV</button>
+    <button class="tb grn" onclick="exportCSV()" title="Export design vs existing to CSV">📥 CSV</button>
+    <button class="tb grn" onclick="exportAsBuilt()" title="Export as-built survey after grading">📤 As-Built</button>
   </div>
 </div>
 
@@ -354,10 +356,11 @@ body{background:#0a1520;color:#dce8f5;font-family:'Segoe UI',Arial,sans-serif;ov
       <div class="spanel-hdr" onclick="togglePanel('vp')"><h3>Volume Calculator</h3><span class="toggle">▾</span></div>
       <div class="spanel-body" id="vp-body">
         <table class="vol-table">
-          <tr><td>Cut Volume</td><td class="vc" id="vc-cut">0.0 m³</td></tr>
-          <tr><td>Fill Volume</td><td class="vf" id="vc-fill">0.0 m³</td></tr>
+          <tr><td>Remaining Cut</td><td class="vc" id="vc-cut">0.0 m³</td></tr>
+          <tr><td>Remaining Fill</td><td class="vf" id="vc-fill">0.0 m³</td></tr>
           <tr><td>Net (Cut−Fill)</td><td class="vn" id="vc-net">0.0 m³</td></tr>
           <tr><td>Design Area</td><td id="vc-area">0 m²</td></tr>
+          <tr><td style="color:#42a5f5">Cut This Session</td><td id="vc-session-cut" style="color:#42a5f5;font-family:monospace;font-weight:700">0.0 m³</td></tr>
           <tr><td>Est. Cost @$</td><td id="vc-cost">$0</td></tr>
         </table>
         <div class="row2" style="margin-top:5px">
@@ -421,6 +424,7 @@ body{background:#0a1520;color:#dce8f5;font-family:'Segoe UI',Arial,sans-serif;ov
   <div>Terrain: <span id="st-terrain">Hilly Farm</span></div>
   <div>Design: <span id="st-dpts">0</span> pts</div>
   <div>Machine: <span id="st-mach">OFF</span></div>
+  <div>Cut: <span id="st-cut" style="color:#42a5f5">0.0m³</span></div>
   <div id="st-hint" style="margin-left:auto;color:#4a7aa0">Scroll=zoom · Right-drag=orbit · Dbl-click=read elevation</div>
 </div>
 
@@ -508,6 +512,20 @@ const FEAT_COLORS={bank:'#e8a020',channel:'#42a5f5',waterway:'#00bcd4',pivot:'#c
 const FEAT_LABELS={bank:'Bank/Levee',channel:'Channel',waterway:'Waterway',pivot:'Centre Pivot',boundary:'Paddock Boundary',treeline:'Tree Line'};
 let asBuiltPasses=0,asBuiltArea=0,asBuiltOnGrade=0,asBuiltTotal=0;
 
+// ── GPS pass track (coloured path behind the machine) ─────────────────
+const MAX_TRACK=1200;                // max path segments stored
+const trackPts=[];                   // {x,z,y,onGrade}
+let trackNeedsRebuild=false;
+const trackGrp=new THREE.Group();
+
+// ── Terrain deformation (live blade cut simulation) ──────────────────
+let terrainDirty=false;
+let terrainRebuildAt=0;  // timestamp to throttle mesh rebuilds
+let cutSimEnabled=true;  // can be toggled off for performance
+let sessionCutVol=0;     // cumulative m³ cut this session
+let sessionFillVol=0;    // cumulative m³ filled (pushed) this session
+let isCutting=false;     // true while blade is actively cutting
+
 // ═══════════════════════════════════════════════════════════════════
 // THREE.JS SCENE
 // ═══════════════════════════════════════════════════════════════════
@@ -560,6 +578,9 @@ scene.add(contourGrp);
 // Feature group (farm features rendered as 3D lines)
 featureGrp.position.y=0.18;
 scene.add(featureGrp);
+
+// GPS pass track group
+scene.add(trackGrp);
 
 // ── Terrain mesh ─────────────────────────────────────────────────
 function buildTerrGeo(elev){
@@ -1391,6 +1412,42 @@ function updateMachine(dt){
   if(showXsec)drawXSection(machinePos.x,machinePos.z,machinePos.hdg);
   // As-built
   recordAsBuilt(machinePos.x,machinePos.z,cDes,mel);
+  // ── Live terrain cut simulation ─────────────────────────────────────
+  if(cutSimEnabled && designCount>0){
+    const movFwd=(keys['ArrowUp']||keys['w']||keys['W']);
+    const movRev=(keys['ArrowDown']||keys['s']||keys['S']);
+    if(movFwd||movRev){
+      // Blade world position (front of machine, 2.5m ahead)
+      const bladeX=machinePos.x+Math.sin(machinePos.hdg)*2.5;
+      const bladeZ=machinePos.z+Math.cos(machinePos.hdg)*2.5;
+      isCutting=false;
+      // Scan 11 points across blade width + 3 rows deep for coverage
+      for(let row=-1;row<=1;row++) for(let bi=-5;bi<=5;bi++){
+        const frac=bi/5;
+        const rowOff=row*CS*0.6;
+        const wx=bladeX+perpX*BH*frac-(movFwd?1:-1)*Math.sin(machinePos.hdg)*rowOff;
+        const wz=bladeZ+perpZ*BH*frac-(movFwd?1:-1)*Math.cos(machinePos.hdg)*rowOff;
+        const{gx,gz}=w2g(wx,wz);const idx=gi(gx,gz);
+        const des=hasD[idx]?design[idx]+vOffset:null;
+        if(des===null)continue;
+        if(ground[idx]>des+0.005){
+          // Cut: remove material
+          const cut=ground[idx]-des;
+          sessionCutVol+=cut*CS*CS;
+          ground[idx]=des;
+          terrainDirty=true;isCutting=true;
+        }else if(movRev&&ground[idx]<des-0.005){
+          // Pushing fill back (reverse with blade) - partial backfill
+          const push=Math.min((des-ground[idx])*0.15,0.05);
+          sessionFillVol+=push*CS*CS;
+          ground[idx]+=push;
+          terrainDirty=true;isCutting=true;
+        }
+      }
+      // Update cut volume display
+      document.getElementById('st-cut').textContent=sessionCutVol.toFixed(1)+'m³';
+    } else { isCutting=false; }
+  }
   // Follow cam
   if(camMode==='follow'){
     const behX=machinePos.x-Math.sin(machinePos.hdg)*22;
@@ -1402,17 +1459,47 @@ function updateMachine(dt){
 
 function recordAsBuilt(wx,wz,des,gnd){
   const{gx,gz}=w2g(wx,wz);const i=gi(gx,gz);
+  const onGrade=des!==null&&Math.abs(des+vOffset-gnd)<0.025;
+  // GPS track — record every position (ring buffer)
+  if(trackPts.length===0||
+     Math.abs(wx-(trackPts[trackPts.length-1]?.x||9999))>0.8||
+     Math.abs(wz-(trackPts[trackPts.length-1]?.z||9999))>0.8){
+    if(trackPts.length>=MAX_TRACK)trackPts.shift();
+    trackPts.push({x:wx,z:wz,y:gnd+0.22,onGrade});
+    trackNeedsRebuild=true;
+  }
   if(!asBuilt[i]){
     asBuilt[i]=1;asBuiltPasses++;asBuiltArea+=CS*CS;asBuiltTotal++;
-    if(des!==null&&Math.abs(des+vOffset-gnd)<0.025)asBuiltOnGrade++;
+    if(onGrade)asBuiltOnGrade++;
     document.getElementById('ab-passes').textContent=asBuiltPasses;
     document.getElementById('ab-area').textContent=asBuiltArea.toFixed(0)+' m²';
     const ong=asBuiltTotal>0?(asBuiltOnGrade/asBuiltTotal*100).toFixed(0)+'%':'—';
     document.getElementById('ab-ong').textContent=ong;
   }
 }
+function rebuildTrack(){
+  while(trackGrp.children.length){const c=trackGrp.children[0];trackGrp.remove(c);c.geometry.dispose();}
+  if(trackPts.length<2)return;
+  // Build segments; group by on-grade status for colour batching
+  let seg=[trackPts[0]];
+  let curOG=trackPts[0].onGrade;
+  const flush=()=>{
+    if(seg.length<2)return;
+    const pts=seg.map(p=>new THREE.Vector3(p.x,p.y,p.z));
+    const geo=new THREE.BufferGeometry().setFromPoints(pts);
+    const col=curOG?0x00e676:0xff6d00; // bright green = on grade, orange = off
+    const mat=new THREE.LineBasicMaterial({color:col,linewidth:2});
+    trackGrp.add(new THREE.Line(geo,mat));
+  };
+  for(let i=1;i<trackPts.length;i++){
+    if(trackPts[i].onGrade!==curOG){flush();seg=[trackPts[i-1],trackPts[i]];curOG=trackPts[i].onGrade;}
+    else seg.push(trackPts[i]);
+  }
+  flush();
+}
 function clearAsBuilt(){
   asBuilt.fill(0);asBuiltPasses=0;asBuiltArea=0;asBuiltOnGrade=0;asBuiltTotal=0;
+  trackPts.length=0;rebuildTrack();
   document.getElementById('ab-passes').textContent='0';
   document.getElementById('ab-area').textContent='0 m²';
   document.getElementById('ab-ong').textContent='—';
@@ -1437,6 +1524,8 @@ function calcVol(){
   document.getElementById('vc-net').textContent=(net>=0?'+':'')+net.toFixed(1)+' m³';
   document.getElementById('vc-area').textContent=area.toFixed(0)+' m²';
   document.getElementById('vc-cost').textContent='$'+Math.round(cost).toLocaleString();
+  // Session cut (from cut sim)
+  const sc=document.getElementById('vc-session-cut');if(sc)sc.textContent=sessionCutVol.toFixed(1)+' m³';
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1454,6 +1543,22 @@ function exportCSV(){
   const blob=new Blob([rows.join('\n')],{type:'text/csv'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);
   a.download='GradeOS_Design.csv';a.click();
+}
+function exportAsBuilt(){
+  // Export the current (as-built) ground surface for all cells machine has visited
+  if(asBuiltPasses===0){alert('No as-built data yet. Drive the machine over the design area first.');return;}
+  let rows=['Easting_m,Northing_m,AsBuilt_m,Design_m,OnGrade'];
+  for(let gz=0;gz<=GR;gz++) for(let gx=0;gx<=GR;gx++){
+    const i=gi(gx,gz);if(!asBuilt[i])continue;
+    const w=g2w(gx,gz);
+    const e=ground[i];
+    const d=hasD[i]?(design[i]+vOffset).toFixed(4):'';
+    const onGrd=d&&Math.abs(design[i]+vOffset-e)<0.025?'1':'0';
+    rows.push(`${(w.x+SZ/2).toFixed(2)},${(-w.z+SZ/2).toFixed(2)},${e.toFixed(4)},${d},${onGrd}`);
+  }
+  const blob=new Blob([rows.join('\n')],{type:'text/csv'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download='GradeOS_AsBuilt_'+new Date().toISOString().slice(0,10)+'.csv';a.click();
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1522,6 +1627,13 @@ function toggleCutFill(){
   showCutFill=!showCutFill;
   document.getElementById('b-cf').classList.toggle('act',showCutFill);
   if(designCount>0)rebuildDesMesh();
+}
+function toggleCutSim(){
+  cutSimEnabled=!cutSimEnabled;
+  document.getElementById('b-cutsim').classList.toggle('act',cutSimEnabled);
+  document.getElementById('st-hint').textContent=cutSimEnabled
+    ? '🔪 Cut Sim ON — drive over design area to cut terrain in real time'
+    : 'Cut Sim OFF — terrain will not be modified while driving';
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -2001,6 +2113,24 @@ function loop(t){
   requestAnimationFrame(loop);
   const dt=Math.min((t-last)/1000,0.05);last=t;
   updateMachine(dt);
+  // Throttled GPS track rebuild
+  if(trackNeedsRebuild&&machineOn){rebuildTrack();trackNeedsRebuild=false;}
+  // Throttled terrain rebuild when blade has been cutting
+  if(terrainDirty && t-terrainRebuildAt>280){
+    rebuildTerrMesh();
+    if(showSurvey)rebuildSurveyMesh();
+    if(designCount>0)calcVol(); // keep volume display in sync with cuts
+    terrainDirty=false;
+    terrainRebuildAt=t;
+  }
+  // Cutting indicator in the blade area of text ribbon
+  if(isCutting){
+    const cn=document.getElementById('tr-center');
+    cn.style.borderTop='2px solid #ff4444';
+  }else{
+    const cn=document.getElementById('tr-center');
+    if(cn)cn.style.borderTop='';
+  }
   const activeCam=(camMode==='plan')?planCam:camera;
   renderer.render(scene,activeCam);
 }
