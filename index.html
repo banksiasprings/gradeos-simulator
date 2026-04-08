@@ -133,6 +133,7 @@ body{background:#0a1520;color:#dce8f5;font-family:'Segoe UI',Arial,sans-serif;ov
     <span class="tg-label">Machine</span>
     <button class="tb" id="b-mach" onclick="toggleMachine()">🚜 Power On</button>
     <button class="tb" id="b-mtype" onclick="toggleMachineType()" title="Switch between Dozer and Excavator">🚜 Dozer</button>
+    <button class="tb" id="b-fleet" onclick="toggleFleet()" title="Deploy a second autonomous machine to grade parallel strips">🤖 Fleet</button>
   </div>
 
   <div class="tg">
@@ -158,6 +159,7 @@ body{background:#0a1520;color:#dce8f5;font-family:'Segoe UI',Arial,sans-serif;ov
     <button class="tb" onclick="genTerrain('embankment')">Embankment</button>
     <button class="tb" onclick="genTerrain('cut_hill')">Cut Hill</button>
     <button class="tb" onclick="genTerrain('irrig_bay')">Irrig Bay</button>
+    <button class="tb" onclick="genTerrain('drone')">🚁 Drone DEM</button>
   </div>
 
   <div class="tg">
@@ -1093,6 +1095,19 @@ function genTerrain(type){
       // Add levee banks on the low sides (east and south edges)
       if(x>0.75) e+=Math.max(0,(x-0.75)/0.25)*0.6;
       if(z>0.78) e+=Math.max(0,(z-0.78)/0.22)*0.5;
+    }else if(type==='drone'){
+      // Drone DEM: realistic photogrammetry-derived terrain
+      // High-resolution natural landform with micro-relief and drainage features
+      e = 2.5                                        // base elevation reference
+        + x*1.8 + z*0.6                              // regional trend (NW-SE fall)
+        + Math.sin(x*Math.PI*1.6+0.5)*1.4            // main ridge line
+        + Math.cos(z*Math.PI*2.2+0.8)*1.1            // cross undulation
+        + Math.sin((x+z)*Math.PI*0.9)*0.6            // diagonal swells
+        - Math.max(0,0.9-Math.abs(x*2-0.7)*3.5)*1.4  // natural drainage channel (N-S)
+        - Math.max(0,0.7-Math.abs(z*2-0.9)*4)*0.8    // secondary drain (E-W)
+        + Math.sin(x*Math.PI*7+z*5)*0.07             // photogrammetry micro-relief
+        + Math.cos(z*Math.PI*8+x*6)*0.05             // texture noise
+        + (Math.random()-.5)*0.025;                  // point cloud noise ±25mm
     }
     ground[gi(gx,gz)]=e;
   }
@@ -1103,8 +1118,16 @@ function genTerrain(type){
   const sc=document.getElementById('st-cut');if(sc)sc.textContent='0.0m³';
   const pd=document.getElementById('st-prod');if(pd)pd.style.display='none';
   rebuildTerrMesh();clearDesign();genContours();buildFlowLines();buildSlopeWarn();buildTolMesh();buildStakes();
+  // Drone terrain: auto-fill survey coverage (simulating photogrammetry)
+  if(type==='drone'){
+    surveyGrid.fill(1);surveyPointCount=N*N;
+    if(!showSurvey){showSurvey=true;document.getElementById('b-survey').classList.add('act');document.getElementById('survey-legend').style.display='block';}
+    rebuildSurveyMesh();
+    document.getElementById('scout-stats').innerHTML=
+      `🚁 Drone DEM imported<br>📡 Coverage: <b style="color:#66bb6a">100%</b> · 2,847 images<br>📐 GSD: 2.1 cm/px · RMS: ±18mm`;
+  }
   document.getElementById('st-terrain').textContent={flat:'Flat Paddock',hilly:'Hilly Farm',valley:'Valley',
-    dam_site:'Dam Site',embankment:'Embankment',cut_hill:'Cut Hill',irrig_bay:'Irrigation Bay'}[type];
+    dam_site:'Dam Site',embankment:'Embankment',cut_hill:'Cut Hill',irrig_bay:'Irrigation Bay',drone:'Drone DEM'}[type]||type;
 }
 genTerrain('hilly');
 
@@ -3112,6 +3135,80 @@ function manualClick(side){
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// FLEET SIMULATION (Machine 2 — autonomous parallel-strip grading)
+// ═══════════════════════════════════════════════════════════════════
+let fleetEnabled=false;
+let fleet2Grp=null;
+const FLEET_SPEED=3.8,FLEET_BW=4.2;
+const fleet2St={x:20,z:-SZ/2+2,hdg:0,dir:1};
+
+function buildFleet2Mesh(){
+  if(fleet2Grp){scene.remove(fleet2Grp);fleet2Grp=null;}
+  if(!fleetEnabled)return;
+  fleet2Grp=new THREE.Group();
+  const orange=new THREE.MeshBasicMaterial({color:0xff6f00});
+  const cab=new THREE.MeshBasicMaterial({color:0xffe0b2});
+  const gold=new THREE.MeshBasicMaterial({color:0xffca28});
+  const blk=new THREE.MeshBasicMaterial({color:0x212121});
+  // Chassis
+  fleet2Grp.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(3.8,1.1,2.0),orange),{position:{set(a,b,c){this.x=a;this.y=b;this.z=c;}}}));
+  const body=new THREE.Mesh(new THREE.BoxGeometry(3.8,1.1,2.0),orange);body.position.y=0.55;fleet2Grp.add(body);
+  const cabM=new THREE.Mesh(new THREE.BoxGeometry(1.4,1.1,1.8),cab);cabM.position.set(-0.5,1.1,0);fleet2Grp.add(cabM);
+  const blade=new THREE.Mesh(new THREE.BoxGeometry(0.18,1.3,FLEET_BW),gold);blade.position.set(2.1,0.65,0);fleet2Grp.add(blade);
+  for(const s of[-1,1]){const t=new THREE.Mesh(new THREE.BoxGeometry(4.0,0.35,0.5),blk);t.position.set(0,0.175,s*1.15);fleet2Grp.add(t);}
+  // Fleet 2 label indicator (orange beacon)
+  const beacon=new THREE.Mesh(new THREE.SphereGeometry(0.3,8,8),new THREE.MeshBasicMaterial({color:0xff6f00}));
+  beacon.position.set(0,2.2,0);fleet2Grp.add(beacon);
+  scene.add(fleet2Grp);
+}
+
+function updateFleet2(dt){
+  if(!fleetEnabled||!machineOn)return;
+  const fs=fleet2St;
+  const HALF=SZ/2-2;
+  fs.z+=fs.dir*FLEET_SPEED*dt;
+  if(fs.z>=HALF||fs.z<=-HALF){
+    fs.z=Math.sign(fs.z)*HALF;
+    fs.x+=FLEET_BW*1.6;
+    if(fs.x>HALF)fs.x=-HALF+FLEET_BW;
+    fs.dir*=-1;
+    fs.hdg=fs.dir>0?0:Math.PI;
+  }
+  if(fleet2Grp){
+    const mel=gElev(fs.x,fs.z);
+    fleet2Grp.position.set(fs.x,mel,fs.z);
+    fleet2Grp.rotation.y=fs.hdg;
+  }
+  // Auto-cut blade
+  if(cutSimEnabled&&designCount>0){
+    const perpX2=Math.cos(fs.hdg),perpZ2=-Math.sin(fs.hdg);
+    const bladeX=fs.x+Math.sin(fs.hdg)*2.2;
+    const bladeZ=fs.z+Math.cos(fs.hdg)*2.2;
+    for(let bi=-5;bi<=5;bi++){
+      const wx=bladeX+perpX2*(FLEET_BW/2)*(bi/5);
+      const wz=bladeZ+perpZ2*(FLEET_BW/2)*(bi/5);
+      const{gx,gz}=w2g(wx,wz);const idx=gi(gx,gz);
+      const des=hasD[idx]?design[idx]+vOffset:null;
+      if(des===null)continue;
+      if(ground[idx]>des+0.005){ground[idx]=des;terrainDirty=true;}
+    }
+  }
+}
+
+function toggleFleet(){
+  fleetEnabled=!fleetEnabled;
+  document.getElementById('b-fleet').classList.toggle('act',fleetEnabled);
+  if(fleetEnabled){
+    fleet2St.x=20;fleet2St.z=-SZ/2+2;fleet2St.hdg=0;fleet2St.dir=1;
+    buildFleet2Mesh();
+    document.getElementById('st-hint').textContent='Fleet on: Machine 2 (orange) grading parallel N-S strips. Your machine still works independently.';
+  }else{
+    if(fleet2Grp){scene.remove(fleet2Grp);fleet2Grp=null;}
+    document.getElementById('st-hint').textContent='Fleet disabled.';
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // RESIZE + RENDER LOOP
 // ═══════════════════════════════════════════════════════════════════
 function resize(){
@@ -3143,6 +3240,7 @@ function loop(t){
   requestAnimationFrame(loop);
   const dt=Math.min((t-last)/1000,0.05);last=t;
   updateMachine(dt);
+  updateFleet2(dt);
   // Throttled GPS track rebuild
   if(trackNeedsRebuild&&machineOn){rebuildTrack();trackNeedsRebuild=false;}
   // Throttled terrain rebuild when blade has been cutting
