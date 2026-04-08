@@ -173,6 +173,7 @@ body{background:#0a1520;color:#dce8f5;font-family:'Segoe UI',Arial,sans-serif;ov
     <button class="tb" id="b-survey" onclick="toggleSurvey()" title="Show survey coverage">📡 Survey</button>
     <button class="tb" id="b-split" onclick="toggleSplit()" title="Split screen blade view">⧉ Split</button>
     <button class="tb act" id="b-cutsim" onclick="toggleCutSim()" title="Live blade cuts terrain as you drive">🔪 Cut Sim</button>
+    <button class="tb" id="b-flow" onclick="toggleFlow()" title="Show stormwater drainage flow paths (D8 algorithm)">💧 Flow</button>
   </div>
 
   <div class="tg" style="margin-left:auto">
@@ -438,6 +439,7 @@ body{background:#0a1520;color:#dce8f5;font-family:'Segoe UI',Arial,sans-serif;ov
   <div>Design: <span id="st-dpts">0</span> pts</div>
   <div>Machine: <span id="st-mach">OFF</span></div>
   <div>Cut: <span id="st-cut" style="color:#42a5f5">0.0m³</span></div>
+  <div id="st-prod" style="display:none">Rate: <span id="st-rate" style="color:#66bb6a">—</span> &nbsp; ETA: <span id="st-eta" style="color:#ffb74d">—</span></div>
   <div id="st-hint" style="margin-left:auto;color:#4a7aa0">Scroll=zoom · Right-drag=orbit · Dbl-click=read elevation</div>
 </div>
 
@@ -511,6 +513,7 @@ let bladeFocus='center'; // 'center', 'tipA' (left), 'tipB' (right)
 let bladeTargetY=0.45;   // for smooth blade animation
 let showSurvey=false;
 let splitMode=false;
+let showFlow=false;
 
 // ── Survey import state ──────────────────────────────────────────────
 const surveyGrid=new Uint8Array(N*N); // 1 = has surveyed data
@@ -541,6 +544,9 @@ let cutSimEnabled=true;  // can be toggled off for performance
 let sessionCutVol=0;     // cumulative m³ cut this session
 let sessionFillVol=0;    // cumulative m³ filled (pushed) this session
 let isCutting=false;     // true while blade is actively cutting
+let prodOnTime=0;        // cumulative seconds machine has been driving
+let remainingCutVol=0;   // set by calcVol; used for ETA
+let lastProdUpdateT=0;   // timestamp of last productivity display update
 
 // ═══════════════════════════════════════════════════════════════════
 // THREE.JS SCENE
@@ -600,6 +606,10 @@ scene.add(featureGrp);
 
 // GPS pass track group
 scene.add(trackGrp);
+
+// Drainage flow lines group
+const flowGrp=new THREE.Group();
+scene.add(flowGrp);
 
 // ── Terrain mesh ─────────────────────────────────────────────────
 function buildTerrGeo(elev){
@@ -662,8 +672,8 @@ let terrMesh=new THREE.Mesh(buildTerrGeoColored(),terrMat);
 terrMesh.rotation.x=-Math.PI/2;scene.add(terrMesh);
 
 // ── Design mesh ───────────────────────────────────────────────────
-const desMat=new THREE.MeshLambertMaterial({side:THREE.DoubleSide,transparent:true,opacity:0.83,vertexColors:true});
-const desMatGrey=new THREE.MeshLambertMaterial({side:THREE.DoubleSide,transparent:true,opacity:0.75,color:0xc8d8e8});
+const desMat=new THREE.MeshBasicMaterial({side:THREE.DoubleSide,transparent:true,opacity:0.80,vertexColors:true});
+const desMatGrey=new THREE.MeshBasicMaterial({side:THREE.DoubleSide,transparent:true,opacity:0.55,color:0x8ab4cc});
 let desMesh=null;
 
 function cfColor(diff,hasDes){
@@ -690,7 +700,7 @@ function rebuildDesMesh(){
     const col=[];
     for(let i=0;i<pos.count;i++){
       const e=hasD[i]?design[i]:ground[i];
-      pos.setY(i,e+0.05);
+      pos.setY(i,e+0.08);
       const c=cfColor(hasD[i]?(design[i]+vOffset)-ground[i]:0,hasD[i]);
       col.push(c[0],c[1],c[2]);
     }
@@ -700,7 +710,7 @@ function rebuildDesMesh(){
   }else{
     for(let i=0;i<pos.count;i++){
       const e=hasD[i]?design[i]:ground[i];
-      pos.setY(i,e+0.05);
+      pos.setY(i,e+0.08);
     }
     pos.needsUpdate=true;geo.computeVertexNormals();
     desMesh=new THREE.Mesh(geo,desMatGrey);
@@ -970,9 +980,10 @@ function genTerrain(type){
   // Snapshot for cut-depth colour visualisation
   originalGround.set(ground);
   // Reset cut session stats on new terrain
-  sessionCutVol=0;sessionFillVol=0;
+  sessionCutVol=0;sessionFillVol=0;prodOnTime=0;remainingCutVol=0;
   const sc=document.getElementById('st-cut');if(sc)sc.textContent='0.0m³';
-  rebuildTerrMesh();clearDesign();genContours();
+  const pd=document.getElementById('st-prod');if(pd)pd.style.display='none';
+  rebuildTerrMesh();clearDesign();genContours();buildFlowLines();
   document.getElementById('st-terrain').textContent={flat:'Flat Paddock',hilly:'Hilly Farm',valley:'Valley',
     dam_site:'Dam Site',embankment:'Embankment',cut_hill:'Cut Hill',irrig_bay:'Irrigation Bay'}[type];
 }
@@ -1589,6 +1600,7 @@ function calcVol(){
     if(d>0)cut+=d*ca;else fill+=Math.abs(d)*ca;
     if(Math.abs(d)<=TOL)inTol++;
   }
+  remainingCutVol=cut; // expose for productivity ETA
   const net=cut-fill;
   const rate=parseFloat(document.getElementById('vc-rate').value)||12;
   const swell=parseFloat(document.getElementById('vc-swell').value)||1.25;
@@ -1817,7 +1829,7 @@ function applyImportedPoints(pts,fname,colHint){
   // Fill unsurveyed cells by nearest neighbour (simple bilinear)
   fillUnsurveyed();
   originalGround.set(ground); // snapshot for cut-depth colouring
-  rebuildTerrMesh();genContours();
+  rebuildTerrMesh();genContours();buildFlowLines();
   surveyPointCount=applied;
   const covPct=(surveyGrid.filter(v=>v>0).length/(N*N)*100).toFixed(0);
   document.getElementById('si-pts').textContent=applied.toLocaleString();
@@ -1882,6 +1894,104 @@ function toggleSurvey(){
   document.getElementById('b-survey').classList.toggle('act',showSurvey);
   document.getElementById('survey-legend').style.display=showSurvey?'block':'none';
   rebuildSurveyMesh();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// DRAINAGE FLOW PATHS  (D8 stormwater algorithm)
+// ═══════════════════════════════════════════════════════════════════
+function buildFlowLines(){
+  // Remove existing geometry
+  while(flowGrp.children.length){
+    const c=flowGrp.children[0];flowGrp.remove(c);c.geometry.dispose();
+  }
+  if(!showFlow)return;
+
+  // D8 neighbor offsets: [dx, dz, distance_factor]
+  const NBRS=[[1,0,1],[1,1,1.414],[0,1,1],[-1,1,1.414],
+              [-1,0,1],[-1,-1,1.414],[0,-1,1],[1,-1,1.414]];
+
+  // Step 1: calculate flow direction (steepest descent) for each cell
+  const dir=new Int32Array(N*N).fill(-1);
+  for(let gz=0;gz<N;gz++)for(let gx=0;gx<N;gx++){
+    const i=gi(gx,gz);
+    const h=ground[i];
+    let best=-Infinity,bestIdx=-1;
+    for(const[dx,dz,dist]of NBRS){
+      const nx=gx+dx,nz=gz+dz;
+      if(nx<0||nx>=N||nz<0||nz>=N)continue;
+      const slope=(h-ground[gi(nx,nz)])/dist;
+      if(slope>best){best=slope;bestIdx=gi(nx,nz);}
+    }
+    if(best>0.002)dir[i]=bestIdx; // only flow if actually going downhill
+  }
+
+  // Step 2: flow accumulation — process cells highest elevation first
+  const acc=new Float32Array(N*N).fill(1);
+  const order=Array.from({length:N*N},(_,i)=>i);
+  order.sort((a,b)=>ground[b]-ground[a]);
+  for(const i of order){
+    if(dir[i]>=0)acc[dir[i]]+=acc[i];
+  }
+
+  // Step 3: build line segments for cells above threshold
+  const TMIN=10; // min accumulation to show (cells)
+  const mainA=[],secA=[],minorA=[];
+  for(let gz=0;gz<N;gz++)for(let gx=0;gx<N;gx++){
+    const i=gi(gx,gz);
+    if(acc[i]<TMIN||dir[i]<0)continue;
+    const jIdx=dir[i];
+    const jgx=jIdx%N,jgz=Math.floor(jIdx/N);
+    const x0=(gx-GR/2)*CS,z0=(gz-GR/2)*CS,y0=ground[i]+0.18;
+    const x1=(jgx-GR/2)*CS,z1=(jgz-GR/2)*CS,y1=ground[jIdx]+0.18;
+    const v0=new THREE.Vector3(x0,y0,z0);
+    const v1=new THREE.Vector3(x1,y1,z1);
+    if(acc[i]>80){mainA.push(v0,v1);}
+    else if(acc[i]>25){secA.push(v0,v1);}
+    else{minorA.push(v0,v1);}
+  }
+
+  // Step 4: batch render by channel order
+  const addSegs=(pts,col)=>{
+    if(pts.length<2)return;
+    const geo=new THREE.BufferGeometry().setFromPoints(pts);
+    const mat=new THREE.LineBasicMaterial({color:col,linewidth:1});
+    flowGrp.add(new THREE.LineSegments(geo,mat));
+  };
+  addSegs(minorA,0x4fc3f7);   // light blue — minor rills
+  addSegs(secA,0x0288d1);     // medium blue — secondary channels
+  addSegs(mainA,0x01579b);    // deep blue — main drainage lines
+}
+
+function updateProductivity(){
+  const prodEl=document.getElementById('st-prod');
+  if(!prodEl)return;
+  // Only show when machine has been running and actually cutting
+  if(!machineOn||sessionCutVol<0.5||prodOnTime<5){
+    prodEl.style.display='none';return;
+  }
+  prodEl.style.display='';
+  const hrs=prodOnTime/3600;
+  const rate=sessionCutVol/hrs; // m³/hr
+  document.getElementById('st-rate').textContent=Math.round(rate)+'m³/hr';
+  const etaEl=document.getElementById('st-eta');
+  if(remainingCutVol>0.1&&rate>0){
+    const etaHrs=remainingCutVol/rate;
+    etaEl.textContent=etaHrs<1?Math.round(etaHrs*60)+'min':etaHrs.toFixed(1)+'hr';
+  }else if(remainingCutVol<=0.1){
+    etaEl.textContent='Done';
+    etaEl.style.color='#66bb6a';
+  }else{
+    etaEl.textContent='—';
+  }
+}
+
+function toggleFlow(){
+  showFlow=!showFlow;
+  document.getElementById('b-flow').classList.toggle('act',showFlow);
+  buildFlowLines();
+  document.getElementById('st-hint').textContent=showFlow
+    ? '💧 Flow Paths: blue lines show stormwater drainage channels (D8 algorithm). Bright blue = main channels.'
+    : 'Flow paths hidden — terrain unchanged.';
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -2204,6 +2314,7 @@ function loop(t){
     rebuildTerrMesh();
     if(showSurvey)rebuildSurveyMesh();
     if(designCount>0)calcVol(); // keep volume display in sync with cuts
+    if(showFlow)buildFlowLines(); // update drainage paths as terrain is cut
     terrainDirty=false;
     terrainRebuildAt=t;
   }
@@ -2214,6 +2325,13 @@ function loop(t){
   }else{
     const cn=document.getElementById('tr-center');
     if(cn)cn.style.borderTop='';
+  }
+  // Accumulate machine-on time for productivity tracking
+  if(machineOn)prodOnTime+=dt;
+  // Throttled productivity display (once per second)
+  if(t-lastProdUpdateT>1000){
+    updateProductivity();
+    lastProdUpdateT=t;
   }
   const activeCam=(camMode==='plan')?planCam:camera;
   renderer.render(scene,activeCam);
