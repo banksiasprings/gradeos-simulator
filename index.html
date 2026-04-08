@@ -161,6 +161,13 @@ body{background:#0a1520;color:#dce8f5;font-family:'Segoe UI',Arial,sans-serif;ov
   </div>
 
   <div class="tg">
+    <span class="tg-label">Terrain Mod</span>
+    <button class="tb" id="b-smooth" onclick="setTool('smooth')" title="Smooth terrain: reduces roughness in selected area">〰 Smooth</button>
+    <button class="tb" id="b-raise" onclick="setTool('raise')" title="Raise terrain: add bulk fill to selected area">🔼 Raise</button>
+    <button class="tb" id="b-lower" onclick="setTool('lower')" title="Lower terrain: bulk cut in selected area">🔽 Lower</button>
+  </div>
+
+  <div class="tg">
     <span class="tg-label">Features</span>
     <button class="tb" id="b-bank" onclick="setTool('bank')" title="Bank / Levee">⌒ Bank</button>
     <button class="tb" id="b-channel" onclick="setTool('channel')" title="Channel / Drain">≋ Channel</button>
@@ -439,6 +446,34 @@ body{background:#0a1520;color:#dce8f5;font-family:'Segoe UI',Arial,sans-serif;ov
         <button class="btn blu" style="margin-top:5px" onclick="document.getElementById('gps-import').click()">📡 Import GPS CSV</button>
         <button class="btn red" style="margin-top:3px" onclick="clearSurvey()">Clear Survey Data</button>
         <p style="font-size:10px;color:#4a7aa0;margin-top:5px;line-height:1.6">Supports: Trimble, AgLeader, JD Ops Center exports. Columns auto-detected.</p>
+      </div>
+    </div>
+
+    <!-- GradeOS Scout Simulation -->
+    <div class="spanel">
+      <div class="spanel-hdr" onclick="togglePanel('scout')"><h3>🌿 GradeOS Scout</h3><span class="toggle">▾</span></div>
+      <div class="spanel-body" id="scout-body">
+        <p style="font-size:10px;color:#4a7aa0;line-height:1.6;margin-bottom:5px">Simulate a Scout unit mounted on a farm vehicle. Terrain is mapped passively during normal operations — no dedicated survey runs needed.</p>
+        <div class="row2">
+          <div class="field"><label>Vehicle / Swath</label>
+            <select id="scout-veh" style="width:100%;background:#0a1f35;border:1px solid #1e4a7a;color:#dce8f5;padding:2px 4px;border-radius:3px;font-size:11px">
+              <option value="tractor">🚜 Tractor + Slasher (3m)</option>
+              <option value="harvester">🌾 Harvester (7m)</option>
+              <option value="quad">🏍 Quad Bike (1.2m)</option>
+              <option value="combine">🌾 Combine (9m)</option>
+            </select>
+          </div>
+          <div class="field"><label>Direction</label>
+            <select id="scout-dir" style="width:100%;background:#0a1f35;border:1px solid #1e4a7a;color:#dce8f5;padding:2px 4px;border-radius:3px;font-size:11px">
+              <option value="ew">↔ East-West</option>
+              <option value="ns">↕ North-South</option>
+              <option value="both">⊕ Both (grid)</option>
+            </select>
+          </div>
+        </div>
+        <button class="btn grn" style="margin-top:4px" onclick="runScoutSim()">▶ Simulate Scout Passes</button>
+        <button class="btn red" style="margin-top:3px" onclick="clearSurvey();document.getElementById('scout-stats').textContent=''">✕ Clear Scout Data</button>
+        <div id="scout-stats" style="font-size:10px;color:#66bb6a;margin-top:5px;line-height:1.6"></div>
       </div>
     </div>
 
@@ -1083,7 +1118,7 @@ threeCanvas.addEventListener('click',e=>{
       setTP(`${alignment.length} pts. <button class="btn grn" onclick="openPF()">Open Profile Editor</button><button class="btn" style="margin-top:4px" onclick="clearAlign()">Clear</button>`);
     return;
   }
-  if(['flat','slope','crown','dam','bestfit','batter','irrig','section'].includes(tool)){handleDesignClick(p);return;}
+  if(['flat','slope','crown','dam','bestfit','batter','irrig','section','smooth','raise','lower'].includes(tool)){handleDesignClick(p);return;}
   if(FEATURE_TOOLS.includes(tool)){handleFeatureClick(p);return;}
 });
 threeCanvas.addEventListener('dblclick',e=>{
@@ -1118,6 +1153,9 @@ function handleDesignClick(p){
     if(tool==='section'){drawSectionProfile(p1,p2);}
     else if(tool==='batter'){pushUndo();applyBatter(p1,p2);}
     else if(tool==='irrig'){pushUndo();applyIrrigBay(p1,p2);}
+    else if(tool==='smooth'){pushUndo();applyTerrainSmooth(p1,p2);}
+    else if(tool==='raise'){pushUndo();applyTerrainRaiseLower(p1,p2,1);}
+    else if(tool==='lower'){pushUndo();applyTerrainRaiseLower(p1,p2,-1);}
     else{pushUndo();applyTool(p1,p2);rebuildDesMesh();document.getElementById('st-hint').textContent='Design applied.';}
   }
 }
@@ -2148,6 +2186,90 @@ function doRedo(){
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// GRADEOS SCOUT SIMULATION
+// ═══════════════════════════════════════════════════════════════════
+function runScoutSim(){
+  const veh=document.getElementById('scout-veh').value;
+  const dir=document.getElementById('scout-dir').value;
+  const cfgs={tractor:{swath:1.5,spacing:3},harvester:{swath:3.5,spacing:7},quad:{swath:0.6,spacing:1.5},combine:{swath:4.5,spacing:9}};
+  const cfg=cfgs[veh]||cfgs.tractor;
+  const halfSwath=Math.ceil((cfg.swath/CS)/2);
+  const rowStep=Math.max(1,Math.round(cfg.spacing/CS));
+  let passes=0;
+  if(dir==='ew'||dir==='both'){
+    for(let gz=0;gz<N;gz+=rowStep){
+      for(let gx=0;gx<N;gx++){
+        for(let s=-halfSwath;s<=halfSwath;s++){
+          const gz2=gz+s;if(gz2>=0&&gz2<N)surveyGrid[gi(gx,gz2)]=1;
+        }
+      }
+      passes++;
+    }
+  }
+  if(dir==='ns'||dir==='both'){
+    for(let gx=0;gx<N;gx+=rowStep){
+      for(let gz=0;gz<N;gz++){
+        for(let s=-halfSwath;s<=halfSwath;s++){
+          const gx2=gx+s;if(gx2>=0&&gx2<N)surveyGrid[gi(gx2,gz)]=1;
+        }
+      }
+      passes++;
+    }
+  }
+  const surveyed=Array.from(surveyGrid).filter(v=>v>0).length;
+  const covPct=(surveyed/(N*N)*100).toFixed(0);
+  const siteArea=(GR*CS)*(GR*CS);
+  surveyPointCount=surveyed;
+  const vehNames={tractor:'Tractor',harvester:'Harvester',quad:'Quad Bike',combine:'Combine'};
+  document.getElementById('scout-stats').innerHTML=
+    `✓ ${passes} passes complete<br>`
+    +`📡 Coverage: <b style="color:#66bb6a">${covPct}%</b> (${surveyed.toLocaleString()} cells)<br>`
+    +`🚜 Vehicle: ${vehNames[veh]||veh} — ${cfg.swath}m swath, ${cfg.spacing}m row spacing<br>`
+    +`📏 Site: ${siteArea.toFixed(0)} m² total`;
+  // Auto-enable survey layer to show the coverage
+  if(!showSurvey){
+    showSurvey=true;
+    document.getElementById('b-survey').classList.add('act');
+    document.getElementById('survey-legend').style.display='block';
+  }
+  rebuildSurveyMesh();
+  document.getElementById('st-hint').textContent=`Scout: ${passes} passes, ${covPct}% coverage. Toggle 📡 Survey in Display to show/hide.`;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// TERRAIN MODIFICATION TOOLS (Smooth / Raise / Lower)
+// ═══════════════════════════════════════════════════════════════════
+function applyTerrainSmooth(p1,p2){
+  const g1=w2g(Math.min(p1.x,p2.x),Math.min(p1.z,p2.z));
+  const g2=w2g(Math.max(p1.x,p2.x),Math.max(p1.z,p2.z));
+  const iters=parseInt(document.getElementById('sm-iters')?.value||4);
+  for(let it=0;it<iters;it++){
+    const tmp=ground.slice();
+    for(let gz=Math.max(1,g1.gz);gz<=Math.min(GR-1,g2.gz);gz++){
+      for(let gx=Math.max(1,g1.gx);gx<=Math.min(GR-1,g2.gx);gx++){
+        const i=gi(gx,gz);
+        const avg=(tmp[gi(gx-1,gz)]+tmp[gi(gx+1,gz)]+tmp[gi(gx,gz-1)]+tmp[gi(gx,gz+1)])*0.25;
+        ground[i]=tmp[i]*0.4+avg*0.6;
+      }
+    }
+  }
+  terrainDirty=true;rebuildTerrMesh();genContours();buildFlowLines();buildSlopeWarn();buildTolMesh();calcVol();
+  const area=((g2.gx-g1.gx)*(g2.gz-g1.gz)*CS*CS).toFixed(0);
+  document.getElementById('st-hint').textContent=`Terrain smoothed (${iters} passes, ${area} m²).`;
+}
+
+function applyTerrainRaiseLower(p1,p2,sign){
+  const g1=w2g(Math.min(p1.x,p2.x),Math.min(p1.z,p2.z));
+  const g2=w2g(Math.max(p1.x,p2.x),Math.max(p1.z,p2.z));
+  const inpId=sign>0?'tm-raise':'tm-lower';
+  const amt=parseFloat(document.getElementById(inpId)?.value||0.3)*sign;
+  for(let gz=g1.gz;gz<=g2.gz;gz++) for(let gx=g1.gx;gx<=g2.gx;gx++) ground[gi(gx,gz)]+=amt;
+  terrainDirty=true;rebuildTerrMesh();genContours();buildFlowLines();buildSlopeWarn();buildTolMesh();calcVol();
+  const area=((g2.gx-g1.gx)*(g2.gz-g1.gz)*CS*CS).toFixed(0);
+  document.getElementById('st-hint').textContent=`Terrain ${sign>0?'raised':'lowered'} ${Math.abs(amt).toFixed(2)}m over ${area} m² — Ctrl+Z to undo.`;
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // EXPORT CSV
 // ═══════════════════════════════════════════════════════════════════
 function exportCSV(){
@@ -2821,9 +2943,17 @@ const TOOL_HTML={
             <p style="font-size:10px;color:#4a7aa0">Closed polygon. Sets the outer work area for volume calculations.</p>`,
   treeline:`<p style="font-size:11px;color:#7aabcc;line-height:1.7;margin-bottom:4px"><strong style="color:#66bb6a">🌲 Tree Line / Shelter Belt</strong><br>Click to trace tree line.<br><strong>Double-click</strong> to finish.</p>
             <p style="font-size:10px;color:#4a7aa0">Mark shelter belts and riparian vegetation for awareness during grading.</p>`,
+  section:`<p style="font-size:11px;color:#7aabcc;line-height:1.7;margin-bottom:4px"><strong style="color:#e8a020">✂ Cross-Section Profile</strong><br>Click start point, then end point.</p>
+           <p style="font-size:10px;color:#4a7aa0">Draws a 2D elevation profile with terrain slope and cut/fill depth vs design surface.</p>`,
+  smooth:`<div class="field"><label>Smoothing Passes</label><input type="number" id="sm-iters" value="4" min="1" max="20" step="1"></div>
+          <p style="font-size:10px;color:#4a7aa0;margin-top:3px">Click two corners of area to smooth. Applies Laplacian averaging — rounds off peaks and fills hollows. Good for dozer track removal.</p>`,
+  raise:`<div class="field"><label>Raise Amount (m)</label><input type="number" id="tm-raise" value="0.30" min="0.01" max="5" step="0.05"></div>
+         <p style="font-size:10px;color:#4a7aa0;margin-top:3px">Click two corners — simulates bulk fill placed in that area. Useful for modelling borrow pits and fill zones.</p>`,
+  lower:`<div class="field"><label>Lower Amount (m)</label><input type="number" id="tm-lower" value="0.30" min="0.01" max="5" step="0.05"></div>
+         <p style="font-size:10px;color:#4a7aa0;margin-top:3px">Click two corners — simulates a bulk cut. Use to model rough strip or topsoil removal before precision grading.</p>`,
 };
 
-const TOOL_BTNS=['nav','flat','slope','crown','align','dam','bestfit','batter','irrig','section','bank','channel','waterway','pivot','boundary','treeline'];
+const TOOL_BTNS=['nav','flat','slope','crown','align','dam','bestfit','batter','irrig','section','smooth','raise','lower','bank','channel','waterway','pivot','boundary','treeline'];
 function setTool(name){
   tool=name;toolState={};
   // Cancel any in-progress feature draft when switching tools
@@ -2836,6 +2966,7 @@ function setTool(name){
     batter:'Batter / Slope Designer',
     irrig:'Irrigation Bay — Auto-Balance',
     section:'Cross-Section Profile',
+    smooth:'Terrain Smooth',raise:'Terrain Raise',lower:'Terrain Lower',
     bank:'Bank / Levee',channel:'Channel / Drain',waterway:'Natural Waterway',
     pivot:'Centre Pivot',boundary:'Paddock Boundary',treeline:'Tree Line'
   }[name]||name;
@@ -2852,6 +2983,9 @@ function setTool(name){
     batter:'Click crest point, then click slope-fall direction to generate batter design',
     irrig:'Click two corners of irrigation bay — system auto-balances cut/fill at the drain grade',
     section:'Click start point, then end point — draws 2D elevation profile with ground vs design',
+    smooth:'Click two corners — smooths terrain, removes roughness and machine tracks',
+    raise:'Click two corners — raises terrain level (simulates bulk fill placement)',
+    lower:'Click two corners — lowers terrain level (simulates bulk cut / topsoil strip)',
     bank:'Click to place bank/levee points · Double-click to finish',
     channel:'Click to place channel points · Double-click to finish',
     waterway:'Click to place waterway points · Double-click to finish',
