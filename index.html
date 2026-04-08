@@ -145,7 +145,7 @@ body{background:#0a1520;color:#dce8f5;font-family:'Segoe UI',Arial,sans-serif;ov
 <body>
 
 <div id="topbar">
-  <div id="logo">GRADE<span>OS</span> <span style="font-size:10px;color:#4a7aa0;font-weight:400">v0.6</span>
+  <div id="logo">GRADE<span>OS</span> <span style="font-size:10px;color:#4a7aa0;font-weight:400">v0.7</span>
     <span style="font-size:9px;color:#2a5a7a;margin-left:8px;font-weight:400;letter-spacing:0">RTK GPS Machine Control · 10× cheaper than Trimble</span>
   </div>
 
@@ -221,6 +221,7 @@ body{background:#0a1520;color:#dce8f5;font-family:'Segoe UI',Arial,sans-serif;ov
     <button class="tb" id="b-passcount" onclick="togglePassCount()" title="Pass count overlay — heat map of machine coverage intensity">🔥 Passes</button>
     <button class="tb" id="b-stripplan" onclick="toggleStripPlan()" title="Grade strip planner — optimal grading sequence based on design surface gradient">📋 Strips</button>
     <button class="tb" id="b-replay" onclick="toggleReplay()" title="Time-lapse replay — animate terrain from original to current graded state">⏪ Replay</button>
+    <button class="tb" id="b-ghost" onclick="toggleGhost()" title="Ghost terrain — shows original terrain as transparent overlay to reveal what has been cut">👻 Ghost</button>
     <button class="tb blu" onclick="openJobReport()" title="Generate earthwork job report">📊 Report</button>
   </div>
 
@@ -710,6 +711,7 @@ let showPassCount=false;let passCountMesh=null;let passCountDirty=false;
 const passCount=new Uint8Array(N*N);
 let rtkFixType='RTK FIXED';let lastRtkType='RTK FIXED';
 let engineSeconds=0;  // total machine-on time in seconds
+let showGhost=false;let ghostMesh=null;
 let showStripPlan=false;let stripPlanGrp=null;
 const terrainHistory=[];const HIST_MAX=24;let lastHistorySnap=0;
 let isReplaying=false;let replayFrame=0;let replayTimer=null;
@@ -1127,6 +1129,7 @@ function rebuildTerrMesh(){
   scene.remove(terrMesh);terrMesh.geometry.dispose();
   terrMesh=new THREE.Mesh(buildTerrGeoColored(),terrMat);
   terrMesh.rotation.x=-Math.PI/2;scene.add(terrMesh);
+  if(showGhost)buildGhostMesh();
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1273,6 +1276,7 @@ function genTerrain(type){
   originalGround.set(ground);
   // Reset cut session stats on new terrain
   sessionCutVol=0;sessionFillVol=0;prodOnTime=0;remainingCutVol=0;engineSeconds=0;
+  if(ghostMesh){scene.remove(ghostMesh);ghostMesh.geometry.dispose();ghostMesh.material.dispose();ghostMesh=null;}
   passCount.fill(0);terrainHistory.length=0;lastHistorySnap=0;
   const sc=document.getElementById('st-cut');if(sc)sc.textContent='0.0m³';
   const pd=document.getElementById('st-prod');if(pd)pd.style.display='none';
@@ -2554,6 +2558,51 @@ function togglePassCount(){
   buildPassCountMesh();
   if(showPassCount)
     document.getElementById('st-hint').textContent='🔥 Pass count: 🟠=1 pass · 🟡=2 · 🟢=3-4 · bright🟢=5+';
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// GHOST TERRAIN — original terrain as transparent overlay showing what's been cut
+// ═══════════════════════════════════════════════════════════════════
+function buildGhostMesh(){
+  if(ghostMesh){scene.remove(ghostMesh);ghostMesh.geometry.dispose();ghostMesh.material.dispose();ghostMesh=null;}
+  if(!showGhost)return;
+  // Check if anything has actually been cut (originalGround differs from ground)
+  let hasCut=false;
+  for(let i=0;i<N*N;i++){if(originalGround[i]-ground[i]>0.02){hasCut=true;break;}}
+  if(!hasCut){
+    document.getElementById('st-hint').textContent='👻 Ghost: no cuts yet — drive the machine to see original terrain appear.';
+    return;
+  }
+  const geo=new THREE.PlaneGeometry(SZ,SZ,GR,GR);
+  geo.rotateX(-Math.PI/2);
+  const pos=geo.attributes.position;
+  const col=[];
+  for(let i=0;i<pos.count;i++){
+    pos.setY(i,originalGround[i]+0.06); // lift slightly above current terrain
+    const cut=originalGround[i]-ground[i]; // how much has been removed
+    // Colour: grey-blue for uncut areas, highlight cut zones in amber
+    const r=cut>0.05?0.6:0.3;
+    const g=cut>0.05?0.3:0.35;
+    const b=cut>0.05?0.1:0.5;
+    col.push(r,g,b);
+  }
+  geo.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
+  pos.needsUpdate=true;geo.computeVertexNormals();
+  ghostMesh=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({
+    vertexColors:true,transparent:true,opacity:0.32,
+    side:THREE.DoubleSide,depthWrite:false,wireframe:false
+  }));
+  scene.add(ghostMesh);
+  // Wireframe overlay on top
+  const wfGeo=new THREE.WireframeGeometry(geo);
+  const wfLine=new THREE.LineSegments(wfGeo,new THREE.LineBasicMaterial({color:0x3a6a9a,transparent:true,opacity:0.18}));
+  ghostMesh.add(wfLine);
+  document.getElementById('st-hint').textContent='👻 Ghost: grey-blue=uncut original · amber=zones you\'ve already cut. Toggle off with Ghost button.';
+}
+function toggleGhost(){
+  showGhost=!showGhost;
+  document.getElementById('b-ghost').classList.toggle('act',showGhost);
+  buildGhostMesh();
 }
 
 // ═══════════════════════════════════════════════════════════════════
