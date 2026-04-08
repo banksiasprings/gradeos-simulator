@@ -211,6 +211,8 @@ body{background:#0a1520;color:#dce8f5;font-family:'Segoe UI',Arial,sans-serif;ov
     <button class="tb" id="b-stakes" onclick="toggleStakes()" title="Grade stakes — blue=cut, orange=fill, height shows depth">📍 Stakes</button>
     <button class="tb" id="b-garrows" onclick="toggleGradeArrows()" title="Grade arrows — show design surface slope direction and grade %">↗ Grade</button>
     <button class="tb" id="b-ctrlab" onclick="toggleContourLabels()" title="Contour elevation labels — show elevation numbers on major contours">🏷 Labels</button>
+    <button class="tb" id="b-daylight" onclick="toggleDaylight()" title="Daylight line — shows cut/fill boundary where design meets existing ground">📍 Daylight</button>
+    <button class="tb" id="b-passcount" onclick="togglePassCount()" title="Pass count overlay — heat map of machine coverage intensity">🔥 Passes</button>
     <button class="tb blu" onclick="openJobReport()" title="Generate earthwork job report">📊 Report</button>
   </div>
 
@@ -644,6 +646,9 @@ const undoStack=[];const redoStack=[];const MAX_UNDO=20;
 let fleetEnabled=false;let fleet2Grp=null;
 const FLEET_SPEED=3.8,FLEET_BW=4.2;
 const fleet2St={x:20,z:-SZ/2+2,hdg:0,dir:1};
+let showDaylight=false;let daylightMesh=null;
+let showPassCount=false;let passCountMesh=null;let passCountDirty=false;
+const passCount=new Uint8Array(N*N);
 
 // ── Farm features ────────────────────────────────────────────────────
 const farmFeatures=[];   // [{type,pts:[{x,z}],label,color,closed}]
@@ -846,7 +851,7 @@ function rebuildDesMesh(){
   desMesh.rotation.x=-Math.PI/2;
   scene.add(desMesh);
   calcVol();
-  buildTolMesh();buildStakes();buildGradeArrows();
+  buildTolMesh();buildStakes();buildGradeArrows();buildDaylightMesh();
   document.getElementById('st-dpts').textContent=designCount;
 }
 
@@ -1177,9 +1182,10 @@ function genTerrain(type){
   originalGround.set(ground);
   // Reset cut session stats on new terrain
   sessionCutVol=0;sessionFillVol=0;prodOnTime=0;remainingCutVol=0;
+  passCount.fill(0);
   const sc=document.getElementById('st-cut');if(sc)sc.textContent='0.0m³';
   const pd=document.getElementById('st-prod');if(pd)pd.style.display='none';
-  rebuildTerrMesh();clearDesign();genContours();buildFlowLines();buildSlopeWarn();buildTolMesh();buildStakes();
+  rebuildTerrMesh();clearDesign();genContours();buildFlowLines();buildSlopeWarn();buildTolMesh();buildStakes();buildDaylightMesh();buildPassCountMesh();
   // Drone terrain: auto-fill survey coverage (simulating photogrammetry)
   if(type==='drone'){
     surveyGrid.fill(1);surveyPointCount=N*N;
@@ -1993,6 +1999,8 @@ function recordAsBuilt(wx,wz,des,gnd){
     trackPts.push({x:wx,z:wz,y:gnd+0.22,onGrade});
     trackNeedsRebuild=true;
   }
+  // Pass count (increment every pass, up to 10)
+  if(passCount[i]<10){passCount[i]++;if(showPassCount)passCountDirty=true;}
   if(!asBuilt[i]){
     asBuilt[i]=1;asBuiltPasses++;asBuiltArea+=CS*CS;asBuiltTotal++;
     if(onGrade)asBuiltOnGrade++;
@@ -2024,6 +2032,7 @@ function rebuildTrack(){
 }
 function clearAsBuilt(){
   asBuilt.fill(0);asBuiltPasses=0;asBuiltArea=0;asBuiltOnGrade=0;asBuiltTotal=0;
+  passCount.fill(0);buildPassCountMesh();
   trackPts.length=0;rebuildTrack();
   document.getElementById('ab-passes').textContent='0';
   document.getElementById('ab-area').textContent='0 m²';
@@ -2246,6 +2255,99 @@ function toggleTol(){
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// DAYLIGHT LINE — cut/fill boundary where design surface meets ground
+// ═══════════════════════════════════════════════════════════════════
+function buildDaylightMesh(){
+  if(daylightMesh){scene.remove(daylightMesh);daylightMesh.geometry.dispose();daylightMesh=null;}
+  if(!showDaylight||designCount===0)return;
+  const pts=[];
+  const LIFT=0.22;
+  const half=0.9; // half-length of each cross segment (metres)
+  // Horizontal edges: between cell (gx,gz) and (gx+1,gz)
+  for(let gz=0;gz<GR;gz++){
+    for(let gx=0;gx<GR-1;gx++){
+      const i0=gi(gx,gz),i1=gi(gx+1,gz);
+      if(!hasD[i0]||!hasD[i1])continue;
+      const v0=(design[i0]+vOffset)-ground[i0];
+      const v1=(design[i1]+vOffset)-ground[i1];
+      if(v0*v1>=0)continue; // same side — no crossing
+      const t=v0/(v0-v1);
+      const wx=(gx+t-GR/2)*CS,wz=(gz+0.5-GR/2)*CS;
+      const y=gElev(wx,wz)+LIFT;
+      pts.push(wx,y,wz-half, wx,y,wz+half); // perpendicular tick mark
+    }
+  }
+  // Vertical edges: between cell (gx,gz) and (gx,gz+1)
+  for(let gz=0;gz<GR-1;gz++){
+    for(let gx=0;gx<GR;gx++){
+      const i0=gi(gx,gz),i1=gi(gx,gz+1);
+      if(!hasD[i0]||!hasD[i1])continue;
+      const v0=(design[i0]+vOffset)-ground[i0];
+      const v1=(design[i1]+vOffset)-ground[i1];
+      if(v0*v1>=0)continue;
+      const t=v0/(v0-v1);
+      const wx=(gx+0.5-GR/2)*CS,wz=(gz+t-GR/2)*CS;
+      const y=gElev(wx,wz)+LIFT;
+      pts.push(wx-half,y,wz, wx+half,y,wz); // perpendicular tick mark
+    }
+  }
+  if(!pts.length)return;
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',new THREE.Float32BufferAttribute(pts,3));
+  daylightMesh=new THREE.LineSegments(geo,new THREE.LineBasicMaterial({color:0xffff00,linewidth:2}));
+  scene.add(daylightMesh);
+}
+function toggleDaylight(){
+  showDaylight=!showDaylight;
+  document.getElementById('b-daylight').classList.toggle('act',showDaylight);
+  buildDaylightMesh();
+  if(showDaylight&&designCount===0)
+    document.getElementById('st-hint').textContent='No design yet — apply a design to see the daylight line.';
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PASS COUNT HEAT MAP — machine coverage intensity overlay
+// ═══════════════════════════════════════════════════════════════════
+function buildPassCountMesh(){
+  if(passCountMesh){scene.remove(passCountMesh);passCountMesh.geometry.dispose();passCountMesh=null;}
+  passCountDirty=false;
+  if(!showPassCount)return;
+  const verts=[],colors=[];
+  const addQuad=(gx,gz,r,g,b)=>{
+    const x=(gx-GR/2)*CS,z=(gz-GR/2)*CS;
+    const y=ground[gi(gx,gz)]+0.11;
+    const x1=(gx+1-GR/2)*CS,z1=(gz+1-GR/2)*CS;
+    verts.push(x,y,z,x1,y,z,x1,y,z1,x,y,z,x1,y,z1,x,y,z1);
+    for(let k=0;k<6;k++)colors.push(r,g,b);
+  };
+  let hasAny=false;
+  for(let gz=0;gz<GR;gz++) for(let gx=0;gx<GR;gx++){
+    const pc=passCount[gi(gx,gz)];
+    if(!pc)continue;
+    hasAny=true;
+    let r,g,b;
+    if(pc>=5){r=0.0;g=0.95;b=0.35;}      // 5+ passes: bright green (well-covered)
+    else if(pc>=3){r=0.5;g=0.85;b=0.05;} // 3-4: lime
+    else if(pc>=2){r=0.90;g=0.75;b=0.0;} // 2: yellow
+    else{r=0.95;g=0.35;b=0.0;}           // 1: orange (single pass)
+    addQuad(gx,gz,r,g,b);
+  }
+  if(!hasAny)return;
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));
+  geo.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
+  passCountMesh=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({vertexColors:true,transparent:true,opacity:0.60,depthWrite:false}));
+  scene.add(passCountMesh);
+}
+function togglePassCount(){
+  showPassCount=!showPassCount;
+  document.getElementById('b-passcount').classList.toggle('act',showPassCount);
+  buildPassCountMesh();
+  if(showPassCount)
+    document.getElementById('st-hint').textContent='🔥 Pass count: 🟠=1 pass · 🟡=2 · 🟢=3-4 · bright🟢=5+';
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // UNDO / REDO
 // ═══════════════════════════════════════════════════════════════════
 function pushUndo(){
@@ -2256,7 +2358,7 @@ function pushUndo(){
 function applyUndoState(s){
   ground.set(s.ground);design.set(s.design);hasD.set(s.hasD);designCount=s.designCount;
   terrainDirty=true;
-  rebuildTerrMesh();rebuildDesMesh();genContours();buildFlowLines();buildSlopeWarn();buildTolMesh();buildStakes();buildGradeArrows();calcVol();
+  rebuildTerrMesh();rebuildDesMesh();genContours();buildFlowLines();buildSlopeWarn();buildTolMesh();buildStakes();buildGradeArrows();buildDaylightMesh();calcVol();
 }
 function doUndo(){
   if(!undoStack.length){document.getElementById('st-hint').textContent='Nothing to undo.';return;}
@@ -2433,7 +2535,7 @@ function loadDesign(){
     vOffset=data.vOffset||0;
     originalGround.set(data.ground);
     terrainDirty=true;
-    rebuildTerrMesh();rebuildDesMesh();genContours();buildFlowLines();buildSlopeWarn();buildTolMesh();buildStakes();buildGradeArrows();calcVol();
+    rebuildTerrMesh();rebuildDesMesh();genContours();buildFlowLines();buildSlopeWarn();buildTolMesh();buildStakes();buildGradeArrows();buildDaylightMesh();calcVol();
     const saved=new Date(data.ts);
     document.getElementById('st-hint').textContent=`Design loaded — saved ${saved.toLocaleString()}.`;
   }catch(e){
@@ -3535,6 +3637,8 @@ function loop(t){
   updateFleet2(dt);
   // Throttled GPS track rebuild
   if(trackNeedsRebuild&&machineOn){rebuildTrack();trackNeedsRebuild=false;}
+  // Throttled pass count mesh rebuild (every 1.5s while machine running)
+  if(passCountDirty&&machineOn&&t-lastProdUpdateT>1500){buildPassCountMesh();}
   // Throttled terrain rebuild when blade has been cutting
   if(terrainDirty && t-terrainRebuildAt>280){
     rebuildTerrMesh();
@@ -3542,6 +3646,7 @@ function loop(t){
     if(designCount>0)calcVol(); // keep volume display in sync with cuts
     if(showFlow)buildFlowLines(); // update drainage paths as terrain is cut
     if(showSlope)buildSlopeWarn(); // update slope warnings
+    if(showDaylight)buildDaylightMesh(); // update daylight line as terrain is cut
     terrainDirty=false;
     terrainRebuildAt=t;
   }
