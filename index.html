@@ -230,6 +230,7 @@ body{background:#0a1520;color:#dce8f5;font-family:'Segoe UI',Arial,sans-serif;ov
     <button class="tb blu" onclick="document.getElementById('gps-import').click()" title="Import GPS/survey CSV">📡 Import GPS</button>
     <input type="file" id="gps-import" accept=".csv,.gpx,.txt" style="display:none" onchange="handleImportFile(event)">
     <button class="tb" onclick="toggleKeyHelp()" title="Keyboard shortcuts (H)">⌨ Keys</button>
+    <button class="tb" onclick="captureScreenshot()" title="Save screenshot of 3D view as PNG">📷 Screenshot</button>
     <button class="tb red" onclick="clearAll()">🗑 Clear</button>
     <button class="tb grn" onclick="exportCSV()" title="Export design vs existing to CSV">📥 CSV</button>
     <button class="tb grn" onclick="exportAsBuilt()" title="Export as-built survey after grading">📤 As-Built</button>
@@ -419,6 +420,18 @@ body{background:#0a1520;color:#dce8f5;font-family:'Segoe UI',Arial,sans-serif;ov
       <span>H.Acc <span id="rtk-hacc" style="color:#7aabcc">9mm</span></span>
       <span>Base <span id="rtk-base" style="color:#7aabcc">12.3km</span></span>
       <span>Age <span id="rtk-age" style="color:#7aabcc">1.2s</span></span>
+    </div>
+
+    <!-- Quick Scenarios -->
+    <div class="spanel">
+      <div class="spanel-hdr" onclick="togglePanel('qs')"><h3>🚀 Quick Demo Scenarios</h3><span class="toggle">▾</span></div>
+      <div class="spanel-body" id="qs-body">
+        <p style="font-size:10px;color:#4a7aa0;margin-bottom:6px;line-height:1.5">One-click demo setups — terrain + design applied and balanced automatically.</p>
+        <button class="btn grn" style="width:100%;margin-bottom:3px" onclick="runScenario('irrig')">🌾 Irrigation Bay Grade</button>
+        <button class="btn grn" style="width:100%;margin-bottom:3px" onclick="runScenario('housepad')">🏠 House Pad Development</button>
+        <button class="btn grn" style="width:100%;margin-bottom:3px" onclick="runScenario('road')">🛣 Road Construction Cut</button>
+        <button class="btn grn" style="width:100%;margin-bottom:3px" onclick="runScenario('dam')">🌊 Dam / Retention Wall</button>
+      </div>
     </div>
 
     <!-- Tool panel -->
@@ -1918,8 +1931,10 @@ function updateMachine(dt){
     if(terrainHistory.length>HIST_MAX)terrainHistory.shift();
     lastHistorySnap=performance.now();
   }
-  if(keys['ArrowLeft']||keys['a']||keys['A'])machinePos.hdg+=turn*dt;
-  if(keys['ArrowRight']||keys['d']||keys['D'])machinePos.hdg-=turn*dt;
+  if(!autoSteer){
+    if(keys['ArrowLeft']||keys['a']||keys['A'])machinePos.hdg+=turn*dt;
+    if(keys['ArrowRight']||keys['d']||keys['D'])machinePos.hdg-=turn*dt;
+  }
   machinePos.x=Math.max(-SZ/2+3,Math.min(SZ/2-3,machinePos.x));
   machinePos.z=Math.max(-SZ/2+3,Math.min(SZ/2-3,machinePos.z));
   const mel=gElev(machinePos.x,machinePos.z);
@@ -3762,6 +3777,71 @@ function loop(t){
   renderer.render(scene,activeCam);
 }
 loop(0);
+
+// ═══════════════════════════════════════════════════════════════════
+// SCREENSHOT CAPTURE
+// ═══════════════════════════════════════════════════════════════════
+function captureScreenshot(){
+  // Force a fresh render then capture the canvas
+  const activeCam=(camMode==='plan')?planCam:camera;
+  renderer.render(scene,activeCam);
+  const link=document.createElement('a');
+  link.download='GradeOS_'+document.getElementById('st-terrain').textContent.replace(/\s/g,'_')+'_'+new Date().toISOString().slice(0,10)+'.png';
+  link.href=renderer.domElement.toDataURL('image/png');
+  link.click();
+  document.getElementById('st-hint').textContent='📷 Screenshot saved.';
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// QUICK DEMO SCENARIOS
+// ═══════════════════════════════════════════════════════════════════
+function applyDesignRect(cx,cz,halfW,halfH,getElev){
+  // Apply design to a rectangular area; getElev(wx,wz) returns target elevation
+  const g1=w2g(cx-halfW,cz-halfH),g2=w2g(cx+halfW,cz+halfH);
+  for(let gz=g1.gz;gz<=g2.gz;gz++) for(let gx=g1.gx;gx<=g2.gx;gx++){
+    const wx=(gx-GR/2)*CS,wz=(gz-GR/2)*CS;
+    setDesign(gx,gz,getElev(wx,wz));
+  }
+}
+function runScenario(type){
+  let desc='';
+  if(type==='irrig'){
+    genTerrain('irrig_bay');
+    // Apply 0.05% fall in X direction (0.5mm/m) — typical flood irrigation grade
+    const baseElev=1.2;const gradeX=0.0005;
+    applyDesignRect(0,0,SZ/2-2,SZ/2-2,(wx)=>baseElev-wx*gradeX);
+    desc='🌾 Irrig Bay: 0.05% grade applied across full site. Auto-balanced. Drive machine to grade.';
+  }else if(type==='housepad'){
+    genTerrain('house_pad');
+    // Apply three flat pads at different elevations on a hillside
+    const pads=[{cx:-28,cz:-28,hw:18,hh:20,e:1.5},{cx:22,cz:-5,hw:18,hh:20,e:3.2},{cx:-5,cz:30,hw:25,hh:18,e:4.8}];
+    pads.forEach(p=>applyDesignRect(p.cx,p.cz,p.hw,p.hh,()=>p.e));
+    desc='🏠 House Pads: 3 lots applied at RL 1.5m, 3.2m, 4.8m. Cut on uphill, fill on downhill edges.';
+  }else if(type==='road'){
+    genTerrain('road_cut');
+    // Apply diagonal slope along road corridor centre line
+    // Road goes NW to SE: z=x*0.5 line. Apply 3% grade along road direction
+    const grade=0.03;
+    applyDesignRect(0,0,SZ/2-2,SZ/2-2,(wx,wz)=>1.5+(wx*0.6+wz*0.4)*0.03);
+    desc='🛣 Road Cut: 3% grade applied across formation. Cut through hill, fill in gully.';
+  }else if(type==='dam'){
+    genTerrain('dam_site');
+    // Apply dam design: flat pond floor, batter slopes, embankment crest
+    applyDesignRect(0,0,SZ/2-2,SZ/2-2,(wx,wz)=>{
+      const distFromCentre=Math.max(Math.abs(wx),Math.abs(wz));
+      if(distFromCentre<20)return 0.5; // pond floor
+      else if(distFromCentre<40)return 0.5+(distFromCentre-20)/20*2.5; // inner batter
+      else return 3.0; // embankment crest
+    });
+    desc='🌊 Dam: pond floor at RL 0.5m, batters to crest at RL 3.0m. Balance before grading.';
+  }
+  // Finish up: rebuild and auto-balance
+  rebuildDesMesh();buildTolMesh();buildDaylightMesh();buildStakes();
+  if(showStripPlan)buildStripPlan();
+  calcVol();
+  setTimeout(()=>{autoBalanceVOffset();},50); // slight delay to let calcVol settle
+  document.getElementById('st-hint').textContent=desc;
+}
 
 // ═══════════════════════════════════════════════════════════════════
 // AUTO-STEER
