@@ -105,6 +105,10 @@ body{background:#0a1520;color:#dce8f5;font-family:'Segoe UI',Arial,sans-serif;ov
 .blade-bar-fill{position:absolute;bottom:50%;width:100%;transition:height .15s;border-radius:2px}
 .blade-bar-zero{position:absolute;bottom:50%;width:100%;height:1px;background:#e8a020;opacity:0.5}
 .blade-mm{font-size:22px;font-weight:900;font-family:'Courier New',monospace;text-align:center}
+/* Job completion progress bar */
+.prog-wrap{width:100%;background:#071525;border:1px solid #1a3a5c;border-radius:3px;height:14px;overflow:hidden;margin-top:4px}
+.prog-bar{height:100%;background:#27ae60;border-radius:3px;transition:width .4s;width:0}
+.prog-lbl{font-size:10px;color:#4a7aa0;display:flex;justify-content:space-between;margin-top:2px}
 /* Feature colours */
 .feat-bank{color:#e8a020}.feat-channel{color:#42a5f5}.feat-waterway{color:#00bcd4}
 .feat-pivot{color:#ce93d8}.feat-boundary{color:#ef5350}.feat-treeline{color:#66bb6a}
@@ -368,6 +372,15 @@ body{background:#0a1520;color:#dce8f5;font-family:'Segoe UI',Arial,sans-serif;ov
           <div class="field"><label>Swell Factor</label><input type="number" id="vc-swell" value="1.25" step="0.05" onchange="calcVol()"></div>
         </div>
         <button class="btn grn" onclick="calcVol()">Recalculate</button>
+        <!-- Job completion bar -->
+        <div style="margin-top:8px;border-top:1px solid #152535;padding-top:6px">
+          <div style="font-size:10px;color:#e8a020;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Job Completion</div>
+          <div class="prog-wrap"><div class="prog-bar" id="vc-progbar"></div></div>
+          <div class="prog-lbl">
+            <span id="vc-progpct" style="color:#66bb6a;font-weight:700">0%</span>
+            <span id="vc-proginTol" style="color:#4a7aa0">0 / 0 cells ±25mm</span>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1509,11 +1522,13 @@ function clearAsBuilt(){
 // VOLUME CALCULATOR
 // ═══════════════════════════════════════════════════════════════════
 function calcVol(){
-  let cut=0,fill=0,area=0;const ca=CS*CS;
+  let cut=0,fill=0,area=0,inTol=0,total=0;const ca=CS*CS;
+  const TOL=0.025; // 25mm tolerance
   for(let gz=0;gz<GR;gz++) for(let gx=0;gx<GR;gx++){
     const i=gi(gx,gz);if(!hasD[i])continue;
-    const d=(design[i]+vOffset)-ground[i];area+=ca;
+    const d=(design[i]+vOffset)-ground[i];area+=ca;total++;
     if(d>0)cut+=d*ca;else fill+=Math.abs(d)*ca;
+    if(Math.abs(d)<=TOL)inTol++;
   }
   const net=cut-fill;
   const rate=parseFloat(document.getElementById('vc-rate').value)||12;
@@ -1526,6 +1541,15 @@ function calcVol(){
   document.getElementById('vc-cost').textContent='$'+Math.round(cost).toLocaleString();
   // Session cut (from cut sim)
   const sc=document.getElementById('vc-session-cut');if(sc)sc.textContent=sessionCutVol.toFixed(1)+' m³';
+  // Job completion bar
+  const pct=total>0?Math.round(inTol/total*100):0;
+  const bar=document.getElementById('vc-progbar');
+  if(bar){
+    bar.style.width=pct+'%';
+    bar.style.background=pct>=95?'#00e676':pct>=75?'#69f0ae':pct>=50?'#ffeb3b':'#ff7043';
+  }
+  const pp=document.getElementById('vc-progpct');if(pp)pp.textContent=pct+'%';
+  const pt=document.getElementById('vc-proginTol');if(pt)pt.textContent=inTol.toLocaleString()+' / '+total.toLocaleString()+' cells ±25mm';
 }
 
 // ═══════════════════════════════════════════════════════════════════
