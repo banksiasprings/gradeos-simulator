@@ -635,34 +635,37 @@ function terrVertexColor(i){
   const h=ground[i];
   const orig=originalGround[i];
   const diff=h-orig; // negative=cut, positive=fill
-  // Slope-based shading: sample neighbouring vertices for a fake directional shade
+  // Multi-directional slope shading — NE sun simulation with full 4-neighbour gradient
   const gz=Math.floor(i/N),gx=i-gz*N;
-  const nx=Math.min(gx+1,GR),pz=Math.max(gz-1,0);
-  const slope=((ground[gi(nx,gz)]-h)*0.4+(h-ground[gi(gx,pz)])*0.6); // approx gradient
-  const shade=Math.max(0,Math.min(1,0.5+slope*0.25)); // 0.25–0.75 light shade
+  const gxp=Math.min(gx+1,GR),gxn=Math.max(gx-1,0);
+  const gzp=Math.min(gz+1,GR),gzn=Math.max(gz-1,0);
+  const dxSlope=(ground[gi(gxp,gz)]-ground[gi(gxn,gz)])/(2*CS);
+  const dzSlope=(ground[gi(gx,gzp)]-ground[gi(gx,gzn)])/(2*CS);
+  const sunDX=0.6,sunDZ=-0.4; // simulated NE sun direction
+  const dotN=-(dxSlope*sunDX+dzSlope*sunDZ);
+  const shade=Math.max(0.18,Math.min(1.0,0.55+dotN*0.7)); // 0.18–1.0 wide range
 
   if(diff < -0.30){
-    // Deep cut: orange-brown subsoil — striking contrast against green terrain
-    const d=Math.min((Math.abs(diff)-0.30),0.8)/0.8;
-    const s=0.85+shade*0.15;
-    return[(0.72+d*0.10)*s, (0.38-d*0.14)*s, 0.08*s];
+    // Deep cut: vivid orange-brown subsoil — maximum contrast against green
+    const d=Math.min((Math.abs(diff)-0.30),1.0)/1.0;
+    const s=0.82+shade*0.18;
+    return[(0.78+d*0.10)*s, (0.36-d*0.18)*s, 0.06*s];
   }else if(diff < -0.06){
-    // Shallow cut: brown disturbed topsoil
+    // Shallow cut: warm brown disturbed topsoil
     const d=(Math.abs(diff)-0.06)/0.24;
-    const s=0.80+shade*0.20;
-    return[(0.58+d*0.14)*s, (0.42-d*0.04)*s, 0.14*s];
+    const s=0.75+shade*0.25;
+    return[(0.60+d*0.14)*s, (0.43-d*0.06)*s, (0.15-d*0.04)*s];
   }else if(diff > 0.06){
-    // Fill: warm sand/tan — loose pushed material
-    const s=0.80+shade*0.20;
-    return[0.76*s, 0.62*s, 0.32*s];
+    // Fill: warm sand / loose pushed material
+    const s=0.78+shade*0.22;
+    return[0.78*s, 0.64*s, 0.30*s];
   }else{
-    // Undisturbed: grass green with height + slope variation
+    // Undisturbed: rich grass, height-tinted (blue-green in valleys, yellow-green on ridges)
     const hn=Math.max(0,Math.min(1,(h+3)/6));
-    // Dark rich valley green → dry yellowish-green on ridges
-    const r=(0.22+hn*0.20)*shade;
-    const g=(0.46+hn*0.16)*shade;
-    const b=(0.12+hn*0.06)*shade;
-    return[Math.max(0.08,r),Math.max(0.16,g),Math.max(0.04,b)];
+    const r=(0.18+hn*0.26)*shade;
+    const g=(0.54+hn*0.20)*shade;
+    const b=(0.14-hn*0.04)*shade;
+    return[Math.max(0.06,r),Math.max(0.18,g),Math.max(0.04,b)];
   }
 }
 function buildTerrGeoColored(){
