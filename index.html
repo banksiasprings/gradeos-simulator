@@ -144,6 +144,7 @@ body{background:#0a1520;color:#dce8f5;font-family:'Segoe UI',Arial,sans-serif;ov
     <button class="tb" id="b-align" onclick="setTool('align')">〰 Align+Profile</button>
     <button class="tb" id="b-dam" onclick="setTool('dam')">🌊 Dam</button>
     <button class="tb" id="b-bestfit" onclick="setTool('bestfit')">📐 Best-Fit</button>
+    <button class="tb" id="b-batter" onclick="setTool('batter')" title="Batter slope: click crest line, auto-generate slope at H:V ratio">⛰ Batter</button>
   </div>
 
   <div class="tg">
@@ -1081,12 +1082,15 @@ function handleDesignClick(p){
     toolState.p1=p;
     const sp=new THREE.Mesh(new THREE.SphereGeometry(0.4,8,8),new THREE.MeshBasicMaterial({color:0xffffff}));
     sp.position.set(p.x,gElev(p.x,p.z)+0.4,p.z);scene.add(sp);toolState.sp=sp;
-    document.getElementById('st-hint').textContent='Click second corner to define area.';
+    document.getElementById('st-hint').textContent=tool==='batter'
+      ?`Crest set at ${gElev(p.x,p.z).toFixed(2)}m — now click in the fall direction to define batter extent.`
+      :'Click second corner to define area.';
   }else{
     const p1=toolState.p1,p2=p;
     if(toolState.sp)scene.remove(toolState.sp);
-    toolState={};applyTool(p1,p2);rebuildDesMesh();
-    document.getElementById('st-hint').textContent='Design applied.';
+    toolState={};
+    if(tool==='batter'){applyBatter(p1,p2);}
+    else{applyTool(p1,p2);rebuildDesMesh();document.getElementById('st-hint').textContent='Design applied.';}
   }
 }
 
@@ -1138,6 +1142,70 @@ function applyTool(p1,p2){
     pts.forEach(p=>setDesign(p.gx,p.gz,slope*(useX?p.gx*CS:p.gz*CS)+intercept));
     document.getElementById('st-hint').textContent=`Best-Fit: ${(slope*100).toFixed(2)}% grade applied`;
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// BATTER / SLOPE DESIGNER
+// ═══════════════════════════════════════════════════════════════════
+function applyBatter(p1,p2){
+  const ratio=parseFloat(document.getElementById('bat-ratio')?.value||2);
+  const crestW=parseFloat(document.getElementById('bat-cw')?.value||0);
+  const userElev=parseFloat(document.getElementById('bat-elev')?.value||0);
+  const side=document.getElementById('bat-side')?.value||'both';
+
+  const cx=p1.x,cz=p1.z;
+  const dx=p2.x-p1.x,dz=p2.z-p1.z;
+  const len=Math.sqrt(dx*dx+dz*dz);
+  if(len<0.5){document.getElementById('st-hint').textContent='Click a point further away to define fall direction.';return;}
+  const fdx=dx/len,fdz=dz/len; // unit vector pointing downhill (p1→p2)
+
+  const crestElev=userElev!==0?userElev:gElev(cx,cz);
+
+  let appliedCount=0;
+  for(let gz=0;gz<N;gz++) for(let gx=0;gx<N;gx++){
+    const wx=(gx-GR/2)*CS,wz=(gz-GR/2)*CS;
+    const rpx=wx-cx,rpz=wz-cz;
+    // Signed distance along fall direction from crest line
+    const signedD=rpx*fdx+rpz*fdz;
+    const absD=Math.abs(signedD);
+
+    // Determine if this cell should have batter applied
+    let apply=false;
+    if(side==='both') apply=absD>crestW/2;
+    else if(side==='down') apply=signedD>crestW/2;
+    else if(side==='left') apply=(rpx*fdz-rpz*fdx)>crestW/2;
+    else if(side==='right') apply=(rpx*fdz-rpz*fdx)<-crestW/2;
+
+    if(!apply)continue;
+    if(absD>len)continue; // outside reach (p1->p2 sets max reach)
+
+    // Design elevation drops from crest at ratio H:V
+    const distFromCrestEdge=Math.max(0,absD-crestW/2);
+    const desElev=crestElev-distFromCrestEdge/ratio;
+
+    setDesign(gx,gz,desElev);
+    appliedCount++;
+
+    // Flat crest strip
+    if(crestW>0&&absD<=crestW/2) setDesign(gx,gz,crestElev);
+  }
+
+  // Also set flat crest strip separately
+  if(crestW>0){
+    for(let gz=0;gz<N;gz++) for(let gx=0;gx<N;gx++){
+      const wx=(gx-GR/2)*CS,wz=(gz-GR/2)*CS;
+      const rpx=wx-cx,rpz=wz-cz;
+      const signedD=rpx*fdx+rpz*fdz;
+      // Only within crest width on the relevant sides
+      if(Math.abs(signedD)<=crestW/2&&Math.abs(signedD)>0){
+        const lateralD=Math.abs(rpx*fdz-rpz*fdx);
+        if(lateralD<=len)setDesign(gx,gz,crestElev);
+      }
+    }
+  }
+
+  rebuildDesMesh();
+  document.getElementById('st-hint').textContent=`⛰ Batter applied: ${ratio}H:1V · crest ${crestElev.toFixed(2)}m · ${appliedCount} cells`;
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -2348,6 +2416,16 @@ const TOOL_HTML={
        <div class="field"><label>Batter Ratio (H:1V)</label><input type="number" id="dam-b" value="3" step="0.5" min="1" max="8"></div>
        <p style="font-size:10px;color:#4a7aa0;margin-top:3px">Click two corners (dam footprint). Generates wall, crest and battered sides.</p>`,
   bestfit:`<p style="font-size:11px;color:#7aabcc;line-height:1.7;margin-bottom:3px"><strong style="color:#e8a020">Best-Fit Grade</strong> — like Ditch Assist Slope-IQ<br>Select an area: system finds the optimal single-slope grade minimising cut/fill imbalance.<br>Calculated grade % shown in status bar.</p>`,
+  batter:`<div class="row2">
+    <div class="field"><label>Batter H:V (e.g. 2 = 2:1)</label><input type="number" id="bat-ratio" value="2" step="0.5" min="0.5" max="10"></div>
+    <div class="field"><label>Crest Width (m)</label><input type="number" id="bat-cw" value="0" step="0.5" min="0" max="20"></div>
+  </div>
+  <div class="field"><label>Crest Elevation (m) — leave 0 to read from terrain</label><input type="number" id="bat-elev" value="0" step="0.01"></div>
+  <div class="field"><label>Fall Side</label>
+    <select id="bat-side"><option value="both">Both Sides (embankment)</option><option value="down">Downhill Only</option><option value="left">Left of Click Dir</option><option value="right">Right of Click Dir</option></select>
+  </div>
+  <p style="font-size:10px;color:#4a7aa0;margin-top:3px"><strong>Click 1:</strong> crest point &nbsp; <strong>Click 2:</strong> slope direction/extent<br>Generates a batter slope from crest at the H:V ratio until it meets existing ground.</p>
+  <button class="btn" style="margin-top:2px" onclick="clearDesign()">Clear Batter Design</button>`,
   bank:`<p style="font-size:11px;color:#7aabcc;line-height:1.7;margin-bottom:4px"><strong style="color:#e8a020">⌒ Bank / Levee</strong><br>Click terrain to place bank centreline points.<br><strong>Double-click</strong> to finish the feature.</p>
         <p style="font-size:10px;color:#4a7aa0">Tip: use with Slope tool to design the batter slopes either side.</p>`,
   channel:`<p style="font-size:11px;color:#7aabcc;line-height:1.7;margin-bottom:4px"><strong style="color:#42a5f5">≋ Channel / Drain</strong><br>Click to trace channel centreline.<br><strong>Double-click</strong> to finish.</p>
@@ -2362,7 +2440,7 @@ const TOOL_HTML={
             <p style="font-size:10px;color:#4a7aa0">Mark shelter belts and riparian vegetation for awareness during grading.</p>`,
 };
 
-const TOOL_BTNS=['nav','flat','slope','crown','align','dam','bestfit','bank','channel','waterway','pivot','boundary','treeline'];
+const TOOL_BTNS=['nav','flat','slope','crown','align','dam','bestfit','batter','bank','channel','waterway','pivot','boundary','treeline'];
 function setTool(name){
   tool=name;toolState={};
   // Cancel any in-progress feature draft when switching tools
@@ -2372,6 +2450,7 @@ function setTool(name){
   document.getElementById('tool-title').textContent={
     nav:'Navigate',flat:'Flat Pad',slope:'Single Slope',crown:'Crown / Road',
     align:'Alignment + Profile',dam:'Dam Designer',bestfit:'Best-Fit Grade',
+    batter:'Batter / Slope Designer',
     bank:'Bank / Levee',channel:'Channel / Drain',waterway:'Natural Waterway',
     pivot:'Centre Pivot',boundary:'Paddock Boundary',treeline:'Tree Line'
   }[name]||name;
@@ -2385,6 +2464,7 @@ function setTool(name){
     align:'Click terrain to place alignment points',
     dam:'Click two corners for dam wall footprint',
     bestfit:'Click two corners to auto-calculate best-fit grade',
+    batter:'Click crest point, then click slope-fall direction to generate batter design',
     bank:'Click to place bank/levee points · Double-click to finish',
     channel:'Click to place channel points · Double-click to finish',
     waterway:'Click to place waterway points · Double-click to finish',
