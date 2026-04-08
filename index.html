@@ -187,11 +187,14 @@ body{background:#0a1520;color:#dce8f5;font-family:'Segoe UI',Arial,sans-serif;ov
     <button class="tb" id="b-flow" onclick="toggleFlow()" title="Show stormwater drainage flow paths (D8 algorithm)">💧 Flow</button>
     <button class="tb" id="b-slope-warn" onclick="toggleSlopeWarn()" title="Highlight steep slopes (>30°) — potential instability risk">⚠ Steep</button>
     <button class="tb" id="b-tol" onclick="toggleTol()" title="Grade tolerance overlay — green=on grade, yellow/orange/red=off grade">✓ Tol</button>
+    <button class="tb" id="b-stakes" onclick="toggleStakes()" title="Grade stakes — blue=cut, orange=fill, height shows depth">📍 Stakes</button>
   </div>
 
   <div class="tg" style="margin-left:auto">
     <button class="tb" onclick="doUndo()" title="Undo last design change (Ctrl+Z)">↩ Undo</button>
     <button class="tb" onclick="doRedo()" title="Redo (Ctrl+Y)">↪ Redo</button>
+    <button class="tb grn" onclick="saveDesign()" title="Save design to browser storage">💾 Save</button>
+    <button class="tb grn" onclick="loadDesign()" title="Load design from browser storage">📂 Load</button>
     <button class="tb blu" onclick="document.getElementById('gps-import').click()" title="Import GPS/survey CSV">📡 Import GPS</button>
     <input type="file" id="gps-import" accept=".csv,.gpx,.txt" style="display:none" onchange="handleImportFile(event)">
     <button class="tb red" onclick="clearAll()">🗑 Clear</button>
@@ -780,7 +783,7 @@ function rebuildDesMesh(){
   desMesh.rotation.x=-Math.PI/2;
   scene.add(desMesh);
   calcVol();
-  buildTolMesh();
+  buildTolMesh();buildStakes();
   document.getElementById('st-dpts').textContent=designCount;
 }
 
@@ -1099,7 +1102,7 @@ function genTerrain(type){
   sessionCutVol=0;sessionFillVol=0;prodOnTime=0;remainingCutVol=0;
   const sc=document.getElementById('st-cut');if(sc)sc.textContent='0.0m³';
   const pd=document.getElementById('st-prod');if(pd)pd.style.display='none';
-  rebuildTerrMesh();clearDesign();genContours();buildFlowLines();buildSlopeWarn();buildTolMesh();
+  rebuildTerrMesh();clearDesign();genContours();buildFlowLines();buildSlopeWarn();buildTolMesh();buildStakes();
   document.getElementById('st-terrain').textContent={flat:'Flat Paddock',hilly:'Hilly Farm',valley:'Valley',
     dam_site:'Dam Site',embankment:'Embankment',cut_hill:'Cut Hill',irrig_bay:'Irrigation Bay'}[type];
 }
@@ -1947,6 +1950,7 @@ function clearAsBuilt(){
 // Haul route arrow (cut centroid → fill centroid)
 let haulArrow=null;
 let showTol=false;let tolMesh=null;
+let showStakes=false;let stakeGrp=null;
 let sectionLineMesh=null;
 const undoStack=[];const redoStack=[];const MAX_UNDO=20;
 function updateHaulArrow(cutCx,cutCz,fillCx,fillCz,haulDist){
@@ -2170,7 +2174,7 @@ function pushUndo(){
 function applyUndoState(s){
   ground.set(s.ground);design.set(s.design);hasD.set(s.hasD);designCount=s.designCount;
   terrainDirty=true;
-  rebuildTerrMesh();rebuildDesMesh();genContours();buildFlowLines();buildSlopeWarn();buildTolMesh();calcVol();
+  rebuildTerrMesh();rebuildDesMesh();genContours();buildFlowLines();buildSlopeWarn();buildTolMesh();buildStakes();calcVol();
 }
 function doUndo(){
   if(!undoStack.length){document.getElementById('st-hint').textContent='Nothing to undo.';return;}
@@ -2253,7 +2257,7 @@ function applyTerrainSmooth(p1,p2){
       }
     }
   }
-  terrainDirty=true;rebuildTerrMesh();genContours();buildFlowLines();buildSlopeWarn();buildTolMesh();calcVol();
+  terrainDirty=true;rebuildTerrMesh();genContours();buildFlowLines();buildSlopeWarn();buildTolMesh();buildStakes();calcVol();
   const area=((g2.gx-g1.gx)*(g2.gz-g1.gz)*CS*CS).toFixed(0);
   document.getElementById('st-hint').textContent=`Terrain smoothed (${iters} passes, ${area} m²).`;
 }
@@ -2264,9 +2268,95 @@ function applyTerrainRaiseLower(p1,p2,sign){
   const inpId=sign>0?'tm-raise':'tm-lower';
   const amt=parseFloat(document.getElementById(inpId)?.value||0.3)*sign;
   for(let gz=g1.gz;gz<=g2.gz;gz++) for(let gx=g1.gx;gx<=g2.gx;gx++) ground[gi(gx,gz)]+=amt;
-  terrainDirty=true;rebuildTerrMesh();genContours();buildFlowLines();buildSlopeWarn();buildTolMesh();calcVol();
+  terrainDirty=true;rebuildTerrMesh();genContours();buildFlowLines();buildSlopeWarn();buildTolMesh();buildStakes();calcVol();
   const area=((g2.gx-g1.gx)*(g2.gz-g1.gz)*CS*CS).toFixed(0);
   document.getElementById('st-hint').textContent=`Terrain ${sign>0?'raised':'lowered'} ${Math.abs(amt).toFixed(2)}m over ${area} m² — Ctrl+Z to undo.`;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// GRADE STAKING
+// ═══════════════════════════════════════════════════════════════════
+const STAKE_STEP=5; // metres between stakes
+function buildStakes(){
+  if(stakeGrp){scene.remove(stakeGrp);stakeGrp.children.forEach(c=>c.geometry.dispose());stakeGrp=null;}
+  if(!showStakes||designCount===0)return;
+  stakeGrp=new THREE.Group();
+  const stepC=Math.max(1,Math.round(STAKE_STEP/CS));
+  const matCut=new THREE.MeshBasicMaterial({color:0x1565c0});   // blue = cut
+  const matFill=new THREE.MeshBasicMaterial({color:0xe65100});  // orange = fill
+  const matOnGrd=new THREE.MeshBasicMaterial({color:0x00e676}); // green = on grade
+  for(let gz=0;gz<=GR;gz+=stepC) for(let gx=0;gx<=GR;gx+=stepC){
+    const i=gi(gx,gz);if(!hasD[i])continue;
+    const diff=(design[i]+vOffset)-ground[i]; // +ve = fill needed, -ve = cut needed
+    const absDiff=Math.abs(diff);
+    let mat;
+    if(absDiff<0.025)mat=matOnGrd;
+    else if(diff<0)mat=matCut;  // ground above design → cut
+    else mat=matFill;           // ground below design → fill
+    const wx=(gx-GR/2)*CS,wz=(gz-GR/2)*CS;
+    const gy=ground[i];
+    const stakeH=Math.max(0.15,Math.min(absDiff*4,2.5));
+    // Pole
+    const poleGeo=new THREE.BoxGeometry(0.07,stakeH,0.07);
+    const pole=new THREE.Mesh(poleGeo,mat);
+    pole.position.set(wx,gy+stakeH*0.5,wz);
+    stakeGrp.add(pole);
+    // Cap
+    const capGeo=new THREE.BoxGeometry(0.22,0.07,0.22);
+    const cap=new THREE.Mesh(capGeo,mat);
+    cap.position.set(wx,gy+stakeH+0.035,wz);
+    stakeGrp.add(cap);
+  }
+  scene.add(stakeGrp);
+}
+function toggleStakes(){
+  showStakes=!showStakes;
+  document.getElementById('b-stakes').classList.toggle('act',showStakes);
+  buildStakes();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SAVE / LOAD DESIGN
+// ═══════════════════════════════════════════════════════════════════
+function saveDesign(){
+  if(designCount===0&&Array.from(ground).every((v,i)=>Math.abs(v-originalGround[i])<0.001)){
+    document.getElementById('st-hint').textContent='Nothing to save — place a design surface first.';return;
+  }
+  const data={
+    v:1,
+    ts:new Date().toISOString(),
+    ground:Array.from(ground),
+    design:Array.from(design),
+    hasD:Array.from(hasD),
+    designCount,
+    vOffset
+  };
+  try{
+    localStorage.setItem('gradeos_design_v1',JSON.stringify(data));
+    document.getElementById('st-hint').textContent=`Design saved (${designCount} pts, ${new Date().toLocaleTimeString()}).`;
+  }catch(e){
+    document.getElementById('st-hint').textContent='Save failed — try Export CSV instead.';
+  }
+}
+function loadDesign(){
+  try{
+    const raw=localStorage.getItem('gradeos_design_v1');
+    if(!raw){document.getElementById('st-hint').textContent='No saved design found. Use 💾 Save first.';return;}
+    const data=JSON.parse(raw);
+    if(data.v!==1){document.getElementById('st-hint').textContent='Saved design is from an older version.';return;}
+    ground.set(data.ground);
+    design.set(data.design);
+    hasD.set(data.hasD);
+    designCount=data.designCount;
+    vOffset=data.vOffset||0;
+    originalGround.set(data.ground);
+    terrainDirty=true;
+    rebuildTerrMesh();rebuildDesMesh();genContours();buildFlowLines();buildSlopeWarn();buildTolMesh();buildStakes();calcVol();
+    const saved=new Date(data.ts);
+    document.getElementById('st-hint').textContent=`Design loaded — saved ${saved.toLocaleString()}.`;
+  }catch(e){
+    document.getElementById('st-hint').textContent='Load failed — saved data may be corrupt.';
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════
