@@ -130,6 +130,41 @@ body{background:#0a1520;color:#dce8f5;font-family:'Segoe UI',Arial,sans-serif;ov
 /* Feature colours */
 .feat-bank{color:#e8a020}.feat-channel{color:#42a5f5}.feat-waterway{color:#00bcd4}
 .feat-pivot{color:#ce93d8}.feat-boundary{color:#ef5350}.feat-treeline{color:#66bb6a}
+/* ── Field / Operator Mode ─────────────────────────────────────────── */
+body.field-mode #topbar{display:none}
+body.field-mode #sidebar{display:none}
+body.field-mode #stbar{display:none}
+#field-right{position:absolute;right:0;top:0;bottom:0;width:268px;display:none;
+  flex-direction:column;background:rgba(2,8,16,0.95);border-left:2px solid #1a3a5c;z-index:15}
+body.field-mode #field-right{display:flex}
+.fp-wrap{flex:1;border-bottom:1px solid #1a3a5c;position:relative;overflow:hidden;min-height:0}
+.fp-wrap:last-child{border-bottom:none}
+.fp-title{position:absolute;top:3px;left:6px;font-size:9px;color:#2a5a7a;
+  text-transform:uppercase;letter-spacing:1px;z-index:2;pointer-events:none}
+.fp-title b{color:#4a7aa0}
+.fp-canvas{display:block;width:100%;height:100%}
+/* Floating field HUD — minimal grade numbers at bottom of screen */
+#field-hud{position:absolute;bottom:0;left:0;right:268px;height:52px;
+  background:#040c18;border-top:2px solid #0d2040;display:none;
+  align-items:stretch;z-index:15}
+body.field-mode #field-hud{display:flex}
+body.field-mode #text-ribbon{display:none}
+.fhud-cell{flex:1;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;border-right:1px solid #0d2040;padding:3px}
+.fhud-cell:last-child{border-right:none}
+.fhud-num{font-size:26px;font-weight:900;font-family:'Courier New',monospace;line-height:1;color:#2a5a7a}
+.fhud-lbl{font-size:9px;color:#2a5a7a;text-transform:uppercase;letter-spacing:1px;margin-top:1px}
+/* Floating field toolbar (hamburger menu in field mode) */
+#field-toolbar{position:absolute;top:6px;left:6px;z-index:20;display:none}
+body.field-mode #field-toolbar{display:flex;flex-direction:column;gap:3px}
+#field-menu-btns{background:#04111e;border:1px solid #1e4a6a;border-radius:6px;
+  padding:4px;display:none;flex-direction:column;gap:2px;min-width:160px}
+#field-menu-btns.show{display:flex}
+/* RTK strip in field mode */
+#field-rtk{position:absolute;top:6px;right:280px;z-index:16;
+  background:rgba(4,11,22,0.9);border:1px solid #1e4a6a;border-radius:4px;
+  padding:3px 8px;font-size:11px;display:none;align-items:center;gap:5px}
+body.field-mode #field-rtk{display:flex}
 /* Survey overlay */
 #survey-legend{position:absolute;bottom:65px;right:100px;background:rgba(7,21,37,.9);border:1px solid #1a3a5c;border-radius:4px;padding:5px 8px;font-size:10px;pointer-events:none;z-index:6;display:none}
 /* Drop zone for import */
@@ -232,6 +267,7 @@ body{background:#0a1520;color:#dce8f5;font-family:'Segoe UI',Arial,sans-serif;ov
     <button class="tb grn" onclick="loadDesign()" title="Load design from browser storage">📂 Load</button>
     <button class="tb blu" onclick="document.getElementById('gps-import').click()" title="Import GPS/survey CSV">📡 Import GPS</button>
     <input type="file" id="gps-import" accept=".csv,.gpx,.txt" style="display:none" onchange="handleImportFile(event)">
+    <button class="tb" id="b-field" onclick="toggleFieldMode()" title="Field / Operator Mode — clean full-screen view with 3 profile windows (F key)">🖥 Field</button>
     <button class="tb" id="b-pitch" onclick="togglePitchCard()" title="Pitch / Site Status Card — live stats summary for demos (P key)">📊 Pitch</button>
     <button class="tb" onclick="toggleKeyHelp()" title="Keyboard shortcuts (H)">⌨ Keys</button>
     <button class="tb" onclick="captureScreenshot()" title="Save screenshot of 3D view as PNG">📷 Screenshot</button>
@@ -404,6 +440,77 @@ body{background:#0a1520;color:#dce8f5;font-family:'Segoe UI',Arial,sans-serif;ov
         <div class="tr-lbl">Elev m</div>
       </div>
       <div class="tr-manual" id="tr-manual-r" onclick="manualClick('R')"><span>MANUAL</span></div>
+    </div>
+
+    <!-- ═══ FIELD / OPERATOR MODE PANELS ═══ -->
+    <!-- Right panel: 3 stacked profile windows -->
+    <div id="field-right">
+      <div class="fp-wrap" id="fp-wrap-long">
+        <div style="position:absolute;top:3px;left:6px;font-size:9px;color:#2a5a7a;text-transform:uppercase;letter-spacing:1px;z-index:1;pointer-events:none">Long Section</div>
+        <canvas class="fp-canvas" id="fp-long"></canvas>
+      </div>
+      <div class="fp-wrap" id="fp-wrap-xsec">
+        <div style="position:absolute;top:3px;left:6px;font-size:9px;color:#2a5a7a;text-transform:uppercase;letter-spacing:1px;z-index:1;pointer-events:none">Cross Section</div>
+        <canvas class="fp-canvas" id="fp-xsec"></canvas>
+      </div>
+      <div class="fp-wrap" id="fp-wrap-plan" style="border-bottom:none">
+        <div style="position:absolute;top:3px;left:6px;font-size:9px;color:#2a5a7a;text-transform:uppercase;letter-spacing:1px;z-index:1;pointer-events:none">Plan View</div>
+        <canvas class="fp-canvas" id="fp-plan"></canvas>
+      </div>
+    </div>
+
+    <!-- Bottom HUD bar (replaces text ribbon in field mode) -->
+    <div id="field-hud">
+      <div style="display:flex;flex:1;align-items:stretch">
+        <div style="display:flex;flex-direction:column;justify-content:center;align-items:center;padding:0 14px;border-right:1px solid #0d2040;min-width:72px">
+          <div class="fhud-num" id="fh-center">—</div>
+          <div style="font-size:9px;color:#2a5a7a;text-transform:uppercase;letter-spacing:1px;margin-top:2px">Centre mm</div>
+        </div>
+        <div style="display:flex;flex-direction:column;justify-content:center;align-items:center;padding:0 12px;border-right:1px solid #0d2040;min-width:66px">
+          <div class="fhud-num" id="fh-tipA" style="font-size:20px">—</div>
+          <div style="font-size:9px;color:#2a5a7a;text-transform:uppercase;letter-spacing:1px;margin-top:2px">Tip A mm</div>
+        </div>
+        <div style="display:flex;flex-direction:column;justify-content:center;align-items:center;padding:0 12px;border-right:1px solid #0d2040;min-width:66px">
+          <div class="fhud-num" id="fh-tipB" style="font-size:20px">—</div>
+          <div style="font-size:9px;color:#2a5a7a;text-transform:uppercase;letter-spacing:1px;margin-top:2px">Tip B mm</div>
+        </div>
+        <div style="display:flex;flex-direction:column;justify-content:center;align-items:center;padding:0 12px;border-right:1px solid #0d2040;min-width:72px">
+          <div class="fhud-num" id="fh-grade" style="font-size:18px">—</div>
+          <div style="font-size:9px;color:#2a5a7a;text-transform:uppercase;letter-spacing:1px;margin-top:2px">Long Grade</div>
+        </div>
+        <div style="display:flex;flex-direction:column;justify-content:center;align-items:center;padding:0 12px;border-right:1px solid #0d2040;min-width:72px">
+          <div class="fhud-num" id="fh-xslope" style="font-size:18px">—</div>
+          <div style="font-size:9px;color:#2a5a7a;text-transform:uppercase;letter-spacing:1px;margin-top:2px">X-Slope</div>
+        </div>
+        <div style="display:flex;flex-direction:column;justify-content:center;align-items:center;padding:0 12px;border-right:1px solid #0d2040;min-width:64px">
+          <div class="fhud-num" id="fh-elev" style="font-size:16px;color:#7aabcc">—</div>
+          <div style="font-size:9px;color:#2a5a7a;text-transform:uppercase;letter-spacing:1px;margin-top:2px">Elev m</div>
+        </div>
+        <div style="display:flex;flex-direction:column;justify-content:center;align-items:center;padding:0 12px;border-right:1px solid #0d2040;min-width:60px">
+          <div class="fhud-num" id="fh-spd" style="font-size:18px;color:#7aabcc">0.0</div>
+          <div style="font-size:9px;color:#2a5a7a;text-transform:uppercase;letter-spacing:1px;margin-top:2px">km/h</div>
+        </div>
+        <div style="display:flex;flex-direction:column;justify-content:center;align-items:center;padding:0 12px;flex:1">
+          <div id="fh-rtk" style="font-size:12px;font-weight:700;color:#27ae60;font-family:'Courier New',monospace">RTK FIXED</div>
+          <div style="font-size:9px;color:#2a5a7a;text-transform:uppercase;letter-spacing:1px;margin-top:2px">GPS Status</div>
+        </div>
+        <div style="display:flex;align-items:center;padding:0 10px;border-left:1px solid #0d2040">
+          <button onclick="toggleFieldMode()" style="background:#071c2e;border:1px solid #1a3a5c;color:#7aabcc;cursor:pointer;padding:6px 12px;border-radius:4px;font-size:11px;font-weight:700" title="Exit Field Mode (F)">✕ EXIT</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Floating toolbar top-left (field mode) -->
+    <div id="field-toolbar">
+      <button onclick="toggleFieldMode()" style="background:#071c2e;border:1px solid #1a3a5c;color:#7aabcc;cursor:pointer;padding:5px 8px;border-radius:4px;font-size:14px" title="Exit Field Mode (F)">☰</button>
+      <button onclick="toggleMachine()" style="background:#071c2e;border:1px solid #1a3a5c;color:#7aabcc;cursor:pointer;padding:4px 8px;border-radius:4px;font-size:11px" title="Toggle machine on/off" id="field-mach-btn">⚙ OFF</button>
+      <button onclick="toggleAutosteer()" style="background:#071c2e;border:1px solid #1a3a5c;color:#e8a020;cursor:pointer;padding:4px 8px;border-radius:4px;font-size:11px" title="Auto-steer">⟳ AUTO</button>
+    </div>
+
+    <!-- RTK strip top-right of viewport (field mode) -->
+    <div id="field-rtk">
+      <div class="rtk-dot" id="field-rtk-dot" style="width:8px;height:8px;border-radius:50%;background:#27ae60;margin-right:6px;flex-shrink:0"></div>
+      <span id="field-rtk-txt" style="font-size:11px;color:#27ae60;font-family:'Courier New',monospace;font-weight:700">RTK FIXED · 9mm</span>
     </div>
   </div>
 
@@ -4036,6 +4143,7 @@ function loop(t){
   }
   const activeCam=(camMode==='plan')?planCam:camera;
   renderer.render(scene,activeCam);
+  if(fieldMode)updateFieldPanels();
 }
 loop(0);
 
@@ -4230,7 +4338,272 @@ function toggleKeyHelp(){
 document.addEventListener('keydown',e=>{
   if(e.key==='h'||e.key==='H'){if(!e.ctrlKey&&!e.metaKey)toggleKeyHelp();}
   if(e.key==='p'||e.key==='P'){if(!e.ctrlKey&&!e.metaKey)togglePitchCard();}
+  if(e.key==='f'||e.key==='F'){if(!e.ctrlKey&&!e.metaKey)toggleFieldMode();}
 });
+
+// ═══════════════════════════════════════════════════════════════════
+// FIELD / OPERATOR MODE
+// ═══════════════════════════════════════════════════════════════════
+let fieldMode=false;
+
+function toggleFieldMode(){
+  fieldMode=!fieldMode;
+  document.body.classList.toggle('field-mode',fieldMode);
+  document.getElementById('b-field').classList.toggle('act',fieldMode);
+  // Update machine button label in field toolbar
+  const mb=document.getElementById('field-mach-btn');
+  if(mb)mb.textContent=machineOn?'⚙ ON':'⚙ OFF';
+  resize();
+  if(fieldMode){sizeFieldPanels();updateFieldPanels();}
+}
+
+function sizeFieldPanels(){
+  ['long','xsec','plan'].forEach(id=>{
+    const wrap=document.getElementById('fp-wrap-'+id);
+    const cv=document.getElementById('fp-'+id);
+    if(!wrap||!cv)return;
+    const r=wrap.getBoundingClientRect();
+    cv.width=Math.floor(r.width)||268;
+    cv.height=Math.floor(r.height)||120;
+  });
+}
+
+// Long section: terrain + design profile along machine heading, 40m ahead 10m behind
+function drawLongSection(cv){
+  const ctx=cv.getContext('2d');
+  const W=cv.width,H=cv.height;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#020810';ctx.fillRect(0,0,W,H);
+  if(!machineOn&&!machinePos){
+    ctx.fillStyle='#1a3a5c';ctx.font='10px monospace';
+    ctx.fillText('Machine offline',10,H/2);return;
+  }
+  const BACK=10,FWD=40,TOTAL=BACK+FWD;
+  const SAMPLES=80;
+  const hdgRad=machineHeading*(Math.PI/180);
+  const dx=Math.sin(hdgRad),dz=-Math.cos(hdgRad);
+  const gArr=[],dArr=[];
+  let minY=Infinity,maxY=-Infinity;
+  for(let i=0;i<=SAMPLES;i++){
+    const t=-BACK+(TOTAL/SAMPLES)*i;
+    const wx=machinePos.x+dx*t,wz=machinePos.z+dz*t;
+    const ge=gElev(wx,wz);
+    const de=dElev(wx,wz);
+    gArr.push(ge);dArr.push(de);
+    if(ge<minY)minY=ge;if(ge>maxY)maxY=ge;
+    if(de!==null){if(de<minY)minY=de;if(de>maxY)maxY=de;}
+  }
+  const pad=0.5;minY-=pad;maxY+=pad;
+  const rng=maxY-minY||1;
+  const mx=s=>Math.round((s/SAMPLES)*W);
+  const my=v=>Math.round(H-4-((v-minY)/rng)*(H-12));
+  // Fill between ground and design
+  ctx.beginPath();
+  for(let i=0;i<=SAMPLES;i++){ctx.lineTo(mx(i),my(gArr[i]));}
+  ctx.lineTo(W,H);ctx.lineTo(0,H);ctx.closePath();
+  ctx.fillStyle='rgba(20,50,80,0.4)';ctx.fill();
+  // Ground line
+  ctx.beginPath();
+  for(let i=0;i<=SAMPLES;i++){
+    const y=my(gArr[i]);
+    i===0?ctx.moveTo(mx(i),y):ctx.lineTo(mx(i),y);
+  }
+  ctx.strokeStyle='#4a9aba';ctx.lineWidth=2;ctx.stroke();
+  // Design line
+  const hasDesign=dArr.some(v=>v!==null);
+  if(hasDesign){
+    ctx.beginPath();let started=false;
+    for(let i=0;i<=SAMPLES;i++){
+      if(dArr[i]===null){started=false;continue;}
+      const y=my(dArr[i]);
+      if(!started){ctx.moveTo(mx(i),y);started=true;}else{ctx.lineTo(mx(i),y);}
+    }
+    ctx.strokeStyle='#e8a020';ctx.lineWidth=1.5;ctx.setLineDash([4,3]);ctx.stroke();ctx.setLineDash([]);
+  }
+  // Machine marker vertical line at BACK position
+  const machX=Math.round((BACK/TOTAL)*W);
+  ctx.strokeStyle='rgba(255,255,255,0.5)';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(machX,0);ctx.lineTo(machX,H);ctx.stroke();ctx.setLineDash([]);
+  // Blade cut/fill at machine
+  const machI=Math.round((BACK/TOTAL)*SAMPLES);
+  const gAtMach=gArr[machI],dAtMach=dArr[machI];
+  if(dAtMach!==null){
+    const cfMm=Math.round((gAtMach-dAtMach)*1000);
+    const cfCol=cfMm>25?'#42a5f5':cfMm<-25?'#ff7043':'#66bb6a';
+    ctx.fillStyle=cfCol;ctx.font='bold 11px monospace';
+    const label=(cfMm>=0?'CUT ':'FILL ')+Math.abs(cfMm)+'mm';
+    ctx.fillText(label,machX+4,14);
+  }
+  // Axis labels
+  ctx.fillStyle='#1a3a5c';ctx.font='9px monospace';
+  ctx.fillText('-'+BACK+'m',2,H-2);
+  ctx.fillText('+'+FWD+'m',W-28,H-2);
+  ctx.fillText(maxY.toFixed(1)+'m',2,10);
+}
+
+// Cross section: perpendicular slice at machine blade position, 12m each side
+function drawCrossSection(cv){
+  const ctx=cv.getContext('2d');
+  const W=cv.width,H=cv.height;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#020810';ctx.fillRect(0,0,W,H);
+  if(!machineOn&&!machinePos){
+    ctx.fillStyle='#1a3a5c';ctx.font='10px monospace';
+    ctx.fillText('Machine offline',10,H/2);return;
+  }
+  const SIDE=12,SAMPLES=60;
+  const hdgRad=machineHeading*(Math.PI/180);
+  const rx=Math.cos(hdgRad),rz=Math.sin(hdgRad);
+  const gArr=[],dArr=[];
+  let minY=Infinity,maxY=-Infinity;
+  for(let i=0;i<=SAMPLES;i++){
+    const t=-SIDE+(SIDE*2/SAMPLES)*i;
+    const wx=machinePos.x+rx*t,wz=machinePos.z+rz*t;
+    const ge=gElev(wx,wz);
+    const de=dElev(wx,wz);
+    gArr.push(ge);dArr.push(de);
+    if(ge<minY)minY=ge;if(ge>maxY)maxY=ge;
+    if(de!==null){if(de<minY)minY=de;if(de>maxY)maxY=de;}
+  }
+  const pad=0.4;minY-=pad;maxY+=pad;
+  const rng=maxY-minY||1;
+  const mx=s=>Math.round((s/SAMPLES)*W);
+  const my=v=>Math.round(H-4-((v-minY)/rng)*(H-12));
+  // Fill terrain
+  ctx.beginPath();
+  for(let i=0;i<=SAMPLES;i++){ctx.lineTo(mx(i),my(gArr[i]));}
+  ctx.lineTo(W,H);ctx.lineTo(0,H);ctx.closePath();
+  ctx.fillStyle='rgba(20,50,80,0.4)';ctx.fill();
+  // Ground
+  ctx.beginPath();
+  for(let i=0;i<=SAMPLES;i++){
+    const y=my(gArr[i]);
+    i===0?ctx.moveTo(mx(i),y):ctx.lineTo(mx(i),y);
+  }
+  ctx.strokeStyle='#4a9aba';ctx.lineWidth=2;ctx.stroke();
+  // Design
+  const hasDesign=dArr.some(v=>v!==null);
+  if(hasDesign){
+    ctx.beginPath();let started=false;
+    for(let i=0;i<=SAMPLES;i++){
+      if(dArr[i]===null){started=false;continue;}
+      const y=my(dArr[i]);
+      if(!started){ctx.moveTo(mx(i),y);started=true;}else{ctx.lineTo(mx(i),y);}
+    }
+    ctx.strokeStyle='#e8a020';ctx.lineWidth=1.5;ctx.setLineDash([4,3]);ctx.stroke();ctx.setLineDash([]);
+  }
+  // Centre marker
+  const cx2=Math.round(W/2);
+  ctx.strokeStyle='rgba(255,255,255,0.5)';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(cx2,0);ctx.lineTo(cx2,H);ctx.stroke();ctx.setLineDash([]);
+  // Labels
+  ctx.fillStyle='#1a3a5c';ctx.font='9px monospace';
+  ctx.fillText('-'+SIDE+'m',2,H-2);
+  ctx.fillText('+'+SIDE+'m',W-24,H-2);
+  ctx.fillText(maxY.toFixed(1)+'m',2,10);
+  // Cross-slope label
+  const cfMmL=gArr[Math.round(SAMPLES*0.25)],cfMmR=gArr[Math.round(SAMPLES*0.75)];
+  const xslopePct=((cfMmL-cfMmR)/(SIDE)*50).toFixed(1);
+  ctx.fillStyle='#7aabcc';ctx.font='bold 10px monospace';
+  ctx.fillText('XS: '+xslopePct+'%',cx2+4,14);
+}
+
+// Plan view: top-down 80m×80m centred on machine, cut/fill colours, machine arrow
+function drawPlanView(cv){
+  const ctx=cv.getContext('2d');
+  const W=cv.width,H=cv.height;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#020810';ctx.fillRect(0,0,W,H);
+  if(!machinePos)return;
+  const VIEW=60;
+  const toX=wx=>Math.round((wx-machinePos.x+VIEW/2)/VIEW*W);
+  const toY=wz=>Math.round((wz-machinePos.z+VIEW/2)/VIEW*H);
+  // Draw cut/fill raster
+  const step=Math.max(1,Math.round(VIEW/W*3));
+  for(let wz=machinePos.z-VIEW/2;wz<machinePos.z+VIEW/2;wz+=step){
+    for(let wx=machinePos.x-VIEW/2;wx<machinePos.x+VIEW/2;wx+=step){
+      if(designCount===0)continue;
+      const g=gElev(wx,wz),d=dElev(wx,wz);
+      if(d===null)continue;
+      const cf=(g-d)*1000;
+      let col;
+      if(cf>500)col='#0d47a1';
+      else if(cf>250)col='#1976d2';
+      else if(cf>25)col='#42a5f5';
+      else if(cf>=-25)col='#388e3c';
+      else if(cf>=-250)col='#ff8f00';
+      else if(cf>=-500)col='#e64a19';
+      else col='#b71c1c';
+      const px=toX(wx),py=toY(wz),ps=Math.ceil(step/VIEW*W)+1;
+      ctx.fillStyle=col;ctx.fillRect(px,py,ps,ps);
+    }
+  }
+  // Machine arrow
+  const mx2=toX(machinePos.x),my2=toY(machinePos.z);
+  const hdgRad=machineHeading*(Math.PI/180);
+  const arrowLen=12;
+  ctx.save();ctx.translate(mx2,my2);ctx.rotate(hdgRad);
+  ctx.strokeStyle='#ffffff';ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(0,arrowLen/2);ctx.lineTo(0,-arrowLen/2);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(0,-arrowLen/2);ctx.lineTo(-5,-arrowLen/8);ctx.lineTo(5,-arrowLen/8);ctx.closePath();
+  ctx.fillStyle='#ffffff';ctx.fill();
+  // Machine body rectangle
+  ctx.fillStyle='rgba(255,180,0,0.7)';
+  ctx.fillRect(-4,-3,8,6);
+  ctx.restore();
+  // Scale bar
+  const scaleM=20,scaleW=Math.round(scaleM/VIEW*W);
+  ctx.fillStyle='#fff';ctx.fillRect(4,H-8,scaleW,2);
+  ctx.fillStyle='#7aabcc';ctx.font='8px monospace';
+  ctx.fillText(scaleM+'m',4,H-10);
+  // North indicator
+  ctx.fillStyle='#4a7aa0';ctx.font='9px monospace';ctx.fillText('N↑',W-16,12);
+}
+
+function updateFieldPanels(){
+  // Update RTK strip
+  const rtkTxt=document.getElementById('rtk-txt');
+  const frRtk=document.getElementById('field-rtk-txt');
+  const frDot=document.getElementById('field-rtk-dot');
+  if(rtkTxt&&frRtk){
+    frRtk.textContent=rtkTxt.textContent;
+    const col=rtkFixType==='RTK FIXED'?'#27ae60':rtkFixType==='RTK FLOAT'?'#e8a020':'#ffd600';
+    frRtk.style.color=col;frDot.style.background=col;
+  }
+  // Update HUD from blade panel values
+  const syncHud=(srcId,dstId)=>{
+    const src=document.getElementById(srcId);
+    const dst=document.getElementById(dstId);
+    if(src&&dst)dst.textContent=src.textContent;
+  };
+  syncHud('bv-cmm','fh-center');
+  syncHud('bv-lmm','fh-tipA');
+  syncHud('bv-rmm','fh-tipB');
+  syncHud('bv-grade','fh-grade');
+  syncHud('bv-xslope','fh-xslope');
+  syncHud('bv-elev','fh-elev');
+  // Speed
+  const spdEl=document.getElementById('st-spd-val');
+  const fhSpd=document.getElementById('fh-spd');
+  if(spdEl&&fhSpd)fhSpd.textContent=spdEl.textContent;
+  // RTK in HUD
+  const fhRtk=document.getElementById('fh-rtk');
+  if(fhRtk&&rtkTxt){
+    const col=rtkFixType==='RTK FIXED'?'#27ae60':rtkFixType==='RTK FLOAT'?'#e8a020':'#ffd600';
+    fhRtk.textContent=rtkFixType;fhRtk.style.color=col;
+  }
+  // Machine button label
+  const mb=document.getElementById('field-mach-btn');
+  if(mb)mb.textContent=machineOn?'⚙ ON':'⚙ OFF';
+  // Draw profile panels
+  sizeFieldPanels();
+  const cvLong=document.getElementById('fp-long');
+  const cvXsec=document.getElementById('fp-xsec');
+  const cvPlan=document.getElementById('fp-plan');
+  if(cvLong&&cvLong.width>0)drawLongSection(cvLong);
+  if(cvXsec&&cvXsec.width>0)drawCrossSection(cvXsec);
+  if(cvPlan&&cvPlan.width>0)drawPlanView(cvPlan);
+}
 
 // ═══════════════════════════════════════════════════════════════════
 // PITCH / SITE STATUS CARD
