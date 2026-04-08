@@ -525,6 +525,9 @@ const FEAT_COLORS={bank:'#e8a020',channel:'#42a5f5',waterway:'#00bcd4',pivot:'#c
 const FEAT_LABELS={bank:'Bank/Levee',channel:'Channel',waterway:'Waterway',pivot:'Centre Pivot',boundary:'Paddock Boundary',treeline:'Tree Line'};
 let asBuiltPasses=0,asBuiltArea=0,asBuiltOnGrade=0,asBuiltTotal=0;
 
+// ── Original terrain snapshot (for cut-depth colouring) ─────────────
+const originalGround=new Float32Array(N*N); // populated on each genTerrain call
+
 // ── GPS pass track (coloured path behind the machine) ─────────────────
 const MAX_TRACK=1200;                // max path segments stored
 const trackPts=[];                   // {x,z,y,onGrade}
@@ -568,6 +571,9 @@ let planPanX=0,planPanZ=0;
 
 // Lights
 scene.add(new THREE.AmbientLight(0x223344,1.8));
+// Hemisphere light: warm sky from above, cool ground from below — natural terrain illumination
+const hemi=new THREE.HemisphereLight(0xc8d8e8,0x4a7040,0.9);
+scene.add(hemi);
 const sun=new THREE.DirectionalLight(0xfff4e0,2.2);
 sun.position.set(60,120,40);sun.castShadow=true;
 scene.add(sun);
@@ -603,8 +609,56 @@ function buildTerrGeo(elev){
   pos.needsUpdate=true;geo.computeVertexNormals();
   return geo;
 }
-const terrMat=new THREE.MeshLambertMaterial({color:0x3a6b2a,side:THREE.DoubleSide});
-let terrMesh=new THREE.Mesh(buildTerrGeo(ground),terrMat);
+// MeshBasicMaterial ignores scene lighting — vertex colors show exactly as specified
+// We encode terrain shading (height + slope) directly into the vertex colors
+const terrMat=new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.DoubleSide});
+function terrVertexColor(i){
+  const h=ground[i];
+  const orig=originalGround[i];
+  const diff=h-orig; // negative=cut, positive=fill
+  // Slope-based shading: sample neighbouring vertices for a fake directional shade
+  const gz=Math.floor(i/N),gx=i-gz*N;
+  const nx=Math.min(gx+1,GR),pz=Math.max(gz-1,0);
+  const slope=((ground[gi(nx,gz)]-h)*0.4+(h-ground[gi(gx,pz)])*0.6); // approx gradient
+  const shade=Math.max(0,Math.min(1,0.5+slope*0.25)); // 0.25–0.75 light shade
+
+  if(diff < -0.30){
+    // Deep cut: orange-brown subsoil — striking contrast against green terrain
+    const d=Math.min((Math.abs(diff)-0.30),0.8)/0.8;
+    const s=0.85+shade*0.15;
+    return[(0.72+d*0.10)*s, (0.38-d*0.14)*s, 0.08*s];
+  }else if(diff < -0.06){
+    // Shallow cut: brown disturbed topsoil
+    const d=(Math.abs(diff)-0.06)/0.24;
+    const s=0.80+shade*0.20;
+    return[(0.58+d*0.14)*s, (0.42-d*0.04)*s, 0.14*s];
+  }else if(diff > 0.06){
+    // Fill: warm sand/tan — loose pushed material
+    const s=0.80+shade*0.20;
+    return[0.76*s, 0.62*s, 0.32*s];
+  }else{
+    // Undisturbed: grass green with height + slope variation
+    const hn=Math.max(0,Math.min(1,(h+3)/6));
+    // Dark rich valley green → dry yellowish-green on ridges
+    const r=(0.22+hn*0.20)*shade;
+    const g=(0.46+hn*0.16)*shade;
+    const b=(0.12+hn*0.06)*shade;
+    return[Math.max(0.08,r),Math.max(0.16,g),Math.max(0.04,b)];
+  }
+}
+function buildTerrGeoColored(){
+  const geo=new THREE.PlaneGeometry(SZ,SZ,GR,GR);
+  const pos=geo.attributes.position;
+  const col=[];
+  for(let i=0;i<pos.count;i++){
+    pos.setY(i,ground[i]);
+    const c=terrVertexColor(i);col.push(c[0],c[1],c[2]);
+  }
+  geo.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
+  pos.needsUpdate=true;geo.computeVertexNormals();
+  return geo;
+}
+let terrMesh=new THREE.Mesh(buildTerrGeoColored(),terrMat);
 terrMesh.rotation.x=-Math.PI/2;scene.add(terrMesh);
 
 // ── Design mesh ───────────────────────────────────────────────────
@@ -807,7 +861,7 @@ function setDesign(gx,gz,elev){const i=gi(gx,gz);if(!hasD[i])designCount++;desig
 
 function rebuildTerrMesh(){
   scene.remove(terrMesh);terrMesh.geometry.dispose();
-  terrMesh=new THREE.Mesh(buildTerrGeo(ground),terrMat);
+  terrMesh=new THREE.Mesh(buildTerrGeoColored(),terrMat);
   terrMesh.rotation.x=-Math.PI/2;scene.add(terrMesh);
 }
 
@@ -913,6 +967,11 @@ function genTerrain(type){
     }
     ground[gi(gx,gz)]=e;
   }
+  // Snapshot for cut-depth colour visualisation
+  originalGround.set(ground);
+  // Reset cut session stats on new terrain
+  sessionCutVol=0;sessionFillVol=0;
+  const sc=document.getElementById('st-cut');if(sc)sc.textContent='0.0m³';
   rebuildTerrMesh();clearDesign();genContours();
   document.getElementById('st-terrain').textContent={flat:'Flat Paddock',hilly:'Hilly Farm',valley:'Valley',
     dam_site:'Dam Site',embankment:'Embankment',cut_hill:'Cut Hill',irrig_bay:'Irrigation Bay'}[type];
@@ -1757,6 +1816,7 @@ function applyImportedPoints(pts,fname,colHint){
   });
   // Fill unsurveyed cells by nearest neighbour (simple bilinear)
   fillUnsurveyed();
+  originalGround.set(ground); // snapshot for cut-depth colouring
   rebuildTerrMesh();genContours();
   surveyPointCount=applied;
   const covPct=(surveyGrid.filter(v=>v>0).length/(N*N)*100).toFixed(0);
