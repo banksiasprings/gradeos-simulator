@@ -215,6 +215,8 @@ body{background:#0a1520;color:#dce8f5;font-family:'Segoe UI',Arial,sans-serif;ov
     <button class="tb" id="b-ctrlab" onclick="toggleContourLabels()" title="Contour elevation labels — show elevation numbers on major contours">🏷 Labels</button>
     <button class="tb" id="b-daylight" onclick="toggleDaylight()" title="Daylight line — shows cut/fill boundary where design meets existing ground">📍 Daylight</button>
     <button class="tb" id="b-passcount" onclick="togglePassCount()" title="Pass count overlay — heat map of machine coverage intensity">🔥 Passes</button>
+    <button class="tb" id="b-stripplan" onclick="toggleStripPlan()" title="Grade strip planner — optimal grading sequence based on design surface gradient">📋 Strips</button>
+    <button class="tb" id="b-replay" onclick="toggleReplay()" title="Time-lapse replay — animate terrain from original to current graded state">⏪ Replay</button>
     <button class="tb blu" onclick="openJobReport()" title="Generate earthwork job report">📊 Report</button>
   </div>
 
@@ -537,6 +539,7 @@ body{background:#0a1520;color:#dce8f5;font-family:'Segoe UI',Arial,sans-serif;ov
   <div>Machine: <span id="st-mach">OFF</span></div>
   <div>Cut: <span id="st-cut" style="color:#42a5f5">0.0m³</span></div>
   <div id="st-prod" style="display:none">Rate: <span id="st-rate" style="color:#66bb6a">—</span> &nbsp; ETA: <span id="st-eta" style="color:#ffb74d">—</span></div>
+  <div id="st-speed" style="display:none">Spd: <span id="st-spd-val" style="color:#7aabcc;font-family:monospace">0.0</span> km/h</div>
   <div id="st-hint" style="margin-left:auto;color:#4a7aa0">Scroll=zoom · Right-drag=orbit · Dbl-click=read elevation</div>
 </div>
 
@@ -652,6 +655,9 @@ const fleet2St={x:20,z:-SZ/2+2,hdg:0,dir:1};
 let showDaylight=false;let daylightMesh=null;
 let showPassCount=false;let passCountMesh=null;let passCountDirty=false;
 const passCount=new Uint8Array(N*N);
+let showStripPlan=false;let stripPlanGrp=null;
+const terrainHistory=[];const HIST_MAX=24;let lastHistorySnap=0;
+let isReplaying=false;let replayFrame=0;let replayTimer=null;
 
 // ── Farm features ────────────────────────────────────────────────────
 const farmFeatures=[];   // [{type,pts:[{x,z}],label,color,closed}]
@@ -854,7 +860,7 @@ function rebuildDesMesh(){
   desMesh.rotation.x=-Math.PI/2;
   scene.add(desMesh);
   calcVol();
-  buildTolMesh();buildStakes();buildGradeArrows();buildDaylightMesh();
+  buildTolMesh();buildStakes();buildGradeArrows();buildDaylightMesh();if(showStripPlan)buildStripPlan();
   document.getElementById('st-dpts').textContent=designCount;
 }
 
@@ -1209,7 +1215,7 @@ function genTerrain(type){
   originalGround.set(ground);
   // Reset cut session stats on new terrain
   sessionCutVol=0;sessionFillVol=0;prodOnTime=0;remainingCutVol=0;
-  passCount.fill(0);
+  passCount.fill(0);terrainHistory.length=0;lastHistorySnap=0;
   const sc=document.getElementById('st-cut');if(sc)sc.textContent='0.0m³';
   const pd=document.getElementById('st-prod');if(pd)pd.style.display='none';
   rebuildTerrMesh();clearDesign();genContours();buildFlowLines();buildSlopeWarn();buildTolMesh();buildStakes();buildDaylightMesh();buildPassCountMesh();
@@ -1868,8 +1874,20 @@ function toggleMachineType(){
 function updateMachine(dt){
   if(!machineOn)return;
   const spd=8,turn=1.8;
-  if(keys['ArrowUp']||keys['w']||keys['W']){machinePos.x+=Math.sin(machinePos.hdg)*spd*dt;machinePos.z+=Math.cos(machinePos.hdg)*spd*dt;}
-  if(keys['ArrowDown']||keys['s']||keys['S']){machinePos.x-=Math.sin(machinePos.hdg)*spd*dt;machinePos.z-=Math.cos(machinePos.hdg)*spd*dt;}
+  const movFwdNow=keys['ArrowUp']||keys['w']||keys['W'];
+  const movRevNow=keys['ArrowDown']||keys['s']||keys['S'];
+  if(movFwdNow){machinePos.x+=Math.sin(machinePos.hdg)*spd*dt;machinePos.z+=Math.cos(machinePos.hdg)*spd*dt;}
+  if(movRevNow){machinePos.x-=Math.sin(machinePos.hdg)*spd*dt;machinePos.z-=Math.cos(machinePos.hdg)*spd*dt;}
+  // Speed display (spd m/s → km/h); show only when machine is on
+  const spdKmh=(movFwdNow||movRevNow)?spd*3.6:0;
+  const spdEl=document.getElementById('st-speed');
+  if(spdEl){spdEl.style.display='';document.getElementById('st-spd-val').textContent=spdKmh.toFixed(1);}
+  // Snapshot terrain history for time-lapse replay (every 3s while cutting)
+  if(isCutting&&performance.now()-lastHistorySnap>3000){
+    terrainHistory.push(ground.slice());
+    if(terrainHistory.length>HIST_MAX)terrainHistory.shift();
+    lastHistorySnap=performance.now();
+  }
   if(keys['ArrowLeft']||keys['a']||keys['A'])machinePos.hdg+=turn*dt;
   if(keys['ArrowRight']||keys['d']||keys['D'])machinePos.hdg-=turn*dt;
   machinePos.x=Math.max(-SZ/2+3,Math.min(SZ/2-3,machinePos.x));
@@ -2397,7 +2415,7 @@ function pushUndo(){
 function applyUndoState(s){
   ground.set(s.ground);design.set(s.design);hasD.set(s.hasD);designCount=s.designCount;
   terrainDirty=true;
-  rebuildTerrMesh();rebuildDesMesh();genContours();buildFlowLines();buildSlopeWarn();buildTolMesh();buildStakes();buildGradeArrows();buildDaylightMesh();calcVol();
+  rebuildTerrMesh();rebuildDesMesh();genContours();buildFlowLines();buildSlopeWarn();buildTolMesh();buildStakes();buildGradeArrows();buildDaylightMesh();if(showStripPlan)buildStripPlan();calcVol();
 }
 function doUndo(){
   if(!undoStack.length){document.getElementById('st-hint').textContent='Nothing to undo.';return;}
@@ -2574,7 +2592,7 @@ function loadDesign(){
     vOffset=data.vOffset||0;
     originalGround.set(data.ground);
     terrainDirty=true;
-    rebuildTerrMesh();rebuildDesMesh();genContours();buildFlowLines();buildSlopeWarn();buildTolMesh();buildStakes();buildGradeArrows();buildDaylightMesh();calcVol();
+    rebuildTerrMesh();rebuildDesMesh();genContours();buildFlowLines();buildSlopeWarn();buildTolMesh();buildStakes();buildGradeArrows();buildDaylightMesh();if(showStripPlan)buildStripPlan();calcVol();
     const saved=new Date(data.ts);
     document.getElementById('st-hint').textContent=`Design loaded — saved ${saved.toLocaleString()}.`;
   }catch(e){
@@ -3714,6 +3732,117 @@ function loop(t){
   renderer.render(scene,activeCam);
 }
 loop(0);
+
+// ═══════════════════════════════════════════════════════════════════
+// GRADE STRIP PLANNER — optimal grading sequence from design surface
+// ═══════════════════════════════════════════════════════════════════
+function buildStripPlan(){
+  if(stripPlanGrp){scene.remove(stripPlanGrp);stripPlanGrp=null;}
+  if(!showStripPlan||designCount===0)return;
+  // Compute average design surface gradient vector (dominant fall direction)
+  let sumDx=0,sumDz=0,count=0;
+  for(let gz=1;gz<GR-1;gz++) for(let gx=1;gx<GR-1;gx++){
+    const i=gi(gx,gz);if(!hasD[i])continue;
+    const gxv=hasD[gi(gx+1,gz)]&&hasD[gi(gx-1,gz)]?(design[gi(gx+1,gz)]-design[gi(gx-1,gz)])/(2*CS):0;
+    const gzv=hasD[gi(gx,gz+1)]&&hasD[gi(gx,gz-1)]?(design[gi(gx,gz+1)]-design[gi(gx,gz-1)])/(2*CS):0;
+    sumDx+=gxv;sumDz+=gzv;count++;
+  }
+  if(!count)return;
+  const mag=Math.sqrt(sumDx*sumDx+sumDz*sumDz)||0.001;
+  const gdX=sumDx/count/mag,gdZ=sumDz/count/mag; // grade direction (unit)
+  // Strip direction = perpendicular to grade (along-contour)
+  const sdX=gdZ,sdZ=-gdX;
+  // Project all design cell centres onto grade axis to find strip range
+  let minP=Infinity,maxP=-Infinity;
+  for(let gz=0;gz<GR;gz++) for(let gx=0;gx<GR;gx++){
+    if(!hasD[gi(gx,gz)])continue;
+    const wx=(gx-GR/2)*CS,wz=(gz-GR/2)*CS;
+    const p=wx*gdX+wz*gdZ;
+    if(p<minP)minP=p;if(p>maxP)maxP=p;
+  }
+  // Build strips of blade-width along grade direction
+  const BW=BH*2+0.3;
+  const strips=[];
+  for(let p=minP;p<=maxP;p+=BW){
+    let cut=0,fill=0,n=0;
+    for(let gz=0;gz<GR;gz++) for(let gx=0;gx<GR;gx++){
+      const i=gi(gx,gz);if(!hasD[i])continue;
+      const wx=(gx-GR/2)*CS,wz=(gz-GR/2)*CS;
+      const pp=wx*gdX+wz*gdZ;
+      if(pp<p||pp>=p+BW)continue;
+      const d=(design[i]+vOffset)-ground[i];
+      if(d>0)cut+=d*CS*CS;else fill+=Math.abs(d)*CS*CS;
+      n++;
+    }
+    if(n)strips.push({midP:p+BW/2,cut,fill,total:cut+fill});
+  }
+  // Sort: biggest cut first (minimises net haul)
+  const sorted=[...strips].sort((a,b)=>b.cut-a.cut);
+  stripPlanGrp=new THREE.Group();
+  const maxVol=Math.max(1,...strips.map(s=>s.total));
+  sorted.forEach((strip,seqIdx)=>{
+    const cx=strip.midP*gdX,cz=strip.midP*gdZ;
+    const hw=SZ*0.52;
+    const x0=cx+sdX*hw,z0=cz+sdZ*hw;
+    const x1=cx-sdX*hw,z1=cz-sdZ*hw;
+    const y0=gElev(x0,z0)+0.32,y1=gElev(x1,z1)+0.32;
+    const t=strip.total/maxVol;
+    const col=new THREE.Color(t,1-t*0.8,0);
+    const geo=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(x0,y0,z0),new THREE.Vector3(x1,y1,z1)]);
+    stripPlanGrp.add(new THREE.Line(geo,new THREE.LineBasicMaterial({color:col,linewidth:2})));
+    // Label every 4th strip with sequence number
+    if(seqIdx%4===0){
+      const sp=makeTextSprite(`${seqIdx+1}`,`rgb(${Math.round(t*255)},${Math.round((1-t*0.8)*255)},0)`);
+      sp.position.set(cx,gElev(cx,cz)+2.5,cz);
+      stripPlanGrp.add(sp);
+    }
+  });
+  scene.add(stripPlanGrp);
+  const hdg=Math.round(Math.atan2(gdX,gdZ)*180/Math.PI+360)%360;
+  document.getElementById('st-hint').textContent=
+    `📋 ${strips.length} strips · Grade dir: ${hdg}° · Red = most work (grade these first)`;
+}
+function toggleStripPlan(){
+  showStripPlan=!showStripPlan;
+  document.getElementById('b-stripplan').classList.toggle('act',showStripPlan);
+  if(showStripPlan&&designCount===0){
+    document.getElementById('st-hint').textContent='Apply a design first to generate grade strip plan.';
+    showStripPlan=false;document.getElementById('b-stripplan').classList.remove('act');return;
+  }
+  buildStripPlan();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// TIME-LAPSE TERRAIN REPLAY
+// ═══════════════════════════════════════════════════════════════════
+function toggleReplay(){
+  if(isReplaying){
+    // Stop replay
+    clearInterval(replayTimer);replayTimer=null;isReplaying=false;
+    document.getElementById('b-replay').classList.remove('act');
+    // Restore current terrain
+    rebuildTerrMesh();
+    document.getElementById('st-hint').textContent='Replay stopped.';
+    return;
+  }
+  if(terrainHistory.length<2){
+    document.getElementById('st-hint').textContent='No history yet — drive the machine to record terrain snapshots, then replay.';
+    return;
+  }
+  isReplaying=true;replayFrame=0;
+  document.getElementById('b-replay').classList.add('act');
+  document.getElementById('st-hint').textContent=`⏪ Replaying ${terrainHistory.length} snapshots… click Replay again to stop`;
+  replayTimer=setInterval(()=>{
+    if(replayFrame>=terrainHistory.length){clearInterval(replayTimer);replayTimer=null;isReplaying=false;
+      document.getElementById('b-replay').classList.remove('act');
+      rebuildTerrMesh();document.getElementById('st-hint').textContent='Replay complete.';return;}
+    ground.set(terrainHistory[replayFrame]);
+    rebuildTerrMesh();
+    if(showTol)buildTolMesh();
+    if(showDaylight)buildDaylightMesh();
+    replayFrame++;
+  },600);
+}
 
 // ═══════════════════════════════════════════════════════════════════
 // INIT
