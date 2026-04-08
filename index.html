@@ -131,7 +131,8 @@ body{background:#0a1520;color:#dce8f5;font-family:'Segoe UI',Arial,sans-serif;ov
 
   <div class="tg">
     <span class="tg-label">Machine</span>
-    <button class="tb" id="b-mach" onclick="toggleMachine()">🚜 Dozer</button>
+    <button class="tb" id="b-mach" onclick="toggleMachine()">🚜 Power On</button>
+    <button class="tb" id="b-mtype" onclick="toggleMachineType()" title="Switch between Dozer and Excavator">🚜 Dozer</button>
   </div>
 
   <div class="tg">
@@ -499,6 +500,9 @@ let designCount=0;
 
 let tool='nav',toolState={};
 let machineOn=false;
+let machineType='dozer'; // 'dozer' | 'excavator'
+let excavDigging=false;  // true while SPACE is held in excavator mode
+let excavDigT=0;         // for bucket animation timing
 let machinePos={x:0,z:0,hdg:0};
 let alignment=[];
 let savedProfiles=[];
@@ -769,6 +773,59 @@ const safeRing=new THREE.Mesh(new THREE.RingGeometry(5,5.15,32),
 safeRing.rotation.x=-Math.PI/2;safeRing.position.y=0.1;
 machGrp.add(safeRing);
 machGrp.visible=false;scene.add(machGrp);
+
+// ── Excavator model ───────────────────────────────────────────────
+const excavGrp=new THREE.Group();
+const exYel=new THREE.MeshLambertMaterial({color:0xe8a020});
+const exBlk=new THREE.MeshLambertMaterial({color:0x222222});
+const exGry=new THREE.MeshLambertMaterial({color:0x888888});
+// Tracks
+[-1.2,1.2].forEach(x=>{
+  const tk=new THREE.Mesh(new THREE.BoxGeometry(0.65,0.45,4.2),exBlk);
+  tk.position.set(x,0.22,0);excavGrp.add(tk);
+  const tks=new THREE.Mesh(new THREE.BoxGeometry(0.75,0.12,4.4),exBlk);
+  tks.position.set(x,0.44,-0.0);excavGrp.add(tks);
+});
+// Lower body (track frame)
+const exLower=new THREE.Mesh(new THREE.BoxGeometry(2.4,0.7,3.6),exYel);
+exLower.position.set(0,0.55,0);excavGrp.add(exLower);
+// Upper body (cab + engine, slews with machine heading)
+const exUpperGrp=new THREE.Group();
+excavGrp.add(exUpperGrp);
+const exUpper=new THREE.Mesh(new THREE.BoxGeometry(2.2,1.0,2.8),exYel);
+exUpper.position.set(0,1.4,-0.2);exUpperGrp.add(exUpper);
+// Cab windscreen
+const exCab=new THREE.Mesh(new THREE.BoxGeometry(1.2,0.85,1.1),new THREE.MeshLambertMaterial({color:0x4fc3f7,transparent:true,opacity:0.7}));
+exCab.position.set(-0.42,2.0,0.6);exUpperGrp.add(exCab);
+// Counterweight (rear)
+const exCW=new THREE.Mesh(new THREE.BoxGeometry(2.0,0.9,0.9),exBlk);
+exCW.position.set(0,1.2,-1.65);exUpperGrp.add(exCW);
+// Boom pivot group (at top-front of upper body)
+const boomPivGrp=new THREE.Group();
+boomPivGrp.position.set(0,2.0,1.1);exUpperGrp.add(boomPivGrp);
+// Boom (angled up-forward ~50°)
+const boomMesh=new THREE.Mesh(new THREE.BoxGeometry(0.5,0.45,3.8),exYel);
+boomMesh.position.set(0,0.8,1.4);boomMesh.rotation.x=-0.9;
+exUpperGrp.add(boomMesh);
+// Stick group (pivot at boom tip, ~55° from boom)
+const stickMesh=new THREE.Mesh(new THREE.BoxGeometry(0.38,0.35,2.4),exYel);
+stickMesh.position.set(0,3.2,3.1);stickMesh.rotation.x=0.5;
+exUpperGrp.add(stickMesh);
+// Bucket (at stick end)
+const bucketMesh=new THREE.Mesh(new THREE.BoxGeometry(1.1,0.55,0.7),exGry);
+bucketMesh.position.set(0,1.8,4.0);
+exUpperGrp.add(bucketMesh);
+// Bucket teeth
+for(let i=-2;i<=2;i++){
+  const tooth=new THREE.Mesh(new THREE.BoxGeometry(0.12,0.3,0.12),exBlk);
+  tooth.position.set(i*0.24,1.55,4.34);
+  exUpperGrp.add(tooth);
+}
+// Safety ring
+const exRing=new THREE.Mesh(new THREE.RingGeometry(5.5,5.7,32),
+  new THREE.MeshBasicMaterial({color:0xff6600,side:THREE.DoubleSide,transparent:true,opacity:0.5}));
+exRing.rotation.x=-Math.PI/2;exRing.position.y=0.1;excavGrp.add(exRing);
+excavGrp.visible=false;scene.add(excavGrp);
 
 // ── Pick plane ────────────────────────────────────────────────────
 const pickPlane=new THREE.Mesh(new THREE.PlaneGeometry(SZ*3,SZ*3),
@@ -1436,9 +1493,12 @@ document.addEventListener('keydown',e=>{keys[e.key]=true;if(['ArrowUp','ArrowDow
 document.addEventListener('keyup',e=>{keys[e.key]=false;});
 
 function toggleMachine(){
-  machineOn=!machineOn;machGrp.visible=machineOn;
+  machineOn=!machineOn;
+  // Show correct machine model
+  machGrp.visible=machineOn&&machineType==='dozer';
+  excavGrp.visible=machineOn&&machineType==='excavator';
   document.getElementById('b-mach').classList.toggle('act',machineOn);
-  document.getElementById('st-mach').textContent=machineOn?'ON — WASD/Arrows':'OFF';
+  document.getElementById('st-mach').textContent=machineOn?'ON — WASD/Arrows'+(machineType==='excavator'?' · SPACE=Dig':''):'OFF';
   const xb=document.getElementById('xsec-box');
   if(machineOn&&showXsec)xb.style.display='block';
   if(!machineOn){
@@ -1446,6 +1506,34 @@ function toggleMachine(){
     updateTextRibbon(null,null,null,null,null,null);
     document.getElementById('tr-xslope').textContent='—';
     drawLEDBar(0,0);
+  }
+}
+
+function toggleMachineType(){
+  machineType=machineType==='dozer'?'excavator':'dozer';
+  const btn=document.getElementById('b-mtype');
+  btn.textContent=machineType==='dozer'?'🚜 Dozer':'🦾 Excavator';
+  btn.classList.toggle('act',machineType==='excavator');
+  // Swap visible model if machine is on
+  if(machineOn){
+    machGrp.visible=machineType==='dozer';
+    excavGrp.visible=machineType==='excavator';
+  }
+  document.getElementById('st-mach').textContent=machineOn
+    ? 'ON — WASD/Arrows'+(machineType==='excavator'?' · SPACE=Dig':'')
+    : 'OFF';
+  document.getElementById('st-hint').textContent=machineType==='excavator'
+    ? '🦾 Excavator mode: WASD to track, SPACE to dig at current position'
+    : '🚜 Dozer mode: WASD/Arrows to drive, blade cuts as you move';
+  // Update ribbon labels
+  if(machineType==='excavator'){
+    document.getElementById('tr-llbl').textContent='REACH LEFT';
+    document.getElementById('tr-clbl').textContent='BUCKET DEPTH mm';
+    document.getElementById('tr-rlbl').textContent='REACH RIGHT';
+  }else{
+    document.getElementById('tr-llbl').textContent='BLADE LEFT';
+    document.getElementById('tr-clbl').textContent='CENTER mm';
+    document.getElementById('tr-rlbl').textContent='BLADE RIGHT';
   }
 }
 
@@ -1459,13 +1547,15 @@ function updateMachine(dt){
   machinePos.x=Math.max(-SZ/2+3,Math.min(SZ/2-3,machinePos.x));
   machinePos.z=Math.max(-SZ/2+3,Math.min(SZ/2-3,machinePos.z));
   const mel=gElev(machinePos.x,machinePos.z);
-  machGrp.position.set(machinePos.x,mel,machinePos.z);
-  machGrp.rotation.y=machinePos.hdg;
+  // Position whichever machine model is active
+  const activeGrp=machineType==='dozer'?machGrp:excavGrp;
+  activeGrp.position.set(machinePos.x,mel,machinePos.z);
+  activeGrp.rotation.y=machinePos.hdg;
   // Pitch/roll
   const fwd=gElev(machinePos.x+Math.sin(machinePos.hdg)*2,machinePos.z+Math.cos(machinePos.hdg)*2);
   const rgt=gElev(machinePos.x+Math.cos(machinePos.hdg)*2,machinePos.z-Math.sin(machinePos.hdg)*2);
-  machGrp.rotation.z=Math.atan2(mel-rgt,2)*0.4;
-  machGrp.rotation.x=-Math.atan2(fwd-mel,2)*0.4;
+  activeGrp.rotation.z=Math.atan2(mel-rgt,2)*0.4;
+  activeGrp.rotation.x=-Math.atan2(fwd-mel,2)*0.4;
   // Blade tips (perpendicular to heading: right = cos(hdg), -sin(hdg) in XZ)
   const BH=1.7;
   const perpX=Math.cos(machinePos.hdg),perpZ=-Math.sin(machinePos.hdg);
@@ -1473,9 +1563,29 @@ function updateMachine(dt){
   const rx=machinePos.x+perpX*BH,rz=machinePos.z+perpZ*BH;
   const lGnd=gElev(lx,lz),rGnd=gElev(rx,rz);
   const lDes=dElev(lx,lz),rDes=dElev(rx,rz),cDes=dElev(machinePos.x,machinePos.z);
-  const lMM=lDes!==null?(lDes+vOffset-lGnd)*1000:null;
-  const rMM=rDes!==null?(rDes+vOffset-rGnd)*1000:null;
-  const cMM=cDes!==null?(cDes+vOffset-mel)*1000:null;
+  // For excavator: compute bucket tip depth at the dig point (4m ahead)
+  let lMM,rMM,cMM;
+  if(machineType==='excavator'){
+    const REACH=4.0,DIG_RAD=1.8;
+    const digX=machinePos.x+Math.sin(machinePos.hdg)*REACH;
+    const digZ=machinePos.z+Math.cos(machinePos.hdg)*REACH;
+    const digGnd=gElev(digX,digZ);
+    const digDes=dElev(digX,digZ);
+    cMM=digDes!==null?(digDes+vOffset-digGnd)*1000:null;
+    // Left/right show dig reach offset depths
+    const dlx=digX-Math.cos(machinePos.hdg)*DIG_RAD;
+    const dlz=digZ+Math.sin(machinePos.hdg)*DIG_RAD;
+    const drx=digX+Math.cos(machinePos.hdg)*DIG_RAD;
+    const drz=digZ-Math.sin(machinePos.hdg)*DIG_RAD;
+    const dlG=gElev(dlx,dlz),drG=gElev(drx,drz);
+    const dlD=dElev(dlx,dlz),drD=dElev(drx,drz);
+    lMM=dlD!==null?(dlD+vOffset-dlG)*1000:null;
+    rMM=drD!==null?(drD+vOffset-drG)*1000:null;
+  }else{
+    lMM=lDes!==null?(lDes+vOffset-lGnd)*1000:null;
+    rMM=rDes!==null?(rDes+vOffset-rGnd)*1000:null;
+    cMM=cDes!==null?(cDes+vOffset-mel)*1000:null;
+  }
   // Longitudinal grade (forward direction)
   const grade=((fwd-mel)/2)*100;
   // Cross slope (side-to-side, positive = right side higher)
@@ -1491,7 +1601,13 @@ function updateMachine(dt){
   }else{
     bladeTargetY=0.45;
   }
-  bladeMesh.position.y+=(bladeTargetY-bladeMesh.position.y)*0.12;
+  if(machineType==='dozer')bladeMesh.position.y+=(bladeTargetY-bladeMesh.position.y)*0.12;
+  // Excavator bucket animation: bob when digging (SPACE held)
+  if(machineType==='excavator'){
+    const bucketBob=excavDigging?Math.sin(excavDigT*4)*0.3:0;
+    bucketMesh.position.y=1.8+bucketBob;
+    stickMesh.rotation.x=0.5+bucketBob*0.15;
+  }
   if(showXsec)drawXSection(machinePos.x,machinePos.z,machinePos.hdg);
   // As-built
   recordAsBuilt(machinePos.x,machinePos.z,cDes,mel);
@@ -1530,6 +1646,35 @@ function updateMachine(dt){
       // Update cut volume display
       document.getElementById('st-cut').textContent=sessionCutVol.toFixed(1)+'m³';
     } else { isCutting=false; }
+  }
+
+  // ── Excavator dig (SPACE key) ───────────────────────────────────
+  if(machineType==='excavator'&&cutSimEnabled&&designCount>0){
+    excavDigging=keys[' ']||false;
+    if(excavDigging){
+      excavDigT+=dt;
+      // Animate bucket: oscillate boom angle (visual only via y-offset on excavGrp)
+      // Dig point = 4m ahead of machine at ground level
+      const REACH=4.0,DIG_RAD=1.8;
+      const digX=machinePos.x+Math.sin(machinePos.hdg)*REACH;
+      const digZ=machinePos.z+Math.cos(machinePos.hdg)*REACH;
+      isCutting=false;
+      // Cut all cells within DIG_RAD of dig point
+      for(let gz2=0;gz2<N;gz2++) for(let gx2=0;gx2<N;gx2++){
+        const i2=gi(gx2,gz2);if(!hasD[i2])continue;
+        const wx2=(gx2-GR/2)*CS,wz2=(gz2-GR/2)*CS;
+        const dx2=wx2-digX,dz2=wz2-digZ;
+        if(dx2*dx2+dz2*dz2>DIG_RAD*DIG_RAD)continue;
+        const des=design[i2]+vOffset;
+        if(ground[i2]>des+0.005){
+          const cut=(ground[i2]-des)*Math.min(dt*3,0.8); // rate-limited dig
+          sessionCutVol+=cut*CS*CS;
+          ground[i2]-=cut;
+          terrainDirty=true;isCutting=true;
+        }
+      }
+      document.getElementById('st-cut').textContent=sessionCutVol.toFixed(1)+'m³';
+    } else { excavDigT=0; }
   }
   // Follow cam
   if(camMode==='follow'){
