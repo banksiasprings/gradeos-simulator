@@ -145,6 +145,7 @@ body{background:#0a1520;color:#dce8f5;font-family:'Segoe UI',Arial,sans-serif;ov
     <button class="tb" id="b-dam" onclick="setTool('dam')">🌊 Dam</button>
     <button class="tb" id="b-bestfit" onclick="setTool('bestfit')">📐 Best-Fit</button>
     <button class="tb" id="b-batter" onclick="setTool('batter')" title="Batter slope: click crest line, auto-generate slope at H:V ratio">⛰ Batter</button>
+    <button class="tb" id="b-irrig" onclick="setTool('irrig')" title="Irrigation bay: auto-balance cut/fill on a drained grade">💧 Irrig Bay</button>
   </div>
 
   <div class="tg">
@@ -176,6 +177,7 @@ body{background:#0a1520;color:#dce8f5;font-family:'Segoe UI',Arial,sans-serif;ov
     <button class="tb" id="b-split" onclick="toggleSplit()" title="Split screen blade view">⧉ Split</button>
     <button class="tb act" id="b-cutsim" onclick="toggleCutSim()" title="Live blade cuts terrain as you drive">🔪 Cut Sim</button>
     <button class="tb" id="b-flow" onclick="toggleFlow()" title="Show stormwater drainage flow paths (D8 algorithm)">💧 Flow</button>
+    <button class="tb" id="b-slope-warn" onclick="toggleSlopeWarn()" title="Highlight steep slopes (>30°) — potential instability risk">⚠ Steep</button>
   </div>
 
   <div class="tg" style="margin-left:auto">
@@ -519,6 +521,8 @@ let bladeTargetY=0.45;   // for smooth blade animation
 let showSurvey=false;
 let splitMode=false;
 let showFlow=false;
+let showSlope=false;
+let slopeWarnGrp=null;
 
 // ── Survey import state ──────────────────────────────────────────────
 const surveyGrid=new Uint8Array(N*N); // 1 = has surveyed data
@@ -1041,7 +1045,7 @@ function genTerrain(type){
   sessionCutVol=0;sessionFillVol=0;prodOnTime=0;remainingCutVol=0;
   const sc=document.getElementById('st-cut');if(sc)sc.textContent='0.0m³';
   const pd=document.getElementById('st-prod');if(pd)pd.style.display='none';
-  rebuildTerrMesh();clearDesign();genContours();buildFlowLines();
+  rebuildTerrMesh();clearDesign();genContours();buildFlowLines();buildSlopeWarn();
   document.getElementById('st-terrain').textContent={flat:'Flat Paddock',hilly:'Hilly Farm',valley:'Valley',
     dam_site:'Dam Site',embankment:'Embankment',cut_hill:'Cut Hill',irrig_bay:'Irrigation Bay'}[type];
 }
@@ -1090,6 +1094,7 @@ function handleDesignClick(p){
     if(toolState.sp)scene.remove(toolState.sp);
     toolState={};
     if(tool==='batter'){applyBatter(p1,p2);}
+    else if(tool==='irrig'){applyIrrigBay(p1,p2);}
     else{applyTool(p1,p2);rebuildDesMesh();document.getElementById('st-hint').textContent='Design applied.';}
   }
 }
@@ -1142,6 +1147,72 @@ function applyTool(p1,p2){
     pts.forEach(p=>setDesign(p.gx,p.gz,slope*(useX?p.gx*CS:p.gz*CS)+intercept));
     document.getElementById('st-hint').textContent=`Best-Fit: ${(slope*100).toFixed(2)}% grade applied`;
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// IRRIGATION BAY AUTO-BALANCE
+// ═══════════════════════════════════════════════════════════════════
+function applyIrrigBay(p1,p2){
+  const gradeVal=parseFloat(document.getElementById('irr-grade')?.value||0.15)/100;
+  const dir=document.getElementById('irr-dir')?.value||'s';
+  const g1=w2g(Math.min(p1.x,p2.x),Math.min(p1.z,p2.z));
+  const g2=w2g(Math.max(p1.x,p2.x),Math.max(p1.z,p2.z));
+  if(g1.gx>=g2.gx||g1.gz>=g2.gz){document.getElementById('st-hint').textContent='Select a larger area.';return;}
+
+  // Collect cells in the bay
+  const cells=[];
+  for(let gz=g1.gz;gz<=g2.gz;gz++) for(let gx=g1.gx;gx<=g2.gx;gx++){
+    const gnd=ground[gi(gx,gz)];
+    // Grade component: how much elevation change along fall direction
+    let gradeOffset=0;
+    if(dir==='s')gradeOffset=(gz-g1.gz)*CS*gradeVal;
+    else if(dir==='n')gradeOffset=(g2.gz-gz)*CS*gradeVal;
+    else if(dir==='e')gradeOffset=(gx-g1.gx)*CS*gradeVal;
+    else if(dir==='w')gradeOffset=(g2.gx-gx)*CS*gradeVal;
+    // The "normalised" elevation removes the grade component
+    // so we can find the base elevation that balances cut/fill
+    cells.push({gx,gz,gnd,go:gradeOffset});
+  }
+
+  // Binary search for the base elevation (E) such that cut ≈ fill
+  // Design elevation of each cell = E + gradeOffset (falling in drain direction)
+  // Cut when design < ground → E + go < gnd → E < gnd - go
+  // Fill when design > ground → E > gnd - go
+  const normElev=cells.map(c=>c.gnd-c.go); // ground minus grade offset
+  normElev.sort((a,b)=>a-b);
+  // Mean of normalised elevations gives balanced cut/fill for any linear grade
+  const meanNorm=normElev.reduce((s,v)=>s+v,0)/normElev.length;
+
+  // Verify balance by calculating exact cut/fill
+  let cut=0,fill=0;
+  const ca=CS*CS;
+  cells.forEach(c=>{
+    const des=meanNorm+c.go;
+    const d=des-c.gnd;
+    if(d>0)fill+=d*ca;else cut+=Math.abs(d)*ca;
+  });
+
+  // Apply design
+  cells.forEach(c=>{
+    const des=meanNorm+c.go;
+    setDesign(c.gx,c.gz,des);
+  });
+  rebuildDesMesh();
+
+  // Show result in tool panel
+  const bayW=((g2.gx-g1.gx)*CS).toFixed(0),bayL=((g2.gz-g1.gz)*CS).toFixed(0);
+  const bayA=(cells.length*ca).toFixed(0);
+  const imbal=Math.abs(cut-fill);
+  const result=document.getElementById('irr-result');
+  if(result){
+    result.style.display='block';
+    result.innerHTML=`<span style="color:#e8a020">Bay: ${bayW}×${bayL}m · ${bayA}m²</span><br>`+
+      `Drain grade: <strong style="color:#7aabcc">${(gradeVal*100).toFixed(2)}%</strong> · Fall: ${dir.toUpperCase()}<br>`+
+      `Base elevation: <strong style="color:#e8a020">${meanNorm.toFixed(3)}m</strong><br>`+
+      `Cut: <strong style="color:#42a5f5">${cut.toFixed(0)}m³</strong> · Fill: <strong style="color:#ff7043">${fill.toFixed(0)}m³</strong><br>`+
+      `<span style="${imbal<10?'color:#66bb6a':imbal<50?'color:#ffeb3b':'color:#ff7043'}">Imbalance: ${imbal.toFixed(0)}m³ ${imbal<10?'✓ Balanced':'⚠ slight haul required'}</span>`;
+  }
+  document.getElementById('st-hint').textContent=`💧 Irrig Bay: ${bayW}×${bayL}m · ${(gradeVal*100).toFixed(2)}% grade · Cut=${cut.toFixed(0)}m³ · Fill=${fill.toFixed(0)}m³ · Imbalance=${imbal.toFixed(0)}m³`;
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -2042,7 +2113,7 @@ function applyImportedPoints(pts,fname,colHint){
   // Fill unsurveyed cells by nearest neighbour (simple bilinear)
   fillUnsurveyed();
   originalGround.set(ground); // snapshot for cut-depth colouring
-  rebuildTerrMesh();genContours();buildFlowLines();
+  rebuildTerrMesh();genContours();buildFlowLines();buildSlopeWarn();
   surveyPointCount=applied;
   const covPct=(surveyGrid.filter(v=>v>0).length/(N*N)*100).toFixed(0);
   document.getElementById('si-pts').textContent=applied.toLocaleString();
@@ -2205,6 +2276,72 @@ function toggleFlow(){
   document.getElementById('st-hint').textContent=showFlow
     ? '💧 Flow Paths: blue lines show stormwater drainage channels (D8 algorithm). Bright blue = main channels.'
     : 'Flow paths hidden — terrain unchanged.';
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SLOPE INSTABILITY WARNING (>30° cells highlighted)
+// ═══════════════════════════════════════════════════════════════════
+function buildSlopeWarn(){
+  if(slopeWarnGrp){scene.remove(slopeWarnGrp);slopeWarnGrp.children.forEach(c=>c.geometry.dispose());slopeWarnGrp=null;}
+  if(!showSlope)return;
+  slopeWarnGrp=new THREE.Group();
+  const WARN_DEG=30, CRIT_DEG=45;
+  const warnPts=[],critPts=[];
+  for(let gz=1;gz<N-1;gz++) for(let gx=1;gx<N-1;gx++){
+    const i=gi(gx,gz);
+    const h=ground[i];
+    // Max slope in 8 directions
+    const dxMax=Math.max(
+      Math.abs(h-ground[gi(gx+1,gz)]),
+      Math.abs(h-ground[gi(gx-1,gz)]),
+      Math.abs(h-ground[gi(gx,gz+1)]),
+      Math.abs(h-ground[gi(gx,gz-1)]),
+      Math.abs(h-ground[gi(gx+1,gz+1)])/1.414,
+      Math.abs(h-ground[gi(gx-1,gz-1)])/1.414
+    );
+    const slopeDeg=Math.atan2(dxMax,CS)*180/Math.PI;
+    if(slopeDeg<WARN_DEG)continue;
+    const wx=(gx-GR/2)*CS,wz=(gz-GR/2)*CS;
+    const y=h+0.22;
+    if(slopeDeg>=CRIT_DEG){
+      critPts.push(new THREE.Vector3(wx-CS/2,y,wz-CS/2),new THREE.Vector3(wx+CS/2,y,wz-CS/2),
+                   new THREE.Vector3(wx+CS/2,y,wz+CS/2),new THREE.Vector3(wx-CS/2,y,wz+CS/2));
+    }else{
+      warnPts.push(new THREE.Vector3(wx-CS/2,y,wz-CS/2),new THREE.Vector3(wx+CS/2,y,wz-CS/2),
+                   new THREE.Vector3(wx+CS/2,y,wz+CS/2),new THREE.Vector3(wx-CS/2,y,wz+CS/2));
+    }
+  }
+  const addQuads=(pts,col,op)=>{
+    if(!pts.length)return;
+    const geo=new THREE.BufferGeometry();
+    const verts=[],idx=[];
+    for(let i=0;i<pts.length;i+=4){
+      const b=verts.length/3;
+      pts.slice(i,i+4).forEach(p=>{verts.push(p.x,p.y,p.z);});
+      idx.push(b,b+1,b+2,b,b+2,b+3);
+    }
+    geo.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));
+    geo.setIndex(idx);
+    const mat=new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:op,side:THREE.DoubleSide,depthWrite:false});
+    slopeWarnGrp.add(new THREE.Mesh(geo,mat));
+  };
+  addQuads(warnPts,0xff8c00,0.35);  // orange — warning (30-45°)
+  addQuads(critPts,0xff1744,0.55);  // red — critical (>45°)
+  scene.add(slopeWarnGrp);
+  const warnCount=warnPts.length/4,critCount=critPts.length/4;
+  return{warnCount,critCount};
+}
+
+function toggleSlopeWarn(){
+  showSlope=!showSlope;
+  document.getElementById('b-slope-warn').classList.toggle('act',showSlope);
+  const result=buildSlopeWarn();
+  if(showSlope&&result){
+    document.getElementById('st-hint').textContent=
+      `⚠ Steep Slopes: ${result.warnCount} cells >30° (orange), ${result.critCount} cells >45° (red). Review before grading.`;
+  }else{
+    document.getElementById('st-hint').textContent='Slope warnings hidden.';
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -2426,6 +2563,12 @@ const TOOL_HTML={
   </div>
   <p style="font-size:10px;color:#4a7aa0;margin-top:3px"><strong>Click 1:</strong> crest point &nbsp; <strong>Click 2:</strong> slope direction/extent<br>Generates a batter slope from crest at the H:V ratio until it meets existing ground.</p>
   <button class="btn" style="margin-top:2px" onclick="clearDesign()">Clear Batter Design</button>`,
+  irrig:`<div class="row2">
+    <div class="field"><label>Drain Grade (%)</label><input type="number" id="irr-grade" value="0.15" step="0.05" min="0" max="2"></div>
+    <div class="field"><label>Fall Direction</label><select id="irr-dir"><option value="s">↓ South</option><option value="n">↑ North</option><option value="e">→ East</option><option value="w">← West</option></select></div>
+  </div>
+  <p style="font-size:10px;color:#4a7aa0;margin-top:3px"><strong style="color:#e8a020">Auto-balance cut/fill</strong> — system finds the elevation that equalises cut and fill volumes, minimising trucking cost. Typical drain grade: 0.1–0.3% (Aust. flood irrigation standard).</p>
+  <div id="irr-result" style="display:none;margin-top:4px;padding:5px;background:#040c18;border:1px solid #1a3a5c;border-radius:3px;font-size:10px;line-height:1.7"></div>`,
   bank:`<p style="font-size:11px;color:#7aabcc;line-height:1.7;margin-bottom:4px"><strong style="color:#e8a020">⌒ Bank / Levee</strong><br>Click terrain to place bank centreline points.<br><strong>Double-click</strong> to finish the feature.</p>
         <p style="font-size:10px;color:#4a7aa0">Tip: use with Slope tool to design the batter slopes either side.</p>`,
   channel:`<p style="font-size:11px;color:#7aabcc;line-height:1.7;margin-bottom:4px"><strong style="color:#42a5f5">≋ Channel / Drain</strong><br>Click to trace channel centreline.<br><strong>Double-click</strong> to finish.</p>
@@ -2440,7 +2583,7 @@ const TOOL_HTML={
             <p style="font-size:10px;color:#4a7aa0">Mark shelter belts and riparian vegetation for awareness during grading.</p>`,
 };
 
-const TOOL_BTNS=['nav','flat','slope','crown','align','dam','bestfit','batter','bank','channel','waterway','pivot','boundary','treeline'];
+const TOOL_BTNS=['nav','flat','slope','crown','align','dam','bestfit','batter','irrig','bank','channel','waterway','pivot','boundary','treeline'];
 function setTool(name){
   tool=name;toolState={};
   // Cancel any in-progress feature draft when switching tools
@@ -2451,6 +2594,7 @@ function setTool(name){
     nav:'Navigate',flat:'Flat Pad',slope:'Single Slope',crown:'Crown / Road',
     align:'Alignment + Profile',dam:'Dam Designer',bestfit:'Best-Fit Grade',
     batter:'Batter / Slope Designer',
+    irrig:'Irrigation Bay — Auto-Balance',
     bank:'Bank / Levee',channel:'Channel / Drain',waterway:'Natural Waterway',
     pivot:'Centre Pivot',boundary:'Paddock Boundary',treeline:'Tree Line'
   }[name]||name;
@@ -2465,6 +2609,7 @@ function setTool(name){
     dam:'Click two corners for dam wall footprint',
     bestfit:'Click two corners to auto-calculate best-fit grade',
     batter:'Click crest point, then click slope-fall direction to generate batter design',
+    irrig:'Click two corners of irrigation bay — system auto-balances cut/fill at the drain grade',
     bank:'Click to place bank/levee points · Double-click to finish',
     channel:'Click to place channel points · Double-click to finish',
     waterway:'Click to place waterway points · Double-click to finish',
@@ -2540,6 +2685,7 @@ function loop(t){
     if(showSurvey)rebuildSurveyMesh();
     if(designCount>0)calcVol(); // keep volume display in sync with cuts
     if(showFlow)buildFlowLines(); // update drainage paths as terrain is cut
+    if(showSlope)buildSlopeWarn(); // update slope warnings
     terrainDirty=false;
     terrainRebuildAt=t;
   }
