@@ -584,6 +584,15 @@ const surveyGrid=new Uint8Array(N*N); // 1 = has surveyed data
 let surveyPointCount=0;
 let surveyMesh=null;
 
+// ── Display overlays (must be declared before genTerrain is called) ──
+let showTol=false;let tolMesh=null;
+let showStakes=false;let stakeGrp=null;
+let sectionLineMesh=null;
+const undoStack=[];const redoStack=[];const MAX_UNDO=20;
+let fleetEnabled=false;let fleet2Grp=null;
+const FLEET_SPEED=3.8,FLEET_BW=4.2;
+const fleet2St={x:20,z:-SZ/2+2,hdg:0,dir:1};
+
 // ── Farm features ────────────────────────────────────────────────────
 const farmFeatures=[];   // [{type,pts:[{x,z}],label,color,closed}]
 let featureDraft=null;   // feature currently being drawn
@@ -1972,10 +1981,6 @@ function clearAsBuilt(){
 // ═══════════════════════════════════════════════════════════════════
 // Haul route arrow (cut centroid → fill centroid)
 let haulArrow=null;
-let showTol=false;let tolMesh=null;
-let showStakes=false;let stakeGrp=null;
-let sectionLineMesh=null;
-const undoStack=[];const redoStack=[];const MAX_UNDO=20;
 function updateHaulArrow(cutCx,cutCz,fillCx,fillCz,haulDist){
   if(haulArrow){scene.remove(haulArrow);haulArrow.geometry.dispose();haulArrow=null;}
   if(haulDist<2||isNaN(cutCx)||isNaN(fillCx))return;
@@ -3137,11 +3142,6 @@ function manualClick(side){
 // ═══════════════════════════════════════════════════════════════════
 // FLEET SIMULATION (Machine 2 — autonomous parallel-strip grading)
 // ═══════════════════════════════════════════════════════════════════
-let fleetEnabled=false;
-let fleet2Grp=null;
-const FLEET_SPEED=3.8,FLEET_BW=4.2;
-const fleet2St={x:20,z:-SZ/2+2,hdg:0,dir:1};
-
 function buildFleet2Mesh(){
   if(fleet2Grp){scene.remove(fleet2Grp);fleet2Grp=null;}
   if(!fleetEnabled)return;
