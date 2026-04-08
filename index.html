@@ -152,6 +152,7 @@ body{background:#0a1520;color:#dce8f5;font-family:'Segoe UI',Arial,sans-serif;ov
     <button class="tb" id="b-mach" onclick="toggleMachine()">🚜 Power On</button>
     <button class="tb" id="b-mtype" onclick="toggleMachineType()" title="Switch between Dozer and Excavator">🚜 Dozer</button>
     <button class="tb" id="b-fleet" onclick="toggleFleet()" title="Deploy a second autonomous machine to grade parallel strips">🤖 Fleet</button>
+    <button class="tb" id="b-autosteer" onclick="toggleAutoSteer()" title="Auto-steer: machine drives parallel N-S grade strips automatically">⚙ Auto</button>
   </div>
 
   <div class="tg">
@@ -192,6 +193,7 @@ body{background:#0a1520;color:#dce8f5;font-family:'Segoe UI',Arial,sans-serif;ov
   <div class="tg">
     <span class="tg-label">Features</span>
     <button class="tb" id="b-waypoint" onclick="setTool('waypoint')" title="GPS Waypoint: click terrain to mark a reference point with elevation">📌 Waypoint</button>
+    <button class="tb" id="b-measure" onclick="setTool('measure')" title="Measure: click two points to get horizontal distance, slope %, and height difference">📏 Measure</button>
     <button class="tb" id="b-bank" onclick="setTool('bank')" title="Bank / Levee">⌒ Bank</button>
     <button class="tb" id="b-channel" onclick="setTool('channel')" title="Channel / Drain">≋ Channel</button>
     <button class="tb" id="b-waterway" onclick="setTool('waterway')" title="Natural waterway">〜 Waterway</button>
@@ -227,6 +229,7 @@ body{background:#0a1520;color:#dce8f5;font-family:'Segoe UI',Arial,sans-serif;ov
     <button class="tb grn" onclick="loadDesign()" title="Load design from browser storage">📂 Load</button>
     <button class="tb blu" onclick="document.getElementById('gps-import').click()" title="Import GPS/survey CSV">📡 Import GPS</button>
     <input type="file" id="gps-import" accept=".csv,.gpx,.txt" style="display:none" onchange="handleImportFile(event)">
+    <button class="tb" onclick="toggleKeyHelp()" title="Keyboard shortcuts (H)">⌨ Keys</button>
     <button class="tb red" onclick="clearAll()">🗑 Clear</button>
     <button class="tb grn" onclick="exportCSV()" title="Export design vs existing to CSV">📥 CSV</button>
     <button class="tb grn" onclick="exportAsBuilt()" title="Export as-built survey after grading">📤 As-Built</button>
@@ -658,6 +661,9 @@ const passCount=new Uint8Array(N*N);
 let showStripPlan=false;let stripPlanGrp=null;
 const terrainHistory=[];const HIST_MAX=24;let lastHistorySnap=0;
 let isReplaying=false;let replayFrame=0;let replayTimer=null;
+let autoSteer=false;let autoMovingFwd=false;
+const autoSt={stripX:0,dir:1};
+let measureLineMesh=null;
 
 // ── Farm features ────────────────────────────────────────────────────
 const farmFeatures=[];   // [{type,pts:[{x,z}],label,color,closed}]
@@ -1248,6 +1254,7 @@ threeCanvas.addEventListener('click',e=>{
   }
   if(['flat','slope','crown','dam','bestfit','batter','irrig','section','smooth','raise','lower'].includes(tool)){handleDesignClick(p);return;}
   if(tool==='waypoint'){addWaypoint(p.x,p.z);return;}
+  if(tool==='measure'){handleMeasure(p);return;}
   if(FEATURE_TOOLS.includes(tool)){handleFeatureClick(p);return;}
 });
 threeCanvas.addEventListener('dblclick',e=>{
@@ -1874,10 +1881,33 @@ function toggleMachineType(){
 function updateMachine(dt){
   if(!machineOn)return;
   const spd=8,turn=1.8;
-  const movFwdNow=keys['ArrowUp']||keys['w']||keys['W'];
+  // ── Auto-steer: drive parallel N-S strips automatically ──────────────
+  autoMovingFwd=false;
+  if(autoSteer){
+    const BH_AS=1.7;const BW_AS=BH_AS*2+0.3;const MARG_AS=4;
+    machinePos.x=autoSt.stripX;
+    machinePos.hdg=autoSt.dir>0?0:Math.PI;
+    machinePos.z+=autoSt.dir*spd*dt;
+    autoMovingFwd=true;
+    if(autoSt.dir>0&&machinePos.z>=SZ/2-MARG_AS){
+      machinePos.z=SZ/2-MARG_AS;autoSt.stripX+=BW_AS;autoSt.dir=-1;
+      if(autoSt.stripX>SZ/2-MARG_AS){autoSteer=false;autoMovingFwd=false;
+        document.getElementById('b-autosteer').classList.remove('act');
+        document.getElementById('st-hint').textContent='✅ Auto-steer: all strips complete!';}
+    }else if(autoSt.dir<0&&machinePos.z<=-SZ/2+MARG_AS){
+      machinePos.z=-SZ/2+MARG_AS;autoSt.stripX+=BW_AS;autoSt.dir=1;
+      if(autoSt.stripX>SZ/2-MARG_AS){autoSteer=false;autoMovingFwd=false;
+        document.getElementById('b-autosteer').classList.remove('act');
+        document.getElementById('st-hint').textContent='✅ Auto-steer: all strips complete!';}
+    }
+  }
+  // ── Manual keyboard drive ──────────────────────────────────────────
+  const movFwdNow=(keys['ArrowUp']||keys['w']||keys['W'])||autoMovingFwd;
   const movRevNow=keys['ArrowDown']||keys['s']||keys['S'];
-  if(movFwdNow){machinePos.x+=Math.sin(machinePos.hdg)*spd*dt;machinePos.z+=Math.cos(machinePos.hdg)*spd*dt;}
-  if(movRevNow){machinePos.x-=Math.sin(machinePos.hdg)*spd*dt;machinePos.z-=Math.cos(machinePos.hdg)*spd*dt;}
+  if(!autoSteer){
+    if(movFwdNow){machinePos.x+=Math.sin(machinePos.hdg)*spd*dt;machinePos.z+=Math.cos(machinePos.hdg)*spd*dt;}
+    if(movRevNow){machinePos.x-=Math.sin(machinePos.hdg)*spd*dt;machinePos.z-=Math.cos(machinePos.hdg)*spd*dt;}
+  }
   // Speed display (spd m/s → km/h); show only when machine is on
   const spdKmh=(movFwdNow||movRevNow)?spd*3.6:0;
   const spdEl=document.getElementById('st-speed');
@@ -1959,8 +1989,8 @@ function updateMachine(dt){
   recordAsBuilt(machinePos.x,machinePos.z,cDes,mel);
   // ── Live terrain cut simulation ─────────────────────────────────────
   if(cutSimEnabled && designCount>0){
-    const movFwd=(keys['ArrowUp']||keys['w']||keys['W']);
-    const movRev=(keys['ArrowDown']||keys['s']||keys['S']);
+    const movFwd=(keys['ArrowUp']||keys['w']||keys['W'])||autoMovingFwd;
+    const movRev=keys['ArrowDown']||keys['s']||keys['S'];
     if(movFwd||movRev){
       // Blade world position (front of machine, 2.5m ahead)
       const bladeX=machinePos.x+Math.sin(machinePos.hdg)*2.5;
@@ -3527,7 +3557,7 @@ const TOOL_HTML={
             <button class="btn red" style="margin-top:4px" onclick="clearWaypoints()">Clear All</button>`,
 };
 
-const TOOL_BTNS=['nav','flat','slope','crown','align','dam','bestfit','batter','irrig','section','smooth','raise','lower','waypoint','bank','channel','waterway','pivot','boundary','treeline'];
+const TOOL_BTNS=['nav','flat','slope','crown','align','dam','bestfit','batter','irrig','section','smooth','raise','lower','waypoint','measure','bank','channel','waterway','pivot','boundary','treeline'];
 function setTool(name){
   tool=name;toolState={};
   // Cancel any in-progress feature draft when switching tools
@@ -3732,6 +3762,105 @@ function loop(t){
   renderer.render(scene,activeCam);
 }
 loop(0);
+
+// ═══════════════════════════════════════════════════════════════════
+// AUTO-STEER
+// ═══════════════════════════════════════════════════════════════════
+function toggleAutoSteer(){
+  autoSteer=!autoSteer;
+  document.getElementById('b-autosteer').classList.toggle('act',autoSteer);
+  if(autoSteer){
+    if(!machineOn)toggleMachine();
+    const BH=1.7;
+    autoSt.stripX=-SZ/2+BH+2;
+    autoSt.dir=1;
+    machinePos.x=autoSt.stripX;
+    machinePos.z=-SZ/2+4;
+    machinePos.hdg=0;
+    document.getElementById('st-hint').textContent='⚙ Auto-steer ON: driving N-S strips. Press Auto again to stop.';
+  }else{
+    autoMovingFwd=false;
+    document.getElementById('st-hint').textContent='Auto-steer stopped.';
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// MEASUREMENT TOOL
+// ═══════════════════════════════════════════════════════════════════
+function handleMeasure(p){
+  if(!toolState.p1){
+    toolState.p1={x:p.x,z:p.z};
+    const sp=new THREE.Mesh(new THREE.SphereGeometry(0.5,8,8),new THREE.MeshBasicMaterial({color:0xffa500}));
+    sp.position.set(p.x,gElev(p.x,p.z)+0.5,p.z);scene.add(sp);toolState.sp=sp;
+    document.getElementById('st-hint').textContent=
+      `📏 Start: E${p.x.toFixed(1)}m N${p.z.toFixed(1)}m @ ${gElev(p.x,p.z).toFixed(3)}m — click end point`;
+  }else{
+    const p1=toolState.p1;
+    const dx=p.x-p1.x,dz=p.z-p1.z;
+    const hDist=Math.sqrt(dx*dx+dz*dz);
+    const h1=gElev(p1.x,p1.z),h2=gElev(p.x,p.z),dh=h2-h1;
+    const slope3D=Math.sqrt(hDist*hDist+dh*dh);
+    const slopePct=hDist>0.1?Math.abs(dh/hDist)*100:0;
+    const bearing=Math.round((Math.atan2(dx,dz)*180/Math.PI+360)%360);
+    if(measureLineMesh){scene.remove(measureLineMesh);measureLineMesh.geometry.dispose();measureLineMesh=null;}
+    const geo=new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(p1.x,h1+0.4,p1.z),new THREE.Vector3(p.x,h2+0.4,p.z)]);
+    measureLineMesh=new THREE.Line(geo,new THREE.LineBasicMaterial({color:0xffa500,linewidth:2}));
+    scene.add(measureLineMesh);
+    if(toolState.sp){scene.remove(toolState.sp);toolState.sp=null;}
+    toolState.p1=null;
+    document.getElementById('st-hint').textContent=
+      `📏 Horiz: ${hDist.toFixed(1)}m · Slope: ${slopePct.toFixed(2)}% · dH: ${(dh>=0?'+':'')}${(dh*1000).toFixed(0)}mm · Bearing: ${bearing}° · 3D: ${slope3D.toFixed(1)}m`;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// KEYBOARD SHORTCUT HELP
+// ═══════════════════════════════════════════════════════════════════
+function toggleKeyHelp(){
+  let m=document.getElementById('key-help-modal');
+  if(!m){
+    m=document.createElement('div');
+    m.id='key-help-modal';
+    m.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:100;display:flex;align-items:center;justify-content:center';
+    m.innerHTML=`<div style="background:#040c18;border:1px solid #1e4a7a;border-radius:8px;padding:24px;max-width:600px;width:90%;max-height:80vh;overflow-y:auto;color:#dce8f5;font-size:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <h2 style="color:#e8a020;margin:0;font-size:16px">⌨ GradeOS Simulator Keyboard Shortcuts</h2>
+        <button onclick="this.closest('#key-help-modal').remove()" style="background:#1a3a5c;border:none;color:#dce8f5;cursor:pointer;font-size:18px;padding:2px 8px;border-radius:4px">✕</button>
+      </div>
+      <table style="width:100%;border-collapse:collapse">
+        ${[
+          ['Machine',''],
+          ['W / ↑','Drive forward'],
+          ['S / ↓','Drive backward'],
+          ['A / ←','Turn left'],
+          ['D / →','Turn right'],
+          ['SPACE','Excavator dig'],
+          ['Camera',''],
+          ['Scroll','Zoom in/out'],
+          ['Right-drag','Orbit / rotate view'],
+          ['Middle-drag','Pan camera'],
+          ['Double-click','Read elevation at point'],
+          ['Design',''],
+          ['Ctrl+Z','Undo last design change'],
+          ['Ctrl+Y','Redo'],
+          ['General',''],
+          ['H','This keyboard help'],
+        ].map(([k,v])=>k&&!v?
+          `<tr><td colspan="2" style="padding:6px 0 2px;color:#e8a020;font-weight:700;text-transform:uppercase;letter-spacing:1px;border-top:1px solid #152535;font-size:10px">${k}</td></tr>`:
+          `<tr><td style="padding:3px 12px 3px 0;color:#7aabcc;font-family:monospace;white-space:nowrap">${k}</td><td style="padding:3px 0;color:#dce8f5">${v}</td></tr>`
+        ).join('')}
+      </table>
+      <p style="margin:12px 0 0;font-size:10px;color:#4a7aa0">Tip: hover over any toolbar button to see its tooltip description.</p>
+    </div>`;
+    m.addEventListener('click',e=>{if(e.target===m)m.remove();});
+    document.body.appendChild(m);
+  }else{m.remove();}
+}
+// H key shortcut
+document.addEventListener('keydown',e=>{
+  if(e.key==='h'||e.key==='H'){if(!e.ctrlKey&&!e.metaKey)toggleKeyHelp();}
+});
 
 // ═══════════════════════════════════════════════════════════════════
 // GRADE STRIP PLANNER — optimal grading sequence from design surface
