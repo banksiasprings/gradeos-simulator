@@ -445,6 +445,7 @@ body{background:#0a1520;color:#dce8f5;font-family:'Segoe UI',Arial,sans-serif;ov
         <button class="btn grn" style="width:100%;margin-bottom:3px" onclick="runScenario('housepad')">🏠 House Pad Development</button>
         <button class="btn grn" style="width:100%;margin-bottom:3px" onclick="runScenario('road')">🛣 Road Construction Cut</button>
         <button class="btn grn" style="width:100%;margin-bottom:3px" onclick="runScenario('dam')">🌊 Dam / Retention Wall</button>
+        <button class="btn" style="width:100%;margin-bottom:3px;background:#0d3320;border-color:#1a6040;color:#66bb6a" onclick="runScenario('scout')">🌿 Scout Farm Mapping</button>
       </div>
     </div>
 
@@ -783,6 +784,7 @@ const passCount=new Uint8Array(N*N);
 let rtkFixType='RTK FIXED';let lastRtkType='RTK FIXED';
 let engineSeconds=0;  // total machine-on time in seconds
 let showGhost=false;let ghostMesh=null;
+let scoutMode=false;  // GradeOS Scout: machine builds terrain DEM as it drives
 let showStripPlan=false;let stripPlanGrp=null;
 const terrainHistory=[];const HIST_MAX=24;let lastHistorySnap=0;
 let isReplaying=false;let replayFrame=0;let replayTimer=null;
@@ -2285,6 +2287,15 @@ function recordAsBuilt(wx,wz,des,gnd){
   }
   // Pass count (increment every pass, up to 10)
   if(passCount[i]<10){passCount[i]++;if(showPassCount)passCountDirty=true;}
+  // Scout mode: mark cells within blade-width as surveyed (builds DEM from driving)
+  if(scoutMode){
+    const SCOUT_W=3; // cells either side of centreline surveyed
+    for(let dz=-1;dz<=1;dz++) for(let dx=-SCOUT_W;dx<=SCOUT_W;dx++){
+      const si=gi(Math.max(0,Math.min(GR,gx+dx)),Math.max(0,Math.min(GR,gz+dz)));
+      if(!surveyGrid[si]){surveyGrid[si]=1;surveyPointCount++;}
+    }
+    if(showSurvey)rebuildSurveyMesh();
+  }
   if(!asBuilt[i]){
     asBuilt[i]=1;asBuiltPasses++;asBuiltArea+=CS*CS;asBuiltTotal++;
     if(onGrade)asBuiltOnGrade++;
@@ -4084,6 +4095,34 @@ function runScenario(type){
       else return 3.0; // embankment crest
     });
     desc='🌊 Dam: pond floor at RL 0.5m, batters to crest at RL 3.0m. Balance before grading.';
+  }else if(type==='scout'){
+    genTerrain('flat');
+    scoutMode=true;
+    surveyGrid.fill(0);surveyPointCount=0;
+    if(!showSurvey){showSurvey=true;document.getElementById('b-survey').classList.add('act');document.getElementById('survey-legend').style.display='block';}
+    rebuildSurveyMesh();
+    if(!machineOn)toggleMachine();
+    if(!autoSteer)toggleAutoSteer();
+    document.getElementById('scout-stats').innerHTML=
+      `🌿 Scout mapping in progress…<br>📡 Coverage: <b id="scout-live-cov" style="color:#66bb6a">0%</b> · <span id="scout-live-pts">0</span> pts`;
+    // Poll until complete or auto-steer stops
+    const scoutPoll=setInterval(()=>{
+      const cov=Math.round(surveyPointCount/(N*N)*100);
+      const lc=document.getElementById('scout-live-cov');const lp=document.getElementById('scout-live-pts');
+      if(lc)lc.textContent=cov+'%';if(lp)lp.textContent=surveyPointCount.toLocaleString();
+      if(!autoSteer||cov>=95){
+        clearInterval(scoutPoll);scoutMode=false;
+        let minH=Infinity,maxH=-Infinity,sumH=0,cnt=0;
+        for(let iz=0;iz<N*N;iz++){if(surveyGrid[iz]){minH=Math.min(minH,ground[iz]);maxH=Math.max(maxH,ground[iz]);sumH+=ground[iz];cnt++;}}
+        const meanH=cnt>0?sumH/cnt:0;
+        document.getElementById('scout-stats').innerHTML=
+          `✅ Scout complete! Coverage: <b style="color:#66bb6a">${cov}%</b><br>`+
+          `📐 ${surveyPointCount.toLocaleString()} pts · Range: ${(maxH-minH).toFixed(2)}m<br>`+
+          `📊 Mean: ${meanH.toFixed(2)}m RL · Ready to design`;
+        document.getElementById('st-hint').textContent='✅ Scout DEM complete — '+cov+'% coverage. Design a grade and start grading!';
+      }
+    },1500);
+    return;
   }
   // Finish up: rebuild and auto-balance
   rebuildDesMesh();buildTolMesh();buildDaylightMesh();buildStakes();
