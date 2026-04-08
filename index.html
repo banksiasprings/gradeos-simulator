@@ -369,6 +369,7 @@ body{background:#0a1520;color:#dce8f5;font-family:'Segoe UI',Arial,sans-serif;ov
           <tr><td>Remaining Fill</td><td class="vf" id="vc-fill">0.0 m³</td></tr>
           <tr><td>Net (Cut−Fill)</td><td class="vn" id="vc-net">0.0 m³</td></tr>
           <tr><td>Design Area</td><td id="vc-area">0 m²</td></tr>
+          <tr><td>Avg Haul Dist</td><td id="vc-haul" style="color:#ffd700;font-family:monospace;font-weight:700">—</td></tr>
           <tr><td style="color:#42a5f5">Cut This Session</td><td id="vc-session-cut" style="color:#42a5f5;font-family:monospace;font-weight:700">0.0 m³</td></tr>
           <tr><td>Est. Cost @$</td><td id="vc-cost">$0</td></tr>
         </table>
@@ -1881,15 +1882,41 @@ function clearAsBuilt(){
 // ═══════════════════════════════════════════════════════════════════
 // VOLUME CALCULATOR
 // ═══════════════════════════════════════════════════════════════════
+// Haul route arrow (cut centroid → fill centroid)
+let haulArrow=null;
+function updateHaulArrow(cutCx,cutCz,fillCx,fillCz,haulDist){
+  if(haulArrow){scene.remove(haulArrow);haulArrow.geometry.dispose();haulArrow=null;}
+  if(haulDist<2||isNaN(cutCx)||isNaN(fillCx))return;
+  const pts=[
+    new THREE.Vector3(cutCx,3,cutCz),
+    new THREE.Vector3(fillCx,3,fillCz)
+  ];
+  const geo=new THREE.BufferGeometry().setFromPoints(pts);
+  const mat=new THREE.LineBasicMaterial({color:0xffd700,linewidth:2});
+  haulArrow=new THREE.Line(geo,mat);
+  scene.add(haulArrow);
+}
+
 function calcVol(){
   let cut=0,fill=0,area=0,inTol=0,total=0;const ca=CS*CS;
+  let cutCx=0,cutCz=0,cutW=0,fillCx=0,fillCz=0,fillW=0;
   const TOL=0.025; // 25mm tolerance
   for(let gz=0;gz<GR;gz++) for(let gx=0;gx<GR;gx++){
     const i=gi(gx,gz);if(!hasD[i])continue;
     const d=(design[i]+vOffset)-ground[i];area+=ca;total++;
-    if(d>0)cut+=d*ca;else fill+=Math.abs(d)*ca;
+    const wx=(gx-GR/2)*CS,wz=(gz-GR/2)*CS;
+    if(d>0){cut+=d*ca;cutCx+=wx*d;cutCz+=wz*d;cutW+=d;}
+    else{fill+=Math.abs(d)*ca;fillCx+=wx*Math.abs(d);fillCz+=wz*Math.abs(d);fillW+=Math.abs(d);}
     if(Math.abs(d)<=TOL)inTol++;
   }
+  // Compute centroids and haul distance
+  if(cutW>0){cutCx/=cutW;cutCz/=cutW;}
+  if(fillW>0){fillCx/=fillW;fillCz/=fillW;}
+  const haulDist=Math.sqrt((fillCx-cutCx)**2+(fillCz-cutCz)**2);
+  updateHaulArrow(cutCx,cutCz,fillCx,fillCz,haulDist);
+  // Show haul distance in volume table
+  const hdEl=document.getElementById('vc-haul');
+  if(hdEl)hdEl.textContent=cut>0&&fill>0?haulDist.toFixed(0)+' m':'—';
   remainingCutVol=cut; // expose for productivity ETA
   const net=cut-fill;
   const rate=parseFloat(document.getElementById('vc-rate').value)||12;
