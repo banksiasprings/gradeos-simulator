@@ -145,7 +145,9 @@ body{background:#0a1520;color:#dce8f5;font-family:'Segoe UI',Arial,sans-serif;ov
 <body>
 
 <div id="topbar">
-  <div id="logo">GRADE<span>OS</span> <span style="font-size:10px;color:#4a7aa0;font-weight:400">v0.6</span></div>
+  <div id="logo">GRADE<span>OS</span> <span style="font-size:10px;color:#4a7aa0;font-weight:400">v0.6</span>
+    <span style="font-size:9px;color:#2a5a7a;margin-left:8px;font-weight:400;letter-spacing:0">RTK GPS Machine Control · 10× cheaper than Trimble</span>
+  </div>
 
   <div class="tg">
     <span class="tg-label">Machine</span>
@@ -422,6 +424,15 @@ body{background:#0a1520;color:#dce8f5;font-family:'Segoe UI',Arial,sans-serif;ov
       <span>Age <span id="rtk-age" style="color:#7aabcc">1.2s</span></span>
     </div>
 
+    <!-- Cost comparison -->
+    <div id="cost-compare" style="background:#040c18;padding:5px 10px;border-bottom:1px solid #152535;font-size:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <div style="color:#66bb6a;font-weight:700">GradeOS <span style="color:#4a7aa0;font-weight:400">from</span> $149<span style="color:#4a7aa0;font-weight:400">/mo</span></div>
+        <div style="color:#4a7aa0">vs</div>
+        <div style="color:#ff7043;font-weight:700">Trimble <span style="color:#4a7aa0;font-weight:400">~</span>$25K–55K</div>
+      </div>
+    </div>
+
     <!-- Quick Scenarios -->
     <div class="spanel">
       <div class="spanel-hdr" onclick="togglePanel('qs')"><h3>🚀 Quick Demo Scenarios</h3><span class="toggle">▾</span></div>
@@ -555,7 +566,7 @@ body{background:#0a1520;color:#dce8f5;font-family:'Segoe UI',Arial,sans-serif;ov
   <div>Machine: <span id="st-mach">OFF</span></div>
   <div>Cut: <span id="st-cut" style="color:#42a5f5">0.0m³</span></div>
   <div id="st-prod" style="display:none">Rate: <span id="st-rate" style="color:#66bb6a">—</span> &nbsp; ETA: <span id="st-eta" style="color:#ffb74d">—</span></div>
-  <div id="st-speed" style="display:none">Spd: <span id="st-spd-val" style="color:#7aabcc;font-family:monospace">0.0</span> km/h</div>
+  <div id="st-speed" style="display:none">Spd: <span id="st-spd-val" style="color:#7aabcc;font-family:monospace">0.0</span> km/h · <span id="st-hdg" style="color:#7aabcc;font-family:monospace">000</span>°</div>
   <div id="st-hint" style="margin-left:auto;color:#4a7aa0">Scroll=zoom · Right-drag=orbit · Dbl-click=read elevation</div>
 </div>
 
@@ -710,7 +721,7 @@ let lastProdUpdateT=0;   // timestamp of last productivity display update
 // THREE.JS SCENE
 // ═══════════════════════════════════════════════════════════════════
 const vp=document.getElementById('viewport');
-const renderer=new THREE.WebGLRenderer({antialias:true});
+const renderer=new THREE.WebGLRenderer({antialias:true,preserveDrawingBuffer:true});
 renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
 renderer.shadowMap.enabled=true;
 const threeCanvas=renderer.domElement;
@@ -1921,10 +1932,16 @@ function updateMachine(dt){
     if(movFwdNow){machinePos.x+=Math.sin(machinePos.hdg)*spd*dt;machinePos.z+=Math.cos(machinePos.hdg)*spd*dt;}
     if(movRevNow){machinePos.x-=Math.sin(machinePos.hdg)*spd*dt;machinePos.z-=Math.cos(machinePos.hdg)*spd*dt;}
   }
-  // Speed display (spd m/s → km/h); show only when machine is on
+  // Speed + heading display
   const spdKmh=(movFwdNow||movRevNow)?spd*3.6:0;
   const spdEl=document.getElementById('st-speed');
-  if(spdEl){spdEl.style.display='';document.getElementById('st-spd-val').textContent=spdKmh.toFixed(1);}
+  if(spdEl){
+    spdEl.style.display='';
+    document.getElementById('st-spd-val').textContent=spdKmh.toFixed(1);
+    const hdgDeg=Math.round((machinePos.hdg*180/Math.PI%360+360)%360);
+    const hdgEl=document.getElementById('st-hdg');
+    if(hdgEl)hdgEl.textContent=String(hdgDeg).padStart(3,'0');
+  }
   // Snapshot terrain history for time-lapse replay (every 3s while cutting)
   if(isCutting&&performance.now()-lastHistorySnap>3000){
     terrainHistory.push(ground.slice());
