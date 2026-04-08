@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GradeOS Simulator v0.3</title>
+<title>GradeOS Simulator v0.4</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -127,7 +127,7 @@ body{background:#0a1520;color:#dce8f5;font-family:'Segoe UI',Arial,sans-serif;ov
 <body>
 
 <div id="topbar">
-  <div id="logo">GRADE<span>OS</span> <span style="font-size:10px;color:#4a7aa0;font-weight:400">v0.3</span></div>
+  <div id="logo">GRADE<span>OS</span> <span style="font-size:10px;color:#4a7aa0;font-weight:400">v0.4</span></div>
 
   <div class="tg">
     <span class="tg-label">Machine</span>
@@ -1801,8 +1801,11 @@ function updateMachine(dt){
       const digX=machinePos.x+Math.sin(machinePos.hdg)*REACH;
       const digZ=machinePos.z+Math.cos(machinePos.hdg)*REACH;
       isCutting=false;
-      // Cut all cells within DIG_RAD of dig point
-      for(let gz2=0;gz2<N;gz2++) for(let gx2=0;gx2<N;gx2++){
+      // Cut cells within DIG_RAD — use bounded grid range for performance
+      const radCells=Math.ceil(DIG_RAD/CS)+1;
+      const {gx:dgx,gz:dgz}=w2g(digX,digZ);
+      for(let gz2=Math.max(0,dgz-radCells);gz2<=Math.min(N-1,dgz+radCells);gz2++)
+      for(let gx2=Math.max(0,dgx-radCells);gx2<=Math.min(N-1,dgx+radCells);gx2++){
         const i2=gi(gx2,gz2);if(!hasD[i2])continue;
         const wx2=(gx2-GR/2)*CS,wz2=(gz2-GR/2)*CS;
         const dx2=wx2-digX,dz2=wz2-digZ;
