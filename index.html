@@ -178,6 +178,8 @@ body{background:#0a1520;color:#dce8f5;font-family:'Segoe UI',Arial,sans-serif;ov
     <button class="tb" onclick="genTerrain('cut_hill')">Cut Hill</button>
     <button class="tb" onclick="genTerrain('irrig_bay')">Irrig Bay</button>
     <button class="tb" onclick="genTerrain('drone')">🚁 Drone DEM</button>
+    <button class="tb" onclick="genTerrain('road_cut')" title="Road construction: undulating terrain with cut/fill corridor">🛣 Road Cut</button>
+    <button class="tb" onclick="genTerrain('house_pad')" title="Residential development: hillside with gully — multiple house pads needed">🏠 House Pad</button>
   </div>
 
   <div class="tg">
@@ -262,6 +264,7 @@ body{background:#0a1520;color:#dce8f5;font-family:'Segoe UI',Arial,sans-serif;ov
       <button class="tb act" id="b-cam3d" onclick="setCamMode('3d')">3D</button>
       <button class="tb" id="b-camplan" onclick="setCamMode('plan')">Plan</button>
       <button class="tb" id="b-camfollow" onclick="setCamMode('follow')">Follow</button>
+      <button class="tb" id="b-camcab" onclick="setCamMode('cab')" title="Cab view — first-person from inside the operator cab">Cab</button>
       <button class="tb" id="b-xsec" onclick="toggleXsec()">X-Sec</button>
       <div style="margin-top:6px;border-top:1px solid #1a3a5c;padding-top:4px">
         <div style="font-size:8px;color:#4a7aa0;text-align:center;margin-bottom:3px;text-transform:uppercase;letter-spacing:1px">Focus Pt</div>
@@ -1162,6 +1165,30 @@ function genTerrain(type){
       // Add levee banks on the low sides (east and south edges)
       if(x>0.75) e+=Math.max(0,(x-0.75)/0.25)*0.6;
       if(z>0.78) e+=Math.max(0,(z-0.78)/0.22)*0.5;
+    }else if(type==='road_cut'){
+      // Road construction: undulating terrain with a diagonal road corridor (~20m wide)
+      // Classic cut-and-fill scenario — hill on one side, gully on the other
+      const roadCL=x*0.7-z*0.3; // signed distance from road centreline (normalised)
+      const inCorridor=Math.abs(roadCL)<0.13;
+      e = 1.0
+        + Math.sin(x*Math.PI*1.5)*2.0               // main hill across site
+        + Math.cos(z*Math.PI*1.2)*0.8               // cross-rolling
+        + Math.sin((x-z)*Math.PI*2.5)*0.4           // diagonal ridge
+        + (Math.random()-.5)*0.2;
+      if(inCorridor){
+        const formLevel=-0.3+roadCL*0.5;
+        e=e*0.25+formLevel*0.75; // partially stripped corridor — shows cut/fill needed
+      }
+    }else if(type==='house_pad'){
+      // Residential development: gentle hillside with natural gully drainage line
+      // Multiple level pads needed — cut on uphill side, fill on downhill side
+      e = 1.8
+        + x*1.4 + z*0.45                             // consistent hillside slope NW-SE
+        + Math.sin(x*Math.PI*3.5)*0.35               // minor terrain rolls
+        + Math.cos(z*Math.PI*2.8)*0.28               // cross-rolls
+        - Math.max(0,0.65-Math.abs(x+0.15)*3.8)*1.1  // natural gully — drainage line
+        + Math.sin(x*Math.PI*8+z*7)*0.06             // surface micro-texture
+        + (Math.random()-.5)*0.15;
     }else if(type==='drone'){
       // Drone DEM: realistic photogrammetry-derived terrain
       // High-resolution natural landform with micro-relief and drainage features
@@ -1195,7 +1222,8 @@ function genTerrain(type){
       `🚁 Drone DEM imported<br>📡 Coverage: <b style="color:#66bb6a">100%</b> · 2,847 images<br>📐 GSD: 2.1 cm/px · RMS: ±18mm`;
   }
   document.getElementById('st-terrain').textContent={flat:'Flat Paddock',hilly:'Hilly Farm',valley:'Valley',
-    dam_site:'Dam Site',embankment:'Embankment',cut_hill:'Cut Hill',irrig_bay:'Irrigation Bay',drone:'Drone DEM'}[type]||type;
+    dam_site:'Dam Site',embankment:'Embankment',cut_hill:'Cut Hill',irrig_bay:'Irrigation Bay',drone:'Drone DEM',
+    road_cut:'Road Construction',house_pad:'House Pad Development'}[type]||type;
 }
 genTerrain('hilly');
 
@@ -1985,6 +2013,17 @@ function updateMachine(dt){
     const behZ=machinePos.z-Math.cos(machinePos.hdg)*22;
     camera.position.set(behX,mel+14,behZ);
     camera.lookAt(machinePos.x+Math.sin(machinePos.hdg)*8,mel,machinePos.z+Math.cos(machinePos.hdg)*8);
+  }
+  // Cab cam — first-person operator view from inside the cab looking over the blade
+  if(camMode==='cab'){
+    // Camera ~1.5m behind, 3.8m above machine centre (cab height)
+    const cabX=machinePos.x-Math.sin(machinePos.hdg)*1.5;
+    const cabZ=machinePos.z-Math.cos(machinePos.hdg)*1.5;
+    camera.position.set(cabX,mel+3.8,cabZ);
+    // Look toward blade/horizon — 12m ahead at slight downward angle (blade level)
+    const lookX=machinePos.x+Math.sin(machinePos.hdg)*12;
+    const lookZ=machinePos.z+Math.cos(machinePos.hdg)*12;
+    camera.lookAt(lookX,mel+1.2,lookZ);
   }
 }
 
@@ -2845,13 +2884,19 @@ document.addEventListener('click',e=>{
 // ═══════════════════════════════════════════════════════════════════
 function setCamMode(mode){
   camMode=mode;
-  ['3d','plan','follow'].forEach(m=>{
-    document.getElementById('b-cam'+m).classList.toggle('act',m===mode);
+  ['3d','plan','follow','cab'].forEach(m=>{
+    const btn=document.getElementById('b-cam'+m);
+    if(btn)btn.classList.toggle('act',m===mode);
   });
   if(mode==='plan'){
     planCam.position.set(planPanX,300,planPanZ);
     planCam.lookAt(planPanX,0,planPanZ);
     planCam.updateProjectionMatrix();
+  }
+  // Cab mode: turn on machine if not on, show hint
+  if(mode==='cab'){
+    if(!machineOn)toggleMachine();
+    document.getElementById('st-hint').textContent='🚜 Cab view — WASD to drive · text ribbon shows live grade guidance';
   }
 }
 function toggleXsec(){
