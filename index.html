@@ -353,6 +353,7 @@ body{background:#0a1520;color:#dce8f5;font-family:'Segoe UI',Arial,sans-serif;ov
           <span>XSlope: <span id="bv-xslope" style="color:#7aabcc;font-family:monospace">—</span></span>
           <span>Elev: <span id="bv-elev" style="color:#7aabcc;font-family:monospace">—</span></span>
         </div>
+        <div id="bv-acc-note" style="display:none;margin-top:4px;text-align:center;font-size:10px;font-weight:700;padding:2px 6px;border-radius:3px;background:rgba(232,160,32,.15)"></div>
       </div>
     </div>
 
@@ -465,6 +466,9 @@ body{background:#0a1520;color:#dce8f5;font-family:'Segoe UI',Arial,sans-serif;ov
           <tr><td>Avg Haul Dist</td><td id="vc-haul" style="color:#ffd700;font-family:monospace;font-weight:700">—</td></tr>
           <tr><td style="color:#42a5f5">Cut This Session</td><td id="vc-session-cut" style="color:#42a5f5;font-family:monospace;font-weight:700">0.0 m³</td></tr>
           <tr><td>Est. Cost @$</td><td id="vc-cost">$0</td></tr>
+          <tr style="border-top:1px solid #152535"><td style="color:#ffb74d">Engine Hours</td><td id="vc-eng-hrs" style="color:#ffb74d;font-family:monospace;font-weight:700">0.0 h</td></tr>
+          <tr><td style="color:#ff8a65">Fuel Burn (est)</td><td id="vc-fuel" style="color:#ff8a65;font-family:monospace;font-weight:700">0 L</td></tr>
+          <tr><td style="color:#ff8a65">Fuel Cost (est)</td><td id="vc-fuel-cost" style="color:#ff8a65;font-family:monospace;font-weight:700">$0</td></tr>
         </table>
         <div class="row2" style="margin-top:5px">
           <div class="field"><label>Rate ($/m³)</label><input type="number" id="vc-rate" value="12" step="1" onchange="calcVol()"></div>
@@ -567,7 +571,29 @@ body{background:#0a1520;color:#dce8f5;font-family:'Segoe UI',Arial,sans-serif;ov
   <div>Cut: <span id="st-cut" style="color:#42a5f5">0.0m³</span></div>
   <div id="st-prod" style="display:none">Rate: <span id="st-rate" style="color:#66bb6a">—</span> &nbsp; ETA: <span id="st-eta" style="color:#ffb74d">—</span></div>
   <div id="st-speed" style="display:none">Spd: <span id="st-spd-val" style="color:#7aabcc;font-family:monospace">0.0</span> km/h · <span id="st-hdg" style="color:#7aabcc;font-family:monospace">000</span>°</div>
-  <div id="st-hint" style="margin-left:auto;color:#4a7aa0">Scroll=zoom · Right-drag=orbit · Dbl-click=read elevation</div>
+  <div id="st-hint" style="margin-left:auto;color:#4a7aa0">Scroll=zoom · Right-drag=orbit · Dbl-click=probe elevation &amp; grade</div>
+</div>
+
+<!-- Elevation Probe Popup -->
+<div id="probe-popup" style="display:none;position:fixed;z-index:9000;pointer-events:none;
+  background:#04111e;border:1px solid #1e4a6a;border-radius:6px;padding:0;
+  box-shadow:0 4px 24px rgba(0,0,0,0.7);font-size:11px;color:#c8dde8;min-width:178px;">
+  <div style="background:#071c2e;padding:4px 10px 3px;border-radius:5px 5px 0 0;
+    border-bottom:1px solid #1e4a6a;font-weight:700;font-size:10px;color:#7aabcc;
+    display:flex;justify-content:space-between;align-items:center">
+    <span id="probe-coords">📍 E+0.0m  N+0.0m</span>
+    <span style="color:#2a5a7a;font-size:9px">elevation probe</span>
+  </div>
+  <div style="padding:5px 10px 6px;display:grid;grid-template-columns:auto 1fr;gap:2px 8px;align-items:center">
+    <span style="color:#4a7aa0">Ground</span>
+    <span id="probe-ground" style="font-family:monospace;color:#c8dde8;font-weight:700">—</span>
+    <span id="probe-des-lbl" style="color:#4a7aa0">Design</span>
+    <span id="probe-design" style="font-family:monospace;color:#7aabcc">—</span>
+    <span id="probe-cf-lbl" style="color:#4a7aa0">Cut/Fill</span>
+    <span id="probe-cf" style="font-family:monospace">—</span>
+    <span style="color:#4a7aa0;border-top:1px solid #0d2030;padding-top:3px;margin-top:2px">Slope</span>
+    <span id="probe-slope" style="font-family:monospace;color:#b0c8d8;border-top:1px solid #0d2030;padding-top:3px;margin-top:2px">—</span>
+  </div>
 </div>
 
 <!-- Profile Editor Modal -->
@@ -682,6 +708,8 @@ const fleet2St={x:20,z:-SZ/2+2,hdg:0,dir:1};
 let showDaylight=false;let daylightMesh=null;
 let showPassCount=false;let passCountMesh=null;let passCountDirty=false;
 const passCount=new Uint8Array(N*N);
+let rtkFixType='RTK FIXED';let lastRtkType='RTK FIXED';
+let engineSeconds=0;  // total machine-on time in seconds
 let showStripPlan=false;let stripPlanGrp=null;
 const terrainHistory=[];const HIST_MAX=24;let lastHistorySnap=0;
 let isReplaying=false;let replayFrame=0;let replayTimer=null;
@@ -1244,7 +1272,7 @@ function genTerrain(type){
   // Snapshot for cut-depth colour visualisation
   originalGround.set(ground);
   // Reset cut session stats on new terrain
-  sessionCutVol=0;sessionFillVol=0;prodOnTime=0;remainingCutVol=0;
+  sessionCutVol=0;sessionFillVol=0;prodOnTime=0;remainingCutVol=0;engineSeconds=0;
   passCount.fill(0);terrainHistory.length=0;lastHistorySnap=0;
   const sc=document.getElementById('st-cut');if(sc)sc.textContent='0.0m³';
   const pd=document.getElementById('st-prod');if(pd)pd.style.display='none';
@@ -1281,6 +1309,7 @@ threeCanvas.addEventListener('click',e=>{
   if(tool==='measure'){handleMeasure(p);return;}
   if(FEATURE_TOOLS.includes(tool)){handleFeatureClick(p);return;}
 });
+let probeTimer=null;
 threeCanvas.addEventListener('dblclick',e=>{
   const p=getPick(e);if(!p)return;
   // Double-click finishes active feature line
@@ -1290,9 +1319,63 @@ threeCanvas.addEventListener('dblclick',e=>{
     return;
   }
   const el=gElev(p.x,p.z);
+  // Populate design tool inputs (existing behaviour)
   ['fp-elev','sl-elev','cr-elev','bf-elev','dam-elev'].forEach(id=>{
     const el2=document.getElementById(id);if(el2)el2.value=el.toFixed(3);
   });
+  // ── Elevation probe popup ─────────────────────────────────────────
+  const {gx,gz}=w2g(p.x,p.z);
+  // Slope calculation via central difference
+  const gxL=Math.max(0,gx-1),gxR=Math.min(GR,gx+1);
+  const gzL=Math.max(0,gz-1),gzR=Math.min(GR,gz+1);
+  const dX=(ground[gi(gxR,gz)]-ground[gi(gxL,gz)])/((gxR-gxL)*CS);
+  const dZ=(ground[gi(gx,gzR)]-ground[gi(gx,gzL)])/((gzR-gzL)*CS);
+  const slopePct=Math.sqrt(dX*dX+dZ*dZ)*100;
+  const slopeDirDeg=(((Math.atan2(dX,-dZ)*180/Math.PI)+360)%360);
+  const dirs=['N','NE','E','SE','S','SW','W','NW','N'];
+  const compass=dirs[Math.round(slopeDirDeg/45)%8];
+  // Design & cut/fill
+  const i=gi(gx,gz);
+  const hasDesign=hasD[i];
+  const desElev=hasDesign?design[i]:null;
+  // Coords: east = +x, north = -z (site convention)
+  const easting=p.x, northing=-p.z;
+  // Populate popup
+  document.getElementById('probe-coords').textContent=
+    `📍 E${easting>=0?'+':''}${easting.toFixed(1)}m  N${northing>=0?'+':''}${northing.toFixed(1)}m`;
+  document.getElementById('probe-ground').textContent=`${el.toFixed(3)}m RL`;
+  if(hasDesign){
+    const desWithOff=desElev+vOffset;
+    const cfM=el-desWithOff;
+    const cfMm=Math.round(cfM*1000);
+    const isCut=cfM>0;
+    document.getElementById('probe-design').textContent=`${desWithOff.toFixed(3)}m RL`;
+    document.getElementById('probe-cf').innerHTML=
+      `<span style="color:${isCut?'#ef5350':'#42a5f5'}">${isCut?'▼ Cut':'▲ Fill'} ${Math.abs(cfMm)}mm (${Math.abs(cfM).toFixed(3)}m)</span>`;
+    document.getElementById('probe-des-lbl').style.display='';
+    document.getElementById('probe-design').style.display='';
+    document.getElementById('probe-cf-lbl').style.display='';
+    document.getElementById('probe-cf').style.display='';
+  }else{
+    document.getElementById('probe-des-lbl').style.display='none';
+    document.getElementById('probe-design').style.display='none';
+    document.getElementById('probe-cf-lbl').style.display='none';
+    document.getElementById('probe-cf').style.display='none';
+  }
+  document.getElementById('probe-slope').textContent=
+    slopePct<0.05?'Flat (< 0.05%)':`${slopePct.toFixed(1)}%  ↗ ${compass} ${Math.round(slopeDirDeg)}°`;
+  // Position popup near cursor, keep within window
+  const pop=document.getElementById('probe-popup');
+  pop.style.display='block';
+  const pw=pop.offsetWidth||190,ph=pop.offsetHeight||110;
+  const margin=12;
+  let left=e.clientX+margin,top=e.clientY-ph-margin;
+  if(left+pw>window.innerWidth-4)left=e.clientX-pw-margin;
+  if(top<4)top=e.clientY+margin;
+  pop.style.left=left+'px';pop.style.top=top+'px';
+  // Auto-dismiss after 5s
+  if(probeTimer)clearTimeout(probeTimer);
+  probeTimer=setTimeout(()=>{pop.style.display='none';},5000);
 });
 
 function handleDesignClick(p){
@@ -1954,6 +2037,13 @@ function updateMachine(dt){
   }
   machinePos.x=Math.max(-SZ/2+3,Math.min(SZ/2-3,machinePos.x));
   machinePos.z=Math.max(-SZ/2+3,Math.min(SZ/2-3,machinePos.z));
+  // ── RTK accuracy jitter: simulate position noise when not in Fixed mode ──
+  // This demonstrates WHY RTK Fixed matters for grade control precision
+  if(rtkFixType!=='RTK FIXED'){
+    const jAmt=rtkFixType==='RTK FLOAT'?0.035:0.22; // Float=35mm noise, DGPS=220mm noise
+    machinePos.x+=(Math.random()-0.5)*jAmt;
+    machinePos.z+=(Math.random()-0.5)*jAmt;
+  }
   const mel=gElev(machinePos.x,machinePos.z);
   // Position whichever machine model is active
   const activeGrp=machineType==='dozer'?machGrp:excavGrp;
@@ -3519,6 +3609,18 @@ function updateBladePanel(lmm,cmm,rmm,grade,elev,xslope){
   if(grade!==null)document.getElementById('bv-grade').textContent=(grade>=0?'+':'')+grade.toFixed(1)+'%';
   if(xslope!==null&&xslope!==undefined)document.getElementById('bv-xslope').textContent=(xslope>=0?'+':'')+xslope.toFixed(1)+'%';
   if(elev!==null)document.getElementById('bv-elev').textContent=elev.toFixed(3)+'m';
+  // RTK accuracy warning in blade panel
+  const accNote=document.getElementById('bv-acc-note');
+  if(accNote){
+    if(rtkFixType==='RTK FIXED'){accNote.style.display='none';}
+    else if(rtkFixType==='RTK FLOAT'){
+      accNote.style.display='';accNote.textContent='⚠ FLOAT MODE — ±30mm accuracy — grade control degraded';
+      accNote.style.color='#e8a020';accNote.style.borderLeft='3px solid #e8a020';
+    }else{
+      accNote.style.display='';accNote.textContent='🔴 DGPS ONLY — ±400mm accuracy — HALT GRADING';
+      accNote.style.color='#ef5350';accNote.style.borderLeft='3px solid #ef5350';
+    }
+  }
   updateBladePanelDiagram(lmm,cmm,rmm);
 }
 
@@ -3783,11 +3885,22 @@ function loop(t){
     const cn=document.getElementById('tr-center');
     if(cn)cn.style.borderTop='';
   }
-  // Accumulate machine-on time for productivity tracking
-  if(machineOn)prodOnTime+=dt;
+  // Accumulate machine-on time for productivity + engine hours tracking
+  if(machineOn){prodOnTime+=dt;engineSeconds+=dt;}
   // Throttled productivity display (once per second)
   if(t-lastProdUpdateT>1000){
     updateProductivity();
+    // Update engine hours + fuel burn display
+    const engHrs=engineSeconds/3600;
+    const ehEl=document.getElementById('vc-eng-hrs');
+    if(ehEl)ehEl.textContent=engHrs<1?(engineSeconds/60).toFixed(1)+' min':engHrs.toFixed(2)+' h';
+    // Dozer fuel burn: ~25L/hr at full load (D8T equivalent), 18L/hr idle
+    const fuelL=(engineSeconds/3600)*(isCutting?25:18);
+    const fuelEl=document.getElementById('vc-fuel');
+    if(fuelEl)fuelEl.textContent=fuelL<1000?fuelL.toFixed(0)+' L':(fuelL/1000).toFixed(2)+' kL';
+    const fuelPrice=parseFloat(document.getElementById('vc-rate')?.value||1.85)*0; // avoid conflating with m³ rate
+    const fuelCostEl=document.getElementById('vc-fuel-cost');
+    if(fuelCostEl)fuelCostEl.textContent='$'+Math.round(fuelL*1.85).toLocaleString()+' @$1.85/L';
     lastProdUpdateT=t;
   }
   const activeCam=(camMode==='plan')?planCam:camera;
@@ -4106,6 +4219,17 @@ function updateRTKDisplay(){
   }
   const baseKm=(11.8+Math.random()*0.5).toFixed(1);
   const accStr=hacc<100?hacc+'mm':hacc.toFixed(0)+'mm';
+  // Track fix-type changes for jitter and warnings
+  rtkFixType=fixType;
+  if(rtkFixType!==lastRtkType){
+    lastRtkType=rtkFixType;
+    if(rtkFixType==='RTK FLOAT')
+      document.getElementById('st-hint').textContent='⚠ RTK FLOAT — positional accuracy degraded to ±30mm. Machine position jittering.';
+    else if(rtkFixType==='DGPS')
+      document.getElementById('st-hint').textContent='🔴 DGPS only — accuracy ±400mm. Grade control unreliable. Check NTRIP connection.';
+    else if(rtkFixType==='RTK FIXED')
+      document.getElementById('st-hint').textContent='✅ RTK FIXED re-acquired — 7–12mm accuracy. Grade control nominal.';
+  }
   const dot=document.getElementById('rtk-dot');
   dot.style.background=color;dot.className='rtk-dot'+(blink?' searching':'');
   document.getElementById('rtk-txt').textContent=`${fixType} · AUSCORS · ${accStr}`;
