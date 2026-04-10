@@ -803,22 +803,22 @@ body.field-mode #field-rtk{display:flex}
         <button class="drawer-btn" data-cam="cab" onclick="setCamMode('cab')">🚜 Cab View</button>
         <button class="drawer-btn" onclick="toggleGuidanceScreen()">📐 Guidance Screen</button>
         <div style="font-size:9px;color:#4a7aa0;text-transform:uppercase;letter-spacing:1px;padding:6px 4px 4px">Display</div>
-        <button class="drawer-btn act" onclick="toggleCutFill()">Cut/Fill</button>
-        <button class="drawer-btn act" onclick="toggleContours()">Contours</button>
-        <button class="drawer-btn" onclick="toggleSurvey()">Survey</button>
-        <button class="drawer-btn" onclick="toggleSplit()">Split</button>
-        <button class="drawer-btn act" onclick="toggleCutSim()">Cut Sim</button>
-        <button class="drawer-btn" onclick="toggleFlow()">Flow</button>
-        <button class="drawer-btn" onclick="toggleSlopeWarn()">Steep</button>
-        <button class="drawer-btn" onclick="toggleTol()">Tol</button>
-        <button class="drawer-btn" onclick="toggleStakes()">Stakes</button>
-        <button class="drawer-btn" onclick="toggleGradeArrows()">Grade</button>
-        <button class="drawer-btn" onclick="toggleContourLabels()">Labels</button>
-        <button class="drawer-btn" onclick="toggleDaylight()">Daylight</button>
-        <button class="drawer-btn" onclick="togglePassCount()">Passes</button>
-        <button class="drawer-btn" onclick="toggleStripPlan()">Strips</button>
-        <button class="drawer-btn" onclick="toggleReplay()">Replay</button>
-        <button class="drawer-btn" onclick="toggleGhost()">Ghost</button>
+        <button class="drawer-btn" data-mirror="b-cf" onclick="toggleCutFill();syncDrawerMirrors()">Cut/Fill</button>
+        <button class="drawer-btn" data-mirror="b-ctr" onclick="toggleContours();syncDrawerMirrors()">Contours</button>
+        <button class="drawer-btn" data-mirror="b-survey" onclick="toggleSurvey();syncDrawerMirrors()">Survey</button>
+        <button class="drawer-btn" data-mirror="b-split" onclick="toggleSplit();syncDrawerMirrors()">Split</button>
+        <button class="drawer-btn" data-mirror="b-cutsim" onclick="toggleCutSim();syncDrawerMirrors()">Cut Sim</button>
+        <button class="drawer-btn" data-mirror="b-flow" onclick="toggleFlow();syncDrawerMirrors()">Flow</button>
+        <button class="drawer-btn" data-mirror="b-slope-warn" onclick="toggleSlopeWarn();syncDrawerMirrors()">Steep</button>
+        <button class="drawer-btn" data-mirror="b-tol" onclick="toggleTol();syncDrawerMirrors()">Tol</button>
+        <button class="drawer-btn" data-mirror="b-stakes" onclick="toggleStakes();syncDrawerMirrors()">Stakes</button>
+        <button class="drawer-btn" data-mirror="b-garrows" onclick="toggleGradeArrows();syncDrawerMirrors()">Grade</button>
+        <button class="drawer-btn" data-mirror="b-ctrlab" onclick="toggleContourLabels();syncDrawerMirrors()">Labels</button>
+        <button class="drawer-btn" data-mirror="b-daylight" onclick="toggleDaylight();syncDrawerMirrors()">Daylight</button>
+        <button class="drawer-btn" data-mirror="b-passcount" onclick="togglePassCount();syncDrawerMirrors()">Passes</button>
+        <button class="drawer-btn" data-mirror="b-stripplan" onclick="toggleStripPlan();syncDrawerMirrors()">Strips</button>
+        <button class="drawer-btn" data-mirror="b-replay" onclick="toggleReplay();syncDrawerMirrors()">Replay</button>
+        <button class="drawer-btn" data-mirror="b-ghost" onclick="toggleGhost();syncDrawerMirrors()">Ghost</button>
       </div>
     </div>
 
@@ -6470,6 +6470,20 @@ function toggleDrawer(){
 function toggleDrawerSection(hdr){
   const section=hdr.closest('.drawer-section');
   section.classList.toggle('collapsed');
+  // Sync mirror buttons whenever a section opens (so state is always current)
+  if(!section.classList.contains('collapsed')) syncDrawerMirrors();
+}
+
+// ─────────────────────────────────────────────────────────────────
+// DRAWER TOGGLE BUTTON STATE SYNC
+// Reads each hidden toolbar button's active state and mirrors it to
+// the matching drawer button via data-mirror="hidden-btn-id"
+// ─────────────────────────────────────────────────────────────────
+function syncDrawerMirrors(){
+  document.querySelectorAll('[data-mirror]').forEach(btn=>{
+    const src=document.getElementById(btn.dataset.mirror);
+    if(src) btn.classList.toggle('act', src.classList.contains('act'));
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────
