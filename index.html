@@ -13,7 +13,7 @@ function openGPSPanel(){
 
 function openDesignPanel(tab){
   document.getElementById('design-panel').style.display='flex';
-  switchDesignTab(tab||'designs');
+  switchDesignTab(tab||'tools');
 }
 function closeDesignPanel(){
   document.getElementById('design-panel').style.display='none';
@@ -22,10 +22,25 @@ function switchDesignTab(tab){
   const map={designs:'designs-overlay',profile:'profile-overlay',align:'align-overlay'};
   const content=document.getElementById('dtab-content');
   if(!content)return;
+  // Hide all overlay tabs
   Object.entries(map).forEach(([t,id])=>{
     const el=document.getElementById(id);
     if(!el)return;
-    if(t===tab){
+    el.classList.remove('show');
+    el.style.display='none';
+  });
+  // Remove any injected tools panel
+  const ex=document.getElementById('dtab-tools-content');
+  if(ex)ex.remove();
+  if(tab==='tools'){
+    const div=document.createElement('div');
+    div.id='dtab-tools-content';
+    div.style.cssText='padding:16px;overflow-y:auto;flex:1';
+    div.innerHTML=`<div style='font-size:10px;color:#4a7aa0;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px'>Quick Design Tools</div><div style='display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:18px'><button class='dtools-btn' onclick='setTool("flat");closeDesignPanel()'>⬛ Flat Pad<span>Level area</span></button><button class='dtools-btn' onclick='setTool("slope");closeDesignPanel()'>◥ Single Slope<span>Grade in one direction</span></button><button class='dtools-btn' onclick='setTool("batter");closeDesignPanel()'>⛰ Batter<span>Slope from crest line</span></button><button class='dtools-btn' onclick='setTool("irrig");closeDesignPanel()'>💧 Irrig Bay<span>Auto-balance cut/fill</span></button><button class='dtools-btn' onclick='setTool("bestfit");closeDesignPanel()'>📐 Min Earthworks<span>Fit flattest grade</span></button><button class='dtools-btn' onclick='setTool("section");closeDesignPanel()'>✂ Cross-Section<span>Profile cut view</span></button></div><div style='font-size:10px;color:#4a7aa0;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px'>Tin Line Design</div><div style='display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:18px'><button class='dtools-btn' onclick='switchDesignTab("profile")'>📐 Profile Designer<span>Cross-section template</span></button><button class='dtools-btn' onclick='switchDesignTab("align")'>🛣 Alignment Designer<span>Spline + vertical grade</span></button></div><div style='font-size:10px;color:#4a7aa0;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px'>Quick Scenarios</div><div style='display:grid;grid-template-columns:1fr 1fr;gap:8px'><button class='dtools-btn dtools-grn' onclick='runScenario("irrig");closeDesignPanel()'>🌾 Irrigation Bay<span>Auto-graded flood bay</span></button><button class='dtools-btn dtools-grn' onclick='runScenario("housepad");closeDesignPanel()'>🏠 House Pad<span>3 lots on hillside</span></button><button class='dtools-btn dtools-grn' onclick='runScenario("road");closeDesignPanel()'>🛣 Road Cut<span>3% grade corridor</span></button><button class='dtools-btn dtools-grn' onclick='runScenario("dam");closeDesignPanel()'>🌊 Dam<span>Pond + batter slopes</span></button></div>`;
+    content.appendChild(div);
+  } else {
+    const el=document.getElementById(map[tab]);
+    if(el){
       el.style.position='relative';
       el.style.inset='auto';
       el.style.zIndex='auto';
@@ -36,11 +51,8 @@ function switchDesignTab(tab){
       el.style.width='100%';
       el.classList.add('show');
       if(el.parentElement!==content)content.appendChild(el);
-    } else {
-      el.classList.remove('show');
-      el.style.display='none';
     }
-  });
+  }
   document.querySelectorAll('.dtab').forEach(b=>b.classList.remove('active'));
   const tb=document.getElementById('dtab-'+tab);
   if(tb)tb.classList.add('active');
@@ -830,7 +842,7 @@ body.field-mode #field-rtk{display:flex}
 #pro-load-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:300;align-items:center;justify-content:center}
 #pro-load-modal.show{display:flex}
 #pro-load-box{background:#0d1f35;border:1px solid #e8a020;border-radius:6px;width:380px;max-width:96vw}
-.dtab{padding:10px 18px;background:none;border:none;border-bottom:3px solid transparent;color:#7aa0c0;font-size:13px;font-weight:600;cursor:pointer;flex-shrink:0}.dtab.active{color:#ffaa00;border-bottom-color:#ffaa00;background:rgba(255,170,0,.07)}.dtab:hover:not(.active){color:#e0e8f0;background:rgba(255,255,255,.05)}
+.dtab{padding:10px 18px;background:none;border:none;border-bottom:3px solid transparent;color:#7aa0c0;font-size:13px;font-weight:600;cursor:pointer;flex-shrink:0}.dtab.active{color:#ffaa00;border-bottom-color:#ffaa00;background:rgba(255,170,0,.07)}.dtab:hover:not(.active){color:#e0e8f0;background:rgba(255,255,255,.05)}.dtools-btn{background:#0d2040;border:1px solid #1e4a7a;color:#7aabcc;padding:14px 8px 10px;border-radius:5px;cursor:pointer;font-size:12px;font-weight:700;text-align:center;line-height:1.3;transition:all .15s;display:flex;flex-direction:column;align-items:center;gap:3px;width:100%}.dtools-btn span{font-size:9px;color:#4a7aa0;font-weight:400}.dtools-btn:hover{background:#e8a020;border-color:#e8a020;color:#0a1520}.dtools-btn:hover span{color:#0a1520}.dtools-grn:hover{background:#27ae60;border-color:#27ae60;color:#fff}.dtools-grn:hover span{color:#fff}
 </style>
 </head>
 <body>
@@ -859,10 +871,7 @@ body.field-mode #field-rtk{display:flex}
     <button class="tb act" id="b-nav" onclick="setTool('nav')" title="Back to navigate / orbit mode">🧭 Nav</button>
     <button class="tb" id="b-flat" onclick="setTool('flat')">⬛ Flat Pad</button>
     <button class="tb" id="b-slope" onclick="setTool('slope')">◥ Slope</button>
-    <button class="tb" id="b-crown" onclick="setTool('crown')">🛤 Crown</button>
-    <button class="tb" id="b-align" onclick="setTool('align')">〰 Align+Profile</button>
-    <button class="tb" id="b-dam" onclick="setTool('dam')">🌊 Dam</button>
-    <button class="tb" id="b-bestfit" onclick="setTool('bestfit')">📐 Best-Fit</button>
+    <button class="tb" id="b-bestfit" onclick="setTool('bestfit')">📐 Min Earthworks</button>
     <button class="tb" id="b-batter" onclick="setTool('batter')" title="Batter slope: click crest line, auto-generate slope at H:V ratio">⛰ Batter</button>
     <button class="tb" id="b-irrig" onclick="setTool('irrig')" title="Irrigation bay: auto-balance cut/fill on a drained grade">💧 Irrig Bay</button>
     <button class="tb" id="b-section" onclick="setTool('section')" title="Cross-section profile: click two points to see ground vs design elevation">✂ Profile</button>
@@ -973,14 +982,12 @@ body.field-mode #field-rtk{display:flex}
         <button class="drawer-btn act" id="d-b-nav" onclick="setTool('nav')">🧭 Navigate</button>
         <button class="drawer-btn" onclick="setTool('flat')">⬛ Flat Pad</button>
         <button class="drawer-btn" onclick="setTool('slope')">◥ Slope</button>
-        <button class="drawer-btn" onclick="setTool('crown')">🛤 Crown</button>
-        <button class="drawer-btn" onclick="setTool('align')">〰 Align+Profile</button>
-        <button class="drawer-btn" onclick="setTool('dam')">🌊 Dam</button>
-        <button class="drawer-btn" onclick="setTool('bestfit')">📐 Best-Fit</button>
         <button class="drawer-btn" onclick="setTool('batter')">⛰ Batter</button>
         <button class="drawer-btn" onclick="setTool('irrig')">💧 Irrig Bay</button>
-        <button class="drawer-btn" onclick="setTool('section')">✂ Profile</button>
-        <button class="drawer-btn" onclick="openDesignPanel('align')">🛣 Alignment Designer</button>
+        <button class="drawer-btn" onclick="setTool('bestfit')">📐 Min Earthworks</button>
+        <button class="drawer-btn" onclick="setTool('section')">✂ Cross-Section</button>
+        <button class="drawer-btn" onclick="openDesignPanel('tools');document.getElementById('side-drawer').classList.remove('open')">📐 Design Panel</button>
+        <button class="drawer-btn" onclick="openDesignPanel('align');document.getElementById('side-drawer').classList.remove('open')">🛣 Alignment Designer</button>
         <div style="font-size:9px;color:#4a7aa0;text-transform:uppercase;letter-spacing:1px;padding:8px 4px 4px">Quick Scenarios</div>
         <button class="drawer-btn grn" onclick="runScenario('irrig');document.getElementById('side-drawer').classList.remove('open')">🌾 Irrigation Bay</button>
         <button class="drawer-btn grn" onclick="runScenario('housepad');document.getElementById('side-drawer').classList.remove('open')">🏠 House Pad</button>
@@ -1161,7 +1168,7 @@ body.field-mode #field-rtk{display:flex}
       <button class="voff-mem-btn" onclick="setVOffset(0.15,this)">Lift Allowance — +150 mm</button>
     </div>
 
-    <!-- Camera buttons -->
+    <!-- V-Offset balance readout -->    <div id="voff-balance" style="display:none;position:absolute;bottom:104px;right:8px;background:#071525;border:1px solid #1e4a7a;border-radius:5px;padding:7px 10px;font-size:10px;min-width:148px;z-index:50;pointer-events:none">      <div style="display:flex;justify-content:space-between;margin-bottom:3px"><span style="color:#ef5350">✂ Cut</span><span id="vb-cut" style="color:#ef5350;font-weight:700">—</span></div>      <div style="display:flex;justify-content:space-between;margin-bottom:5px"><span style="color:#42a5f5">▲ Fill</span><span id="vb-fill" style="color:#42a5f5;font-weight:700">—</span></div>      <div id="vb-status" style="text-align:center;font-size:9px;color:#e8a020;padding-top:4px;border-top:1px solid #1e4a7a">— no design —</div>    </div>    <!-- Camera buttons -->
     <div id="cam-btns">
       <button class="tb act" id="b-cam3d" onclick="setCamMode('3d')">3D</button>
       <button class="tb" id="b-camplan" onclick="setCamMode('plan')">Plan</button>
@@ -4139,10 +4146,12 @@ function exportAsBuilt(){
 function adjVOffset(delta){
   vOffset=Math.max(-1.0,Math.min(0.5,vOffset+delta));
   updateVOffDisplay();
+  updateVoffBalance();
   if(designCount>0)rebuildDesMesh();else autoSave();
 }
 function setVOffset(val,btn){
   vOffset=val;updateVOffDisplay();
+  updateVoffBalance();
   if(designCount>0)rebuildDesMesh();else autoSave();
   document.getElementById('voff-memories').style.display='none';
   document.querySelectorAll('.voff-mem-btn').forEach(b=>b.classList.remove('act'));
@@ -4154,7 +4163,7 @@ function updateVOffDisplay(){
   el.textContent=(mm>=0?'+':'')+mm+' mm';
   el.style.color=mm===0?'#e8a020':mm>0?'#66bb6a':'#ff7043';
 }
-function toggleVoffMem(){
+function updateVoffBalance(){  const box=document.getElementById('voff-balance');  if(!box)return;  if(designCount===0){box.style.display='none';return;}  box.style.display='block';  let cut=0,fill=0;const ca=CS*CS;  for(let i=0;i<N*N;i++){    if(!hasD[i])continue;    const d=(design[i]+vOffset)-ground[i];    if(d>0)cut+=d*ca;else fill+=Math.abs(d)*ca;  }  const net=cut-fill;  document.getElementById('vb-cut').textContent=cut.toFixed(1)+' m³';  document.getElementById('vb-fill').textContent=fill.toFixed(1)+' m³';  const st=document.getElementById('vb-status');  if(Math.abs(net)<0.5){st.textContent='✅ Balanced';st.style.color='#66bb6a';}  else if(net>0){st.textContent='⬆ Import '+net.toFixed(1)+' m³';st.style.color='#ff7043';}  else{st.textContent='⬇ Waste '+Math.abs(net).toFixed(1)+' m³';st.style.color='#42a5f5';}}function toggleVoffMem(){
   const m=document.getElementById('voff-memories');
   m.style.display=m.style.display==='none'?'block':'none';
 }
@@ -4182,6 +4191,7 @@ function autoBalanceVOffset(){
   const mm=Math.round(vOffset*1000);
   document.getElementById('st-hint').textContent=
     `⚖ Balanced: V-Offset ${mm>=0?'+':''}${mm}mm — cut ≈ fill (minimises net haul)`;
+  updateVoffBalance();
 }
 document.addEventListener('click',e=>{
   if(!e.target.closest('#voff-box')&&!e.target.closest('#voff-memories'))
@@ -5003,7 +5013,7 @@ const TOOL_HTML={
   dam:`<div class="field"><label>Wall Height (m)</label><input type="number" id="dam-h" value="3" step="0.25" min="0.5" max="15"></div>
        <div class="field"><label>Batter Ratio (H:1V)</label><input type="number" id="dam-b" value="3" step="0.5" min="1" max="8"></div>
        <p style="font-size:10px;color:#4a7aa0;margin-top:3px">Click two corners (dam footprint). Generates wall, crest and battered sides.</p>`,
-  bestfit:`<p style="font-size:11px;color:#7aabcc;line-height:1.7;margin-bottom:3px"><strong style="color:#e8a020">Best-Fit Grade</strong> — like Ditch Assist Slope-IQ<br>Select an area: system finds the optimal single-slope grade minimising cut/fill imbalance.<br>Calculated grade % shown in status bar.</p>`,
+  bestfit:`<p style="font-size:11px;color:#7aabcc;line-height:1.7;margin-bottom:3px"><strong style="color:#e8a020">Min Earthworks Grade</strong><br>Select an area: finds the flattest possible single-slope grade that minimises total cut + fill volume. Resulting grade % shown in status bar.</p>`,
   batter:`<div class="row2">
     <div class="field"><label>Batter H:V (e.g. 2 = 2:1)</label><input type="number" id="bat-ratio" value="2" step="0.5" min="0.5" max="10"></div>
     <div class="field"><label>Crest Width (m)</label><input type="number" id="bat-cw" value="0" step="0.5" min="0" max="20"></div>
@@ -5057,7 +5067,7 @@ function setTool(name){
   const btn=document.getElementById('b-'+name);if(btn)btn.classList.add('act');
   document.getElementById('tool-title').textContent={
     nav:'Navigate',flat:'Flat Pad',slope:'Single Slope',crown:'Crown / Road',
-    align:'Alignment + Profile',dam:'Dam Designer',bestfit:'Best-Fit Grade',
+    align:'Alignment + Profile',dam:'Dam Designer',bestfit:'Min Earthworks Grade',
     batter:'Batter / Slope Designer',
     irrig:'Irrigation Bay — Auto-Balance',
     section:'Cross-Section Profile',
@@ -5100,7 +5110,7 @@ function setTool(name){
     crown:'Click two corners for crown/road area',
     align:'Click terrain to place alignment points',
     dam:'Click two corners for dam wall footprint',
-    bestfit:'Click two corners to auto-calculate best-fit grade',
+    bestfit:'Click two corners — finds the flattest grade that minimises total cut + fill volume',
     batter:'Click crest point, then click slope-fall direction to generate batter design',
     irrig:'Click two corners of irrigation bay — system auto-balances cut/fill at the drain grade',
     section:'Click start point, then end point — draws 2D elevation profile with ground vs design',
@@ -9442,7 +9452,8 @@ function alignBuildDesign(){
 <!-- TABBED DESIGN PANEL -->
 <div id="design-panel" style="display:none;position:fixed;inset:0;background:#060f1e;z-index:440;flex-direction:column">
   <div style="display:flex;background:#0d2040;border-bottom:2px solid #1e4a7a;flex-shrink:0;align-items:stretch">
-    <button class="dtab active" id="dtab-designs" onclick="switchDesignTab('designs')">📋 Designs</button>
+    <button class="dtab active" id="dtab-tools" onclick="switchDesignTab('tools')">🔧 Tools</button>
+    <button class="dtab" id="dtab-designs" onclick="switchDesignTab('designs')">📋 Designs</button>
     <button class="dtab" id="dtab-profile" onclick="switchDesignTab('profile')">📐 Profile</button>
     <button class="dtab" id="dtab-align" onclick="switchDesignTab('align')">🛣 Align</button>
     <button onclick="closeDesignPanel()" style="margin-left:auto;padding:10px 18px;background:none;border:none;color:#aaa;font-size:20px;cursor:pointer;line-height:1">✕</button>
