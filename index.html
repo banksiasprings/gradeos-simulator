@@ -64,7 +64,7 @@ body{background:#0a1520;color:#dce8f5;font-family:'Segoe UI',Arial,sans-serif;ov
 #voff-val{font-size:13px;font-weight:700;font-family:monospace;color:#e8a020;min-width:70px;text-align:center}
 #voff-label{font-size:9px;color:#4a7aa0;text-transform:uppercase;letter-spacing:1px}
 #cam-btns{position:absolute;top:24px;right:6px;display:none;flex-direction:column;gap:3px;z-index:10}
-#cam-btns .tb{font-size:10px;padding:3px 6px}
+#cam-btns .tb{font-size:10px;padding:3px 6px}#zoom-ctrl{position:absolute;bottom:68px;right:6px;display:flex;flex-direction:column;gap:3px;z-index:10}.zoom-btn{width:32px;height:32px;background:rgba(13,32,64,0.9);border:1px solid #1e4a7a;color:#7aabcc;border-radius:3px;cursor:pointer;font-size:18px;font-weight:700;display:flex;align-items:center;justify-content:center;transition:all .15s;line-height:1}.zoom-btn:hover{background:#e8a020;color:#0a1520;border-color:#e8a020}
 #xsec-box{position:absolute;bottom:60px;left:6px;background:rgba(2,8,16,.92);border:1px solid #1a3a5c;border-radius:4px;overflow:hidden;z-index:8;display:none}
 #xsec-box canvas{display:block}
 #xsec-title{font-size:9px;color:#4a7aa0;text-align:center;padding:2px 0;background:#040c18;text-transform:uppercase;letter-spacing:1px}
@@ -912,6 +912,10 @@ body.field-mode #field-rtk{display:flex}
   <div id="viewport">
     <!-- LED light bar -->
     <canvas id="ledbar"></canvas>
+    <div id="zoom-ctrl">
+      <button class="zoom-btn" onclick="doZoom(1)" title="Zoom in">+</button>
+      <button class="zoom-btn" onclick="doZoom(-1)" title="Zoom out">&#8722;</button>
+    </div>
 
     <!-- Vertical offset box -->
     <div id="voff-box">
@@ -6479,6 +6483,21 @@ function toggleDrawerSection(hdr){
 // Reads each hidden toolbar button's active state and mirrors it to
 // the matching drawer button via data-mirror="hidden-btn-id"
 // ─────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────
+// ZOOM CONTROLS
+// ─────────────────────────────────────────────────────────────────
+function doZoom(dir){
+  if(camMode==='plan'){
+    planSize=Math.max(20,Math.min(300,planSize-dir*planSize*0.18));
+    const aspect=renderer.domElement.width/renderer.domElement.height||1;
+    planCam.left=-planSize*aspect;planCam.right=planSize*aspect;
+    planCam.top=planSize;planCam.bottom=-planSize;
+    planCam.updateProjectionMatrix();
+  }else{
+    orb.r=Math.max(8,Math.min(350,orb.r-dir*orb.r*0.18));
+    updateCam();
+  }
+}
 function syncDrawerMirrors(){
   document.querySelectorAll('[data-mirror]').forEach(btn=>{
     const src=document.getElementById(btn.dataset.mirror);
