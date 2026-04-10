@@ -631,6 +631,40 @@ body.field-mode #field-rtk{display:flex}
   border-color: #c0392b;
   color: #fff;
 }
+/* ── GPS Diagnostics Overlay ──────────────────────────────────────── */
+#gps-diag-overlay{display:none;position:fixed;inset:0;background:#0a1928;z-index:250;flex-direction:column}
+#gps-diag-overlay.show{display:flex}
+#gps-diag-hdr{background:#132843;border-bottom:2px solid #e8a020;padding:8px 14px;display:flex;align-items:center;gap:10px;flex-shrink:0}
+#gps-diag-hdr h2{font-size:13px;font-weight:700;color:#e8a020;text-transform:uppercase;letter-spacing:2px;flex:1;margin:0}
+#gps-diag-close{background:#0d2040;border:1px solid #1e4a7a;color:#7aabcc;padding:4px 12px;border-radius:3px;cursor:pointer;font-size:12px;font-weight:600}
+#gps-diag-close:hover{background:#c0392b;border-color:#c0392b;color:#fff}
+#gps-diag-body{flex:1;overflow-y:auto;padding:10px;display:grid;grid-template-columns:1fr 1fr;gap:10px;align-content:start}
+.gps-card{background:#071525;border:1px solid #1e4a7a;border-radius:5px;padding:10px}
+.gps-card-title{font-size:9px;color:#4a7aa0;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px;font-weight:700}
+#gps-fix-banner{padding:14px 10px;border-radius:4px;text-align:center;font-size:24px;font-weight:900;font-family:'Courier New',monospace;letter-spacing:2px;margin-bottom:10px;transition:background .5s}
+.gps-acc-row{display:flex;gap:8px;justify-content:space-around}
+.gps-acc-cell{text-align:center;flex:1}
+.gps-acc-val{font-size:30px;font-weight:900;font-family:'Courier New',monospace;line-height:1}
+.gps-acc-lbl{font-size:9px;color:#4a7aa0;text-transform:uppercase;letter-spacing:1px;margin-top:2px}
+#gps-sky-canvas{display:block;margin:0 auto}
+#gps-sat-table-wrap{grid-column:1/-1;overflow-x:auto;max-height:220px;overflow-y:auto}
+#gps-sat-table{width:100%;border-collapse:collapse;font-size:11px;font-family:monospace}
+#gps-sat-table th{background:#0f2540;color:#e8a020;font-size:9px;text-transform:uppercase;letter-spacing:1px;padding:5px 7px;text-align:left;position:sticky;top:0;z-index:1}
+#gps-sat-table td{padding:3px 7px;border-bottom:1px solid #0d2040;color:#dce8f5}
+#gps-sat-table tr:hover td{background:#0d2040}
+.ntrip-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #0d2040;font-size:11px}
+.ntrip-row:last-child{border-bottom:none}
+.ntrip-label{color:#4a7aa0;font-size:10px}
+.ntrip-val{font-family:monospace;font-weight:700;color:#dce8f5}
+.sig-bars{display:flex;gap:2px;align-items:flex-end;height:14px}
+.sig-bar{width:5px;background:#1a3a5c;border-radius:1px;transition:background .3s}
+.sig-bar.on{background:#27ae60}
+#gps-nmea-stream{background:#020810;border:1px solid #1a3a5c;border-radius:3px;padding:6px 8px;height:130px;overflow-y:auto;font-family:'Courier New',monospace;font-size:10px;color:#4da6ff;display:none;margin-top:6px;word-break:break-all}
+#gps-nmea-stream.show{display:block}
+#gps-nmea-toggle{background:#0d2040;border:1px solid #1e4a7a;color:#7aabcc;padding:3px 10px;border-radius:3px;cursor:pointer;font-size:10px}
+#gps-nmea-toggle:hover{background:#1e4a7a}
+#gps-sat-tooltip{position:fixed;display:none;background:#071525;border:1px solid #e8a020;border-radius:3px;padding:4px 8px;font-size:11px;pointer-events:none;color:#e8a020;z-index:260;white-space:nowrap}
+@media(max-width:680px){#gps-diag-body{grid-template-columns:1fr}#gps-sat-table-wrap{grid-column:1}}
 </style>
 </head>
 <body>
@@ -641,6 +675,7 @@ body.field-mode #field-rtk{display:flex}
   <div id="topbar-spacer"></div>
   <div class="topbar-right-btns">
     <div id="gps-status-dot" style="width:10px;height:10px;border-radius:50%;background:#27ae60;flex-shrink:0;margin-right:6px"></div>
+    <button class="fullscreen-btn" onclick="openGPSDiag()" title="GPS Diagnostics">📡 GPS</button>
     <button class="fullscreen-btn" onclick="document.documentElement.requestFullscreen()" title="Fullscreen">⛶</button>
   </div>
 
@@ -6714,6 +6749,236 @@ function showUpdateToast(message, duration=0){
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// GPS DIAGNOSTICS SIMULATOR
+// ═══════════════════════════════════════════════════════════════════
+const gpsDiag = {
+  open: false,
+  intervalId: null,
+  nmeaVisible: false,
+
+  fixCycle: ['rtk_fixed','rtk_fixed','rtk_fixed','rtk_fixed','rtk_float','rtk_fixed','rtk_fixed','rtk_fixed','dgps','rtk_fixed'],
+  fixCycleIdx: 0,
+  fixCycleTimer: 0,
+
+  currentFix: 'rtk_fixed',
+  hAcc: 9, vAcc: 14, acc3d: 17,
+  hdop: 0.7, pdop: 1.1,
+  corrAge: 0.3,
+  latency: 42,
+  sats: [],
+  nmeaLog: [],
+
+  FIX_COLORS: {
+    no_fix:    {bg:'#cc3333', label:'NO FIX',    text:'#fff'},
+    '3d_fix':  {bg:'#cc8800', label:'3D FIX',    text:'#fff'},
+    dgps:      {bg:'#ccaa00', label:'DGPS',       text:'#fff'},
+    rtk_float: {bg:'#dd7700', label:'RTK FLOAT',  text:'#fff'},
+    rtk_fixed: {bg:'#22aa44', label:'RTK FIXED',  text:'#fff'},
+  },
+
+  CONST_COLORS: {GPS:'#27ae60', GLONASS:'#e53935', Galileo:'#4da6ff', BeiDou:'#f9a825'},
+
+  initSatellites() {
+    this.sats = [];
+    const rnd = (a,b) => a + Math.random()*(b-a);
+    [[1,'GPS'],[5,'GPS'],[7,'GPS'],[10,'GPS'],[13,'GPS'],[15,'GPS'],[20,'GPS'],[24,'GPS'],[27,'GPS'],[29,'GPS']]
+      .forEach(([n,c])=>this.sats.push({prn:'G'+String(n).padStart(2,'0'),con:c,elev:rnd(15,80),az:rnd(0,360),snr:rnd(30,50),used:true}));
+    [[2,'GLONASS'],[6,'GLONASS'],[9,'GLONASS'],[11,'GLONASS']]
+      .forEach(([n,c])=>this.sats.push({prn:'R'+String(n).padStart(2,'0'),con:c,elev:rnd(10,65),az:rnd(0,360),snr:rnd(24,44),used:true}));
+    [[3,'Galileo'],[8,'Galileo'],[12,'Galileo']]
+      .forEach(([n,c])=>this.sats.push({prn:'E'+String(n).padStart(2,'0'),con:c,elev:rnd(20,55),az:rnd(0,360),snr:rnd(22,40),used:false}));
+    [[4,'BeiDou'],[14,'BeiDou']]
+      .forEach(([n,c])=>this.sats.push({prn:'C'+String(n).padStart(2,'0'),con:c,elev:rnd(25,50),az:rnd(0,360),snr:rnd(18,36),used:false}));
+  },
+
+  nmea_cs(s){let c=0;for(let i=0;i<s.length;i++)c^=s.charCodeAt(i);return c.toString(16).toUpperCase().padStart(2,'0')},
+
+  generateNMEA(){
+    const lat=-27.4698+(Math.random()-.5)*.001, lon=153.0251+(Math.random()-.5)*.001;
+    const latD=Math.abs(lat), lonD=Math.abs(lon);
+    const lats=(Math.floor(latD)*100+(latD%1)*60).toFixed(5).padStart(10,'0');
+    const lons=(Math.floor(lonD)*100+(lonD%1)*60).toFixed(5).padStart(11,'0');
+    const now=new Date();
+    const t=now.getUTCHours().toString().padStart(2,'0')+now.getUTCMinutes().toString().padStart(2,'0')+now.getUTCSeconds().toString().padStart(2,'0')+'.00';
+    const d=now.getUTCDate().toString().padStart(2,'0')+(now.getUTCMonth()+1).toString().padStart(2,'0')+now.getUTCFullYear().toString().slice(-2);
+    const fq=this.currentFix==='rtk_fixed'?'5':this.currentFix==='rtk_float'?'4':this.currentFix==='dgps'?'2':'1';
+    const nu=this.sats.filter(s=>s.used).length;
+    const elev=(100.5+(Math.random()-.5)*.02).toFixed(3);
+    const lines=[];
+    const gga=`GPGGA,${t},${lats},S,${lons},E,${fq},${nu},${this.hdop.toFixed(1)},${elev},M,0.000,M,,`;
+    lines.push('$'+gga+'*'+this.nmea_cs(gga));
+    const rmc=`GPRMC,${t},A,${lats},S,${lons},E,0.0,0.0,${d},,`;
+    lines.push('$'+rmc+'*'+this.nmea_cs(rmc));
+    const usedPRN=this.sats.filter(s=>s.used).map(s=>s.prn.slice(1)).join(',');
+    const gsa=`GPGSA,A,3,${usedPRN},${this.pdop.toFixed(1)},${this.hdop.toFixed(1)},1.4`;
+    lines.push('$'+gsa+'*'+this.nmea_cs(gsa));
+    return lines;
+  },
+
+  drawSkyPlot(){
+    const canvas=document.getElementById('gps-sky-canvas');
+    if(!canvas)return;
+    const ctx=canvas.getContext('2d');
+    const W=canvas.width,H=canvas.height,cx=W/2,cy=H/2,R=Math.min(W,H)/2-14;
+    ctx.clearRect(0,0,W,H);
+    // BG circle
+    ctx.fillStyle='#020810';
+    ctx.beginPath();ctx.arc(cx,cy,R+8,0,Math.PI*2);ctx.fill();
+    // Rings
+    [30,60,90].forEach(elev=>{
+      const r=(90-elev)/90*R;
+      ctx.strokeStyle='#1e4a7a';ctx.lineWidth=1;ctx.setLineDash([]);
+      ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.stroke();
+      if(elev<90){ctx.fillStyle='#2a4a6a';ctx.font='9px monospace';ctx.textAlign='left';ctx.fillText(elev+'°',cx+r+2,cy-2);}
+    });
+    // Crosshairs
+    ctx.strokeStyle='#1e4a7a';ctx.lineWidth=0.5;ctx.setLineDash([2,4]);
+    ctx.beginPath();ctx.moveTo(cx,cy-R);ctx.lineTo(cx,cy+R);ctx.moveTo(cx-R,cy);ctx.lineTo(cx+R,cy);ctx.stroke();
+    ctx.setLineDash([]);
+    // N/E/S/W
+    ctx.fillStyle='#4a7aa0';ctx.font='bold 10px monospace';
+    ctx.textAlign='center';ctx.fillText('N',cx,cy-R-4);ctx.fillText('S',cx,cy+R+12);
+    ctx.textAlign='right';ctx.fillText('W',cx-R-3,cy+4);
+    ctx.textAlign='left';ctx.fillText('E',cx+R+3,cy+4);
+    // Satellites
+    this.sats.forEach(s=>{
+      const rp=(90-s.elev)/90*R;
+      const az=s.az*Math.PI/180;
+      const sx=cx+rp*Math.sin(az), sy=cy-rp*Math.cos(az);
+      const col=this.CONST_COLORS[s.con]||'#7aabcc';
+      const dr=4+(s.snr-18)/32*8;
+      ctx.globalAlpha=s.used?.9:.45;
+      ctx.beginPath();ctx.arc(sx,sy,dr,0,Math.PI*2);
+      ctx.fillStyle=s.used?col:'#2a4a5a';ctx.fill();
+      if(s.used){ctx.strokeStyle=col;ctx.lineWidth=1;ctx.stroke();}
+      ctx.globalAlpha=1;
+      ctx.fillStyle=s.used?'#fff':'#4a6a7a';
+      ctx.font='7px monospace';ctx.textAlign='center';
+      ctx.fillText(s.prn,sx,sy+3);
+      ctx.textAlign='left';
+    });
+  },
+
+  update(){
+    if(!this.open)return;
+    // Advance fix cycle every ~12 ticks
+    this.fixCycleTimer++;
+    if(this.fixCycleTimer>12){
+      this.fixCycleTimer=0;
+      this.fixCycleIdx=(this.fixCycleIdx+1)%this.fixCycle.length;
+      this.currentFix=this.fixCycle[this.fixCycleIdx];
+    }
+    // Accuracy random walk toward fix-type target
+    const tH=this.currentFix==='rtk_fixed'?9:this.currentFix==='rtk_float'?45:this.currentFix==='dgps'?300:2000;
+    this.hAcc+=(tH-this.hAcc)*.3+(Math.random()-.5)*2;
+    this.hAcc=Math.max(4,this.hAcc);
+    this.vAcc=this.hAcc*1.55+(Math.random()-.5)*2;
+    this.acc3d=Math.sqrt(this.hAcc**2+this.vAcc**2);
+    this.hdop+=((Math.random()-.5)*.05);this.hdop=Math.min(1.8,Math.max(.5,this.hdop));
+    this.pdop=this.hdop*1.4+(Math.random()*.1);
+    // Corrections age tick 0→2 then reset (2 Hz delivery)
+    this.corrAge+=.5;if(this.corrAge>2.0)this.corrAge=.1+(Math.random()*.05);
+    // Latency drift
+    this.latency+=Math.round((Math.random()-.5)*10);this.latency=Math.min(160,Math.max(18,this.latency));
+    // Satellite SNR drift + slow azimuth walk
+    this.sats.forEach(s=>{
+      s.snr+=(Math.random()-.5)*2;s.snr=Math.min(52,Math.max(16,s.snr));
+      s.az=(s.az+(Math.random()-.5)*.4+360)%360;
+      s.used=s.elev>12&&s.snr>21;
+    });
+    // NMEA
+    const lines=this.generateNMEA();
+    this.nmeaLog.push(...lines);
+    if(this.nmeaLog.length>20)this.nmeaLog=this.nmeaLog.slice(-20);
+    this.render();
+  },
+
+  render(){
+    const fix=this.FIX_COLORS[this.currentFix]||this.FIX_COLORS.rtk_fixed;
+    const $=id=>document.getElementById(id);
+    // Fix banner
+    const banner=$('gps-fix-banner');
+    if(banner){banner.style.background=fix.bg;banner.style.color=fix.text;banner.textContent=fix.label;}
+    // Accuracy
+    const setAcc=(id,v)=>{const el=$(id);if(!el)return;el.textContent=Math.round(v);el.style.color=v>100?'#e53935':v>30?'#e8a020':'#27ae60';};
+    setAcc('gps-hacc',this.hAcc);setAcc('gps-vacc',this.vAcc);setAcc('gps-3dacc',this.acc3d);
+    // GNSS details
+    const used=this.sats.filter(s=>s.used);
+    if($('gps-sats-used'))$('gps-sats-used').textContent=used.length;
+    if($('gps-sats-vis'))$('gps-sats-vis').textContent=this.sats.length;
+    if($('gps-hdop'))$('gps-hdop').textContent=this.hdop.toFixed(2);
+    if($('gps-pdop'))$('gps-pdop').textContent=this.pdop.toFixed(2);
+    // Satellite table — sorted: used first, then SNR desc
+    const tbody=$('gps-sat-tbody');
+    if(tbody){
+      const sorted=[...this.sats].sort((a,b)=>b.used-a.used||b.snr-a.snr);
+      tbody.innerHTML=sorted.map(s=>`<tr>
+        <td style="color:${this.CONST_COLORS[s.con]||'#dce8f5'}">${s.prn}</td>
+        <td style="color:${this.CONST_COLORS[s.con]||'#dce8f5'}">${s.con}</td>
+        <td>${Math.round(s.elev)}°</td>
+        <td>${Math.round(s.az)}°</td>
+        <td style="color:${s.snr>38?'#27ae60':s.snr>27?'#e8a020':'#e53935'}">${s.snr.toFixed(0)}</td>
+        <td style="color:${s.used?'#27ae60':'#2a4a5a'};font-weight:700">${s.used?'✓':'—'}</td>
+      </tr>`).join('');
+    }
+    // NTRIP status
+    const ntripEl=$('gps-ntrip-status');
+    if(ntripEl){
+      const connected=this.currentFix==='rtk_fixed'||this.currentFix==='rtk_float';
+      ntripEl.textContent=connected?'Connected':'Searching…';
+      ntripEl.style.color=connected?'#27ae60':'#e8a020';
+    }
+    // Corrections age
+    const ageEl=$('gps-corr-age');
+    if(ageEl){ageEl.textContent=this.corrAge.toFixed(1)+'s';ageEl.style.color=this.corrAge<5?'#27ae60':this.corrAge<15?'#e8a020':'#e53935';}
+    // Latency
+    const latEl=$('gps-latency');if(latEl)latEl.textContent=this.latency+'ms';
+    // Starlink bars
+    const barsEl=$('gps-sig-bars');
+    if(barsEl){
+      const numOn=this.currentFix==='rtk_fixed'?4:this.currentFix==='rtk_float'?3:2;
+      barsEl.querySelectorAll('.sig-bar').forEach((b,i)=>b.classList.toggle('on',i<numOn));
+    }
+    // Sky plot
+    this.drawSkyPlot();
+    // NMEA stream
+    const nmeaEl=$('gps-nmea-stream');
+    if(nmeaEl&&this.nmeaVisible){nmeaEl.innerHTML=this.nmeaLog.map(l=>`<div>${l}</div>`).join('');nmeaEl.scrollTop=nmeaEl.scrollHeight;}
+    // Timestamp
+    const timeEl=$('gps-diag-time');if(timeEl)timeEl.textContent=new Date().toLocaleTimeString();
+  },
+
+  start(){
+    this.open=true;
+    if(!this.sats.length)this.initSatellites();
+    this.render();
+    this.intervalId=setInterval(()=>this.update(),1000);
+  },
+
+  stop(){
+    this.open=false;
+    if(this.intervalId){clearInterval(this.intervalId);this.intervalId=null;}
+  }
+};
+
+function openGPSDiag(){
+  document.getElementById('gps-diag-overlay').classList.add('show');
+  gpsDiag.start();
+}
+function closeGPSDiag(){
+  document.getElementById('gps-diag-overlay').classList.remove('show');
+  gpsDiag.stop();
+}
+function toggleNMEAStream(){
+  gpsDiag.nmeaVisible=!gpsDiag.nmeaVisible;
+  const el=document.getElementById('gps-nmea-stream');
+  const btn=document.getElementById('gps-nmea-toggle');
+  if(el)el.classList.toggle('show',gpsDiag.nmeaVisible);
+  if(btn)btn.textContent=gpsDiag.nmeaVisible?'Hide':'Show';
+  if(gpsDiag.nmeaVisible)gpsDiag.render();
+}
+
 // Service Worker registration
 if('serviceWorker' in navigator){
   navigator.serviceWorker.register('./sw.js').then(r=>{
@@ -6729,6 +6994,114 @@ if('serviceWorker' in navigator){
   });
 }
 </script>
+
+<!-- GPS Diagnostics Overlay -->
+<div id="gps-diag-overlay">
+  <div id="gps-diag-hdr">
+    <span style="font-size:18px">📡</span>
+    <h2>GPS Diagnostics</h2>
+    <span style="font-size:10px;color:#4a7aa0;font-family:monospace" id="gps-diag-time">—</span>
+    <button id="gps-diag-close" onclick="closeGPSDiag()">✕ Close</button>
+  </div>
+  <div id="gps-diag-body">
+
+    <!-- Sky Plot -->
+    <div class="gps-card">
+      <div class="gps-card-title">Sky Plot — Azimuth / Elevation</div>
+      <canvas id="gps-sky-canvas" width="260" height="260"></canvas>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;font-size:10px;font-family:monospace">
+        <span style="color:#27ae60">● GPS</span>
+        <span style="color:#e53935">● GLONASS</span>
+        <span style="color:#4da6ff">● Galileo</span>
+        <span style="color:#f9a825">● BeiDou</span>
+        <span style="color:#3a5a6a">● Not used</span>
+      </div>
+    </div>
+
+    <!-- Fix Status + Accuracy -->
+    <div class="gps-card">
+      <div class="gps-card-title">Fix Status</div>
+      <div id="gps-fix-banner">RTK FIXED</div>
+      <div class="gps-card-title" style="margin-top:12px">Accuracy RMS</div>
+      <div class="gps-acc-row">
+        <div class="gps-acc-cell">
+          <div class="gps-acc-val" id="gps-hacc">—</div>
+          <div class="gps-acc-lbl">H mm</div>
+        </div>
+        <div class="gps-acc-cell">
+          <div class="gps-acc-val" id="gps-vacc">—</div>
+          <div class="gps-acc-lbl">V mm</div>
+        </div>
+        <div class="gps-acc-cell">
+          <div class="gps-acc-val" id="gps-3dacc">—</div>
+          <div class="gps-acc-lbl">3D mm</div>
+        </div>
+      </div>
+      <div style="margin-top:14px;padding-top:10px;border-top:1px solid #1e4a7a">
+        <div class="gps-card-title">GNSS Details</div>
+        <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:11px;font-family:monospace">
+          <span style="color:#4a7aa0">Sats Used</span><span id="gps-sats-used" style="color:#dce8f5;font-weight:700">—</span>
+          <span style="color:#4a7aa0">Sats Visible</span><span id="gps-sats-vis" style="color:#dce8f5;font-weight:700">—</span>
+          <span style="color:#4a7aa0">HDOP</span><span id="gps-hdop" style="color:#dce8f5;font-weight:700">—</span>
+          <span style="color:#4a7aa0">PDOP</span><span id="gps-pdop" style="color:#dce8f5;font-weight:700">—</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Satellite Table — full width -->
+    <div class="gps-card" id="gps-sat-table-wrap">
+      <div class="gps-card-title">Satellite Channels</div>
+      <table id="gps-sat-table">
+        <thead><tr>
+          <th>PRN</th><th>Constellation</th><th>Elev°</th><th>Az°</th><th>SNR dB</th><th>Used</th>
+        </tr></thead>
+        <tbody id="gps-sat-tbody"></tbody>
+      </table>
+    </div>
+
+    <!-- NTRIP / Starlink Panel -->
+    <div class="gps-card">
+      <div class="gps-card-title">Corrections / NTRIP / Starlink</div>
+      <div class="ntrip-row">
+        <span class="ntrip-label">NTRIP Status</span>
+        <span class="ntrip-val" id="gps-ntrip-status">—</span>
+      </div>
+      <div class="ntrip-row">
+        <span class="ntrip-label">Corrections Age</span>
+        <span class="ntrip-val" id="gps-corr-age">—</span>
+      </div>
+      <div class="ntrip-row">
+        <span class="ntrip-label">Latency</span>
+        <span class="ntrip-val" id="gps-latency">—</span>
+      </div>
+      <div class="ntrip-row">
+        <span class="ntrip-label">Starlink Signal</span>
+        <div class="sig-bars" id="gps-sig-bars">
+          <div class="sig-bar" style="height:4px"></div>
+          <div class="sig-bar" style="height:7px"></div>
+          <div class="sig-bar" style="height:10px"></div>
+          <div class="sig-bar" style="height:14px"></div>
+        </div>
+      </div>
+      <div class="ntrip-row">
+        <span class="ntrip-label">Mount Point</span>
+        <span class="ntrip-val" style="color:#4a7aa0;font-size:10px">AUSCORS-RTCM3</span>
+      </div>
+    </div>
+
+    <!-- NMEA Stream -->
+    <div class="gps-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <div class="gps-card-title" style="margin-bottom:0">NMEA Raw Stream</div>
+        <button id="gps-nmea-toggle" onclick="toggleNMEAStream()">Show</button>
+      </div>
+      <div style="font-size:10px;color:#2a4a6a;margin-bottom:4px">GGA · RMC · GSA · GSV sentences — last 20</div>
+      <div id="gps-nmea-stream"></div>
+    </div>
+
+  </div>
+  <div id="gps-sat-tooltip"></div>
+</div>
 
 <!-- Flat Pad Modal -->
 <div id="fpModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:500;align-items:center;justify-content:center" onclick="if(event.target===this)closeFPModal()">
