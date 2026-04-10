@@ -789,6 +789,7 @@ body.field-mode #field-rtk{display:flex}
     <button id="live-btn" class="fullscreen-btn" onclick="toggleLiveSensors()" title="Live Sensor Mode — real GPS + IMU drives simulation">📡 Live</button>
     <button class="fullscreen-btn" onclick="openGPSDiag()" title="GPS Diagnostics">📡 GPS</button>
     <button class="fullscreen-btn" onclick="openDesignsPanel()" title="Design Library — manage ACTIVE/REFERENCE/OFF surfaces">📋 Designs</button>
+    <button class="tb" id="b-align" onclick="openAlignOverlay()" title="Alignment Designer">🛣 Align</button>
     <button class="fullscreen-btn" onclick="document.documentElement.requestFullscreen()" title="Fullscreen">⛶</button>
   </div>
 
@@ -925,6 +926,7 @@ body.field-mode #field-rtk{display:flex}
         <button class="drawer-btn" onclick="setTool('batter')">⛰ Batter</button>
         <button class="drawer-btn" onclick="setTool('irrig')">💧 Irrig Bay</button>
         <button class="drawer-btn" onclick="setTool('section')">✂ Profile</button>
+        <button class="drawer-btn" onclick="openAlignOverlay()">🛣 Alignment Designer</button>
         <div style="font-size:9px;color:#4a7aa0;text-transform:uppercase;letter-spacing:1px;padding:8px 4px 4px">Quick Scenarios</div>
         <button class="drawer-btn grn" onclick="runScenario('irrig');document.getElementById('side-drawer').classList.remove('open')">🌾 Irrigation Bay</button>
         <button class="drawer-btn grn" onclick="runScenario('housepad');document.getElementById('side-drawer').classList.remove('open')">🏠 House Pad</button>
@@ -1645,6 +1647,13 @@ const hasD=new Uint8Array(N*N);
 const asBuilt=new Uint8Array(N*N);
 let designCount=0;
 let designLibrary=[];   // [{id,name,type,state,design,hasD,designCount,createdAt,refMeshes}]
+let alignmentLibrary=[];
+let activeAlignId=null;
+let alignNodes=[];
+let alignConstraints={maxGradePct:12,minRadiusM:20,maxFillM:4,maxCutM:5,kCrest:4,kSag:5};
+let alignHTension=0.5;
+let alignVSmooth=0.5;
+let alignDirty=false;
 
 let tool='nav',toolState={};
 let machineOn=true;
@@ -5183,12 +5192,13 @@ let _idb=null,_autoSaveTimer=null,_lastPosSave=0;
 
 function _openIDB(){
   return new Promise((res,rej)=>{
-    const r=indexedDB.open('gradeos',3);
+    const r=indexedDB.open('gradeos',4);
     r.onupgradeneeded=e=>{
       const db=e.target.result,old=e.oldVersion;
       if(old<1)db.createObjectStore('state');
       if(old<2)db.createObjectStore('designs');
       if(old<3)db.createObjectStore('profiles');
+      if(old<4)db.createObjectStore('alignments',{keyPath:'id'});
     };
     r.onsuccess=e=>res(e.target.result);
     r.onerror=e=>rej(e.target.error);
@@ -5265,6 +5275,9 @@ async function restoreSession(){
     buildTolMesh();buildStakes();buildGradeArrows();buildDaylightMesh();
     buildStripPlan();calcVol();updateVOffDisplay();
     loadDesignLibrary();
+    // load alignments
+    const aStore=db.transaction('alignments').objectStore('alignments');
+    aStore.getAll().onsuccess=e2=>{alignmentLibrary=e2.target.result||[];};
     const toast=document.getElementById('update-toast');
     if(toast){
       toast.innerHTML='✅ Session restored';
@@ -8473,6 +8486,442 @@ if('serviceWorker' in navigator){
     };
   });
 }
+
+// ── ALIGNMENT DESIGNER ─────────────────────────────────────────────
+
+function openAlignOverlay(){
+  const el=document.getElementById('align-overlay');
+  el.style.display='flex';
+  el.style.flexDirection='column';
+  setTimeout(()=>{alignInitCanvases();alignRedraw();alignPopulateProfileSel();},50);
+}
+function closeAlignOverlay(){document.getElementById('align-overlay').style.display='none';}
+
+function alignInitCanvases(){
+  const pc=document.getElementById('align-plan-canvas');
+  const vc=document.getElementById('align-vert-canvas');
+  const pw=pc.parentElement.clientWidth-2;
+  pc.width=pw; pc.height=Math.round(pw*0.75);
+  vc.width=pw; vc.height=Math.round(pw*0.45);
+  alignBindPlanCanvas(pc);
+  alignBindVertCanvas(vc);
+}
+
+function alignPopulateProfileSel(){
+  const sel=document.getElementById('align-profile-sel');
+  sel.innerHTML='<option value="">-- No profile --</option>';
+  if(typeof profileLibrary!=='undefined'){
+    profileLibrary.forEach(p=>{sel.innerHTML+=`<option value="${p.id}">${p.name}</option>`;});
+  }
+}
+
+// Catmull-Rom spline
+function _crPoint(p0,p1,p2,p3,t,tension){
+  const t2=t*t,t3=t2*t;
+  return {
+    x:0.5*((2*p1.x)+(-p0.x+p2.x)*t+((2*p0.x-5*p1.x+4*p2.x-p3.x))*t2+(-p0.x+3*p1.x-3*p2.x+p3.x)*t3),
+    z:0.5*((2*p1.z)+(-p0.z+p2.z)*t+((2*p0.z-5*p1.z+4*p2.z-p3.z))*t2+(-p0.z+3*p1.z-3*p2.z+p3.z)*t3)
+  };
+}
+function alignSplinePoints(nodes,tension,steps){
+  if(nodes.length<2)return nodes.map(n=>({x:n.x,z:n.z,elev:n.elev,t:0}));
+  const pts=[];
+  const ext=[nodes[0],...nodes,nodes[nodes.length-1]];
+  for(let i=1;i<ext.length-2;i++){
+    for(let s=0;s<=steps;s++){
+      const t=s/steps;
+      const p=_crPoint(ext[i-1],ext[i],ext[i+1],ext[i+2],t,tension);
+      const elev=ext[i].elev+(ext[i+1].elev-ext[i].elev)*t;
+      pts.push({x:p.x,z:p.z,elev});
+    }
+  }
+  return pts;
+}
+function alignGetSplinePts(){
+  return alignSplinePoints(alignNodes,alignHTension,20);
+}
+function alignChainage(pts){
+  let ch=0;
+  const out=[{...pts[0],ch:0}];
+  for(let i=1;i<pts.length;i++){
+    const dx=pts[i].x-pts[i-1].x,dz=pts[i].z-pts[i-1].z;
+    ch+=Math.sqrt(dx*dx+dz*dz);
+    out.push({...pts[i],ch});
+  }
+  return out;
+}
+
+// Violations
+function alignCheckViolations(chainPts){
+  const v=[];
+  const c=alignConstraints;
+  for(let i=1;i<chainPts.length;i++){
+    const dx=chainPts[i].x-chainPts[i-1].x,dz=chainPts[i].z-chainPts[i-1].z;
+    const dist=Math.sqrt(dx*dx+dz*dz);
+    if(dist<0.001)continue;
+    const de=chainPts[i].elev-chainPts[i-1].elev;
+    const grade=Math.abs(de/dist)*100;
+    if(grade>c.maxGradePct)v.push({type:'grade',i,grade});
+    const te=gElev(chainPts[i].x,chainPts[i].z);
+    if(isFinite(te)){
+      const diff=chainPts[i].elev-te;
+      if(diff>c.maxFillM)v.push({type:'fill',i,diff});
+      if(-diff>c.maxCutM)v.push({type:'cut',i,diff});
+    }
+  }
+  return v;
+}
+
+// Plan canvas drawing
+let _alignDragNode=null;
+function alignBindPlanCanvas(canvas){
+  canvas.onpointerdown=e=>{
+    const r=canvas.getBoundingClientRect();
+    const wx=_alignCanvasToWorld(canvas,(e.clientX-r.left)/r.width,'x');
+    const wz=_alignCanvasToWorld(canvas,(e.clientY-r.top)/r.height,'z');
+    let nearest=null,nearDist=Infinity;
+    alignNodes.forEach((n,idx)=>{
+      const cx=_alignWorldToCanvas(canvas,n.x,'x'),cz=_alignWorldToCanvas(canvas,n.z,'z');
+      const px=(e.clientX-r.left)/r.width*canvas.width,pz=(e.clientY-r.top)/r.height*canvas.height;
+      const d=Math.sqrt((cx-px)**2+(cz-pz)**2);
+      if(d<18&&d<nearDist){nearDist=d;nearest=idx;}
+    });
+    if(nearest!==null){_alignDragNode=nearest;canvas.setPointerCapture(e.pointerId);}
+    else{
+      const elev=gElev(wx,wz);
+      alignNodes.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2),x:wx,z:wz,elev:isFinite(elev)?elev:0,label:''});
+      alignUpdateNodeList();alignRedraw();
+    }
+  };
+  canvas.onpointermove=e=>{
+    if(_alignDragNode===null)return;
+    const r=canvas.getBoundingClientRect();
+    const wx=_alignCanvasToWorld(canvas,(e.clientX-r.left)/r.width,'x');
+    const wz=_alignCanvasToWorld(canvas,(e.clientY-r.top)/r.height,'z');
+    alignNodes[_alignDragNode].x=wx;alignNodes[_alignDragNode].z=wz;
+    alignUpdateNodeList();alignRedraw();
+  };
+  canvas.onpointerup=e=>{_alignDragNode=null;};
+}
+function _alignWorldToCanvas(canvas,val,axis){
+  const margin=20,size=axis==='x'?canvas.width:canvas.height;
+  return margin+(val+40)/80*(size-2*margin);
+}
+function _alignCanvasToWorld(canvas,frac,axis){
+  const margin=20,size=axis==='x'?canvas.width:canvas.height;
+  return (frac*size-margin)/(size-2*margin)*80-40;
+}
+
+let _alignVDragNode=null;
+function alignBindVertCanvas(canvas){
+  canvas.onpointerdown=e=>{
+    if(alignNodes.length<2)return;
+    const r=canvas.getBoundingClientRect();
+    let nearest=null,nearDist=Infinity;
+    const spts=alignGetSplinePts();
+    const chain=alignChainage(spts);
+    const totalCh=chain[chain.length-1]?.ch||1;
+    alignNodes.forEach((n,idx)=>{
+      let bestCh=0,bestD=Infinity;
+      chain.forEach(p=>{const d=Math.sqrt((p.x-n.x)**2+(p.z-n.z)**2);if(d<bestD){bestD=d;bestCh=p.ch;}});
+      const cx=20+(bestCh/totalCh)*(canvas.width-40);
+      const elevRange=_alignElevRange();
+      const cy=canvas.height-20-(n.elev-elevRange.min)/(elevRange.max-elevRange.min+0.001)*(canvas.height-40);
+      const px=(e.clientX-r.left)/r.width*canvas.width,py=(e.clientY-r.top)/r.height*canvas.height;
+      const d=Math.sqrt((cx-px)**2+(cy-py)**2);
+      if(d<20&&d<nearDist){nearDist=d;nearest=idx;}
+    });
+    if(nearest!==null){_alignVDragNode=nearest;canvas.setPointerCapture(e.pointerId);}
+  };
+  canvas.onpointermove=e=>{
+    if(_alignVDragNode===null)return;
+    const r=canvas.getBoundingClientRect();
+    const fy=(e.clientY-r.top)/r.height;
+    const elevRange=_alignElevRange();
+    const newElev=elevRange.max-(fy*(canvas.height-40)/canvas.height)*(elevRange.max-elevRange.min);
+    alignNodes[_alignVDragNode].elev=Math.round(newElev*1000)/1000;
+    alignUpdateNodeList();alignRedraw();
+  };
+  canvas.onpointerup=()=>{_alignVDragNode=null;};
+}
+function _alignElevRange(){
+  let mn=Infinity,mx=-Infinity;
+  alignNodes.forEach(n=>{mn=Math.min(mn,n.elev);mx=Math.max(mx,n.elev);});
+  if(alignNodes.length>=2){
+    const spts=alignGetSplinePts();
+    spts.forEach(p=>{const e=gElev(p.x,p.z);if(isFinite(e)){mn=Math.min(mn,e);mx=Math.max(mx,e);}});
+  }
+  if(!isFinite(mn)){mn=0;mx=5;}
+  const pad=(mx-mn)*0.2||1;
+  return {min:mn-pad,max:mx+pad};
+}
+
+function alignRedraw(){
+  const pc=document.getElementById('align-plan-canvas');
+  const vc=document.getElementById('align-vert-canvas');
+  if(!pc||!vc)return;
+  document.getElementById('align-ht-val').textContent=alignHTension.toFixed(2);
+  document.getElementById('align-vs-val').textContent=alignVSmooth.toFixed(2);
+  _alignDrawPlan(pc);
+  _alignDrawVert(vc);
+}
+
+function _alignDrawPlan(canvas){
+  const ctx=canvas.getContext('2d');
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle='#060f1e';ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.strokeStyle='#112233';ctx.lineWidth=0.5;
+  for(let w=-40;w<=40;w+=10){
+    const cx=_alignWorldToCanvas(canvas,w,'x');
+    ctx.beginPath();ctx.moveTo(cx,0);ctx.lineTo(cx,canvas.height);ctx.stroke();
+    const cz=_alignWorldToCanvas(canvas,w,'z');
+    ctx.beginPath();ctx.moveTo(0,cz);ctx.lineTo(canvas.width,cz);ctx.stroke();
+  }
+  if(alignNodes.length>=2){
+    const spts=alignGetSplinePts();
+    const chain=alignChainage(spts);
+    const viols=alignCheckViolations(chain);
+    const violSet=new Set(viols.map(v=>v.i));
+    ctx.lineWidth=2;
+    for(let i=1;i<spts.length;i++){
+      ctx.strokeStyle=violSet.has(i)?'#ee3333':'#ffaa00';
+      ctx.beginPath();
+      ctx.moveTo(_alignWorldToCanvas(canvas,spts[i-1].x,'x'),_alignWorldToCanvas(canvas,spts[i-1].z,'z'));
+      ctx.lineTo(_alignWorldToCanvas(canvas,spts[i].x,'x'),_alignWorldToCanvas(canvas,spts[i].z,'z'));
+      ctx.stroke();
+    }
+  }
+  alignNodes.forEach((n,idx)=>{
+    const cx=_alignWorldToCanvas(canvas,n.x,'x');
+    const cz=_alignWorldToCanvas(canvas,n.z,'z');
+    ctx.beginPath();ctx.arc(cx,cz,7,0,Math.PI*2);
+    ctx.fillStyle=idx===_alignDragNode?'#00ccff':'#ffaa00';
+    ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.stroke();
+    ctx.fillStyle='#fff';ctx.font='10px monospace';ctx.fillText(idx+1,cx+9,cz+4);
+  });
+  ctx.fillStyle='#446';ctx.fillRect(10,canvas.height-16,60,6);
+  ctx.fillStyle='#7aa0c0';ctx.font='9px monospace';ctx.fillText('10m',72,canvas.height-10);
+  ctx.fillStyle='#7aa0c0';ctx.font='10px monospace';ctx.fillText('N↑',canvas.width-22,16);
+}
+
+function _alignDrawVert(canvas){
+  const ctx=canvas.getContext('2d');
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle='#060f1e';ctx.fillRect(0,0,canvas.width,canvas.height);
+  if(alignNodes.length<1)return;
+  const elevRange=_alignElevRange();
+  const spts=alignGetSplinePts();
+  const chain=alignChainage(spts);
+  const totalCh=chain[chain.length-1]?.ch||1;
+  const toX=ch=>20+ch/totalCh*(canvas.width-40);
+  const toY=el=>canvas.height-20-(el-elevRange.min)/(elevRange.max-elevRange.min)*(canvas.height-40);
+  ctx.beginPath();ctx.moveTo(toX(0),canvas.height);
+  chain.forEach(p=>{const te=gElev(p.x,p.z);ctx.lineTo(toX(p.ch),isFinite(te)?toY(te):canvas.height-20);});
+  ctx.lineTo(toX(totalCh),canvas.height);ctx.closePath();
+  ctx.fillStyle='#1a2a1a';ctx.fill();
+  ctx.beginPath();ctx.strokeStyle='#336633';ctx.lineWidth=1.5;
+  chain.forEach((p,i)=>{const te=gElev(p.x,p.z);if(isFinite(te)){i===0?ctx.moveTo(toX(p.ch),toY(te)):ctx.lineTo(toX(p.ch),toY(te));}});
+  ctx.stroke();
+  const viols=alignCheckViolations(chain);
+  const violSet=new Set(viols.map(v=>v.i));
+  ctx.lineWidth=2;
+  for(let i=1;i<chain.length;i++){
+    ctx.strokeStyle=violSet.has(i)?'#ee3333':'#ffaa00';
+    ctx.beginPath();ctx.moveTo(toX(chain[i-1].ch),toY(chain[i-1].elev));ctx.lineTo(toX(chain[i].ch),toY(chain[i].elev));ctx.stroke();
+  }
+  alignNodes.forEach((n,idx)=>{
+    let bestCh=0,bestD=Infinity;
+    chain.forEach(p=>{const d=Math.sqrt((p.x-n.x)**2+(p.z-n.z)**2);if(d<bestD){bestD=d;bestCh=p.ch;}});
+    const cx=toX(bestCh),cy=toY(n.elev);
+    ctx.beginPath();ctx.arc(cx,cy,6,0,Math.PI*2);
+    ctx.fillStyle=idx===_alignVDragNode?'#00ccff':'#ffaa00';
+    ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=1;ctx.stroke();
+    ctx.fillStyle='#aaa';ctx.font='9px monospace';ctx.fillText(n.elev.toFixed(2)+'m',cx+8,cy-4);
+  });
+  ctx.fillStyle='#446677';ctx.font='9px monospace';
+  ctx.fillText('CH(m)',canvas.width/2-15,canvas.height-4);
+  ctx.fillText('RL',2,14);
+}
+
+function alignUpdateNodeList(){
+  const el=document.getElementById('align-node-list');
+  document.getElementById('align-node-count').textContent=alignNodes.length+' nodes';
+  if(!alignNodes.length){el.innerHTML='<span style="color:#446">No nodes — tap plan view to add</span>';return;}
+  el.innerHTML=alignNodes.map((n,i)=>`
+    <div style="display:flex;gap:6px;align-items:center;padding:2px 0;border-bottom:1px solid #112">
+      <span style="color:#7aa0c0;min-width:20px">#${i+1}</span>
+      <span style="color:#aaa;font-size:10px">x:${n.x.toFixed(1)} z:${n.z.toFixed(1)}</span>
+      <span style="color:#ffaa00;font-size:10px">RL:${n.elev.toFixed(3)}m</span>
+      <button onclick="alignMoveNode(${i},-1)" style="background:#1a3050;border:none;color:#aaa;cursor:pointer;padding:0 4px;border-radius:2px">↑</button>
+      <button onclick="alignMoveNode(${i},1)" style="background:#1a3050;border:none;color:#aaa;cursor:pointer;padding:0 4px;border-radius:2px">↓</button>
+      <button onclick="alignDeleteNode(${i})" style="background:#3a1020;border:none;color:#e05050;cursor:pointer;padding:0 4px;border-radius:2px">✕</button>
+    </div>`).join('');
+}
+function alignMoveNode(idx,dir){
+  const n=idx+dir;
+  if(n<0||n>=alignNodes.length)return;
+  [alignNodes[idx],alignNodes[n]]=[alignNodes[n],alignNodes[idx]];
+  alignUpdateNodeList();alignRedraw();
+}
+function alignDeleteNode(idx){
+  alignNodes.splice(idx,1);alignUpdateNodeList();alignRedraw();
+}
+function alignDropPin(){
+  const elev=gElev(machinePos.x,machinePos.z);
+  alignNodes.push({id:Date.now().toString(36),x:machinePos.x,z:machinePos.z,elev:isFinite(elev)?elev:machinePos.y||0,label:''});
+  alignUpdateNodeList();alignRedraw();
+  document.getElementById('st-hint').textContent='📍 Pin dropped at x:'+machinePos.x.toFixed(1)+' z:'+machinePos.z.toFixed(1);
+}
+function alignClearAll(){if(!confirm('Clear all alignment nodes?'))return;alignNodes=[];alignUpdateNodeList();alignRedraw();}
+function newAlignment(){alignNodes=[];document.getElementById('align-name').value='New Alignment';alignUpdateNodeList();alignRedraw();}
+
+function applyAlignPreset(val){
+  const presets={
+    farm:{maxGradePct:15,minRadiusM:15,maxFillM:5,maxCutM:6,kCrest:3,kSag:4},
+    gravel:{maxGradePct:12,minRadiusM:25,maxFillM:4,maxCutM:5,kCrest:4,kSag:5},
+    main:{maxGradePct:8,minRadiusM:50,maxFillM:3,maxCutM:4,kCrest:6,kSag:8}
+  };
+  if(presets[val]){alignConstraints={...presets[val]};_alignUpdateConstraintSummary();alignRedraw();}
+}
+function _alignUpdateConstraintSummary(){
+  const c=alignConstraints;
+  document.getElementById('align-constraints-summary').textContent=
+    `Max grade: ${c.maxGradePct}% | Min radius: ${c.minRadiusM}m | Fill: ${c.maxFillM}m | Cut: ${c.maxCutM}m`;
+}
+function openAlignConstraints(){
+  const c=alignConstraints;
+  document.getElementById('c-maxgrade').value=c.maxGradePct;
+  document.getElementById('c-minrad').value=c.minRadiusM;
+  document.getElementById('c-maxfill').value=c.maxFillM;
+  document.getElementById('c-maxcut').value=c.maxCutM;
+  document.getElementById('c-kcrest').value=c.kCrest;
+  document.getElementById('c-ksag').value=c.kSag;
+  document.getElementById('align-constraints-modal').style.display='flex';
+}
+function applyConstraintsModal(){
+  alignConstraints={
+    maxGradePct:+document.getElementById('c-maxgrade').value,
+    minRadiusM:+document.getElementById('c-minrad').value,
+    maxFillM:+document.getElementById('c-maxfill').value,
+    maxCutM:+document.getElementById('c-maxcut').value,
+    kCrest:+document.getElementById('c-kcrest').value,
+    kSag:+document.getElementById('c-ksag').value,
+  };
+  document.getElementById('align-constraints-modal').style.display='none';
+  _alignUpdateConstraintSummary();alignRedraw();
+}
+
+function saveAlignment(){
+  const name=document.getElementById('align-name').value||'Alignment';
+  const entry={id:Date.now().toString(36),name,createdAt:new Date().toISOString(),
+    nodes:JSON.parse(JSON.stringify(alignNodes)),constraints:{...alignConstraints},
+    hTension:alignHTension,vSmoothing:alignVSmooth};
+  alignmentLibrary.push(entry);
+  _openIDB().then(db=>{
+    db.transaction('alignments','readwrite').objectStore('alignments').put(entry);
+  }).catch(()=>{});
+  document.getElementById('st-hint').textContent='💾 Alignment saved: '+name;
+}
+function openAlignLoad(){
+  const list=document.getElementById('align-load-list');
+  if(!alignmentLibrary.length){list.innerHTML='<div style="color:#446;font-size:12px">No saved alignments</div>';
+  }else{list.innerHTML=alignmentLibrary.map(a=>`
+    <div onclick="loadAlignment('${a.id}')" style="padding:8px;border:1px solid #1e4a7a;border-radius:4px;margin-bottom:6px;cursor:pointer;background:#0a1830">
+      <div style="font-weight:600;color:#e0e8f0">${a.name}</div>
+      <div style="font-size:11px;color:#7aa0c0">${a.nodes.length} nodes · ${new Date(a.createdAt).toLocaleDateString()}</div>
+    </div>`).join('');}
+  document.getElementById('align-load-modal').style.display='flex';
+}
+function loadAlignment(id){
+  const a=alignmentLibrary.find(x=>x.id===id);
+  if(!a)return;
+  alignNodes=JSON.parse(JSON.stringify(a.nodes));
+  alignConstraints={...a.constraints};
+  alignHTension=a.hTension||0.5;
+  alignVSmooth=a.vSmoothing||0.5;
+  document.getElementById('align-name').value=a.name;
+  document.getElementById('align-h-tension').value=alignHTension;
+  document.getElementById('align-v-smooth').value=alignVSmooth;
+  document.getElementById('align-load-modal').style.display='none';
+  alignUpdateNodeList();alignRedraw();_alignUpdateConstraintSummary();
+}
+
+function alignBuildDesign(){
+  if(alignNodes.length<2){alert('Need at least 2 nodes to build a design');return;}
+  const profileId=document.getElementById('align-profile-sel').value;
+  const interval=parseFloat(document.getElementById('align-interval').value)||1.0;
+  const spts=alignGetSplinePts();
+  const chain=alignChainage(spts);
+  if(!chain.length)return;
+  const totalCh=chain[chain.length-1].ch;
+  let count=0;
+  for(let ch=0;ch<=totalCh;ch+=interval){
+    let p=chain[0];
+    for(let i=1;i<chain.length;i++){if(chain[i].ch>=ch){
+      const f=(ch-chain[i-1].ch)/(chain[i].ch-chain[i-1].ch+0.0001);
+      p={x:chain[i-1].x+(chain[i].x-chain[i-1].x)*f,
+         z:chain[i-1].z+(chain[i].z-chain[i-1].z)*f,
+         elev:chain[i-1].elev+(chain[i].elev-chain[i-1].elev)*f};
+      break;
+    }}
+    let tx=1,tz=0;
+    for(let i=1;i<chain.length;i++){if(chain[i].ch>=ch){
+      const dx=chain[i].x-chain[i-1].x,dz=chain[i].z-chain[i-1].z;
+      const len=Math.sqrt(dx*dx+dz*dz)||1;
+      tx=dx/len;tz=dz/len;break;
+    }}
+    const px=-tz,pz=tx;
+    const gp=w2g(p.x,p.z);if(gp.gx<0||gp.gz<0||gp.gx>=N||gp.gz>=N)continue;
+    design[gi(gp.gx,gp.gz)]=p.elev;hasD[gi(gp.gx,gp.gz)]=1;count++;
+    if(profileId&&typeof profileLibrary!=='undefined'){
+      const prof=profileLibrary.find(x=>x.id===profileId);
+      if(prof&&prof.elements){
+        let curX=p.x,curZ=p.z,curElev=p.elev;
+        prof.elements.forEach(el=>{
+          if(el.type==='crown')return;
+          let w=0,dElev=0;
+          if(el.type==='grade'){w=el.width||0;dElev=(el.grade||0)/100*w;}
+          else if(el.type==='batter'){const h=el.height||0;w=h*(el.ratio||1);dElev=el.dir==='down'?-h:h;}
+          else if(el.type==='vdrain'){
+            const d=el.depth||0.5,ir=el.inRatio||4,or=el.outRatio||4;
+            const iw=d*ir,ow=d*or;
+            for(let s=0;s<=4;s++){
+              const fx=s/4;
+              const ex=curX+(iw*fx)*px,ez=curZ+(iw*fx)*pz;
+              const ee=curElev-d*fx;
+              const gpp=w2g(ex,ez);
+              if(gpp.gx>=0&&gpp.gz>=0&&gpp.gx<N&&gpp.gz<N){design[gi(gpp.gx,gpp.gz)]=ee;hasD[gi(gpp.gx,gpp.gz)]=1;count++;}
+            }
+            for(let s=0;s<=4;s++){
+              const fx=s/4;
+              const ex=curX+(iw+ow*fx)*px,ez=curZ+(iw+ow*fx)*pz;
+              const ee=curElev-d+d*fx;
+              const gpp=w2g(ex,ez);
+              if(gpp.gx>=0&&gpp.gz>=0&&gpp.gx<N&&gpp.gz<N){design[gi(gpp.gx,gpp.gz)]=ee;hasD[gi(gpp.gx,gpp.gz)]=1;count++;}
+            }
+            curX+=(iw+ow)*px;curZ+=(iw+ow)*pz;
+            return;
+          }
+          const steps=Math.max(1,Math.round(w/0.5));
+          for(let s=1;s<=steps;s++){
+            const f=s/steps;
+            const ex=curX+w*f*px,ez=curZ+w*f*pz,ee=curElev+dElev*f;
+            const gpp=w2g(ex,ez);
+            if(gpp.gx>=0&&gpp.gz>=0&&gpp.gx<N&&gpp.gz<N){design[gi(gpp.gx,gpp.gz)]=ee;hasD[gi(gpp.gx,gpp.gz)]=1;count++;}
+          }
+          curX+=w*px;curZ+=w*pz;curElev+=dElev;
+        });
+      }
+    }
+  }
+  designCount=count;
+  rebuildDesMesh();genContours();buildFlowLines();buildSlopeWarn();buildTolMesh();
+  buildStakes();buildGradeArrows();buildDaylightMesh();buildStripPlan();calcVol();
+  const aname=document.getElementById('align-name').value||'Alignment';
+  if(typeof _registerDesign==='function')_registerDesign('Road: '+aname,'alignment');
+  document.getElementById('st-hint').textContent='✅ Built road from alignment — '+count+' design points';
+  closeAlignOverlay();
+}
 </script>
 
 <!-- GPS Diagnostics Overlay -->
@@ -8790,6 +9239,55 @@ if('serviceWorker' in navigator){
   </div>
 </div>
 
+<div id="align-overlay" style="display:none;position:fixed;inset:0;background:#060f1e;z-index:450;flex-direction:column;overflow-y:auto">
+  <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:#0d2040;border-bottom:1px solid #1e4a7a;flex-wrap:wrap">
+    <span style="font-weight:700;color:#ffaa00;font-size:15px">🛣 ALIGNMENT DESIGNER</span>
+    <input id="align-name" type="text" value="New Alignment" style="flex:1;min-width:150px;background:#0a1830;border:1px solid #1e4a7a;color:#e0e8f0;padding:4px 8px;border-radius:4px">
+    <button class="tb" onclick="newAlignment()">+ New</button>
+    <button class="tb" onclick="openAlignLoad()">📂 Load</button>
+    <button class="tb" onclick="saveAlignment()">💾 Save</button>
+    <button class="tb" onclick="closeAlignOverlay()">✕</button>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:10px;flex:1">
+    <div>
+      <div style="color:#7aa0c0;font-size:11px;margin-bottom:4px">PLAN VIEW — tap to add node, drag to move</div>
+      <canvas id="align-plan-canvas" style="width:100%;border:1px solid #1e4a7a;border-radius:4px;cursor:crosshair;touch-action:none"></canvas>
+    </div>
+    <div>
+      <div style="color:#7aa0c0;font-size:11px;margin-bottom:4px">VERTICAL PROFILE — drag nodes up/down for RL</div>
+      <canvas id="align-vert-canvas" style="width:100%;border:1px solid #1e4a7a;border-radius:4px;cursor:ns-resize;touch-action:none"></canvas>
+    </div>
+  </div>
+  <div style="padding:0 10px 6px">
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
+      <button class="tb grn" onclick="alignDropPin()">📍 Drop GPS Pin</button>
+      <button class="tb" onclick="alignClearAll()">🗑 Clear All</button>
+      <span style="color:#7aa0c0;font-size:12px" id="align-node-count">0 nodes</span>
+    </div>
+    <div id="align-node-list" style="max-height:120px;overflow-y:auto;background:#0a1830;border:1px solid #1e4a7a;border-radius:4px;padding:4px;font-size:12px;font-family:monospace;margin-bottom:6px"></div>
+    <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
+      <label style="color:#7aa0c0;font-size:12px">H-Tension: <input type="range" min="0" max="1" step="0.05" value="0.5" id="align-h-tension" oninput="alignHTension=+this.value;alignRedraw()" style="width:100px"> <span id="align-ht-val">0.5</span></label>
+      <label style="color:#7aa0c0;font-size:12px">V-Smooth: <input type="range" min="0" max="1" step="0.05" value="0.5" id="align-v-smooth" oninput="alignVSmooth=+this.value;alignRedraw()" style="width:100px"> <span id="align-vs-val">0.5</span></label>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
+      <span style="color:#7aa0c0;font-size:12px">CONSTRAINTS:</span>
+      <button class="tb" onclick="openAlignConstraints()">⚙ Edit</button>
+      <select id="align-preset" onchange="applyAlignPreset(this.value)" style="background:#0a1830;border:1px solid #1e4a7a;color:#e0e8f0;padding:3px 6px;border-radius:4px;font-size:12px">
+        <option value="farm">Farm Track</option>
+        <option value="gravel">Gravel Road</option>
+        <option value="main">Main Road</option>
+      </select>
+      <span id="align-constraints-summary" style="color:#aabbcc;font-size:11px">Max grade: 12% | Min radius: 20m | Fill: 4m | Cut: 5m</span>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <span style="color:#7aa0c0;font-size:12px">APPLY PROFILE:</span>
+      <select id="align-profile-sel" style="background:#0a1830;border:1px solid #1e4a7a;color:#e0e8f0;padding:3px 6px;border-radius:4px;font-size:12px;flex:1;min-width:150px"></select>
+      <label style="color:#7aa0c0;font-size:12px">Interval: <input id="align-interval" type="number" value="1.0" min="0.5" max="5" step="0.5" style="width:60px;background:#0a1830;border:1px solid #1e4a7a;color:#e0e8f0;padding:3px 6px;border-radius:4px">m</label>
+      <button class="tb grn" onclick="alignBuildDesign()">🏗 Build Design Surface</button>
+    </div>
+  </div>
+</div>
+
 <!-- Profile Element Modal -->
 <div id="pro-el-modal">
   <div id="pro-el-box">
@@ -8844,6 +9342,23 @@ if('serviceWorker' in navigator){
   </div>
 </div>
 
+<!-- Align constraints modal -->
+<div id="align-constraints-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:500;align-items:center;justify-content:center" onclick="if(event.target===this)this.style.display='none'">
+  <div style="background:#0d2040;border:1px solid #1e4a7a;border-radius:8px;padding:20px;min-width:280px">
+    <div style="font-weight:700;color:#ffaa00;margin-bottom:12px">⚙ Design Constraints</div>
+    <label style="color:#aac;font-size:12px;display:block;margin-bottom:6px">Max Grade (%)<br><input id="c-maxgrade" type="number" value="12" style="width:100%;background:#0a1830;border:1px solid #1e4a7a;color:#e0e8f0;padding:4px 8px;border-radius:4px"></label>
+    <label style="color:#aac;font-size:12px;display:block;margin-bottom:6px">Min Curve Radius (m)<br><input id="c-minrad" type="number" value="20" style="width:100%;background:#0a1830;border:1px solid #1e4a7a;color:#e0e8f0;padding:4px 8px;border-radius:4px"></label>
+    <label style="color:#aac;font-size:12px;display:block;margin-bottom:6px">Max Fill (m)<br><input id="c-maxfill" type="number" value="4" style="width:100%;background:#0a1830;border:1px solid #1e4a7a;color:#e0e8f0;padding:4px 8px;border-radius:4px"></label>
+    <label style="color:#aac;font-size:12px;display:block;margin-bottom:6px">Max Cut (m)<br><input id="c-maxcut" type="number" value="5" style="width:100%;background:#0a1830;border:1px solid #1e4a7a;color:#e0e8f0;padding:4px 8px;border-radius:4px"></label>
+    <label style="color:#aac;font-size:12px;display:block;margin-bottom:6px">K-Value Crest<br><input id="c-kcrest" type="number" value="4" style="width:100%;background:#0a1830;border:1px solid #1e4a7a;color:#e0e8f0;padding:4px 8px;border-radius:4px"></label>
+    <label style="color:#aac;font-size:12px;display:block;margin-bottom:12px">K-Value Sag<br><input id="c-ksag" type="number" value="5" style="width:100%;background:#0a1830;border:1px solid #1e4a7a;color:#e0e8f0;padding:4px 8px;border-radius:4px"></label>
+    <div style="display:flex;gap:8px">
+      <button onclick="applyConstraintsModal()" style="flex:1;background:#22aa44;border:none;color:#fff;padding:8px;border-radius:4px;cursor:pointer">✓ Apply</button>
+      <button onclick="document.getElementById('align-constraints-modal').style.display='none'" style="flex:1;background:#334;border:1px solid #556;color:#ccc;padding:8px;border-radius:4px;cursor:pointer">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <!-- Profile Load Modal -->
 <div id="pro-load-modal">
   <div id="pro-load-box">
@@ -8857,6 +9372,15 @@ if('serviceWorker' in navigator){
     <div style="padding:8px 12px;border-top:1px solid #1a3a5c;border-radius:0 0 6px 6px">
       <button class="pro-hdr-btn" onclick="closeProfileLoadModal()">Close</button>
     </div>
+  </div>
+</div>
+
+<!-- Align load modal -->
+<div id="align-load-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:500;align-items:center;justify-content:center" onclick="if(event.target===this)this.style.display='none'">
+  <div style="background:#0d2040;border:1px solid #1e4a7a;border-radius:8px;padding:20px;min-width:300px;max-height:80vh;overflow-y:auto">
+    <div style="font-weight:700;color:#ffaa00;margin-bottom:12px">📂 Load Alignment</div>
+    <div id="align-load-list"></div>
+    <button onclick="document.getElementById('align-load-modal').style.display='none'" style="margin-top:12px;width:100%;background:#334;border:1px solid #556;color:#ccc;padding:8px;border-radius:4px;cursor:pointer">Cancel</button>
   </div>
 </div>
 </body>
