@@ -717,6 +717,26 @@ body.field-mode #field-rtk{display:flex}
 #ntrip-mount-table th{background:#0f2540;color:#e8a020;font-size:8px;text-transform:uppercase;padding:4px 6px;text-align:left;position:sticky;top:0;z-index:1}
 #ntrip-mount-table td{padding:3px 6px;border-bottom:1px solid #0d2040;cursor:pointer}
 #ntrip-mount-table tr:hover td{background:#0d2040}
+/* ── Design Library Overlay ──────────────────────────────────────── */
+#designs-overlay{display:none;position:fixed;inset:0;background:#0a1928;z-index:250;flex-direction:column}
+#designs-overlay.show{display:flex}
+#designs-overlay-hdr{background:#132843;border-bottom:2px solid #e8a020;padding:8px 14px;display:flex;align-items:center;gap:8px;flex-shrink:0}
+#designs-overlay-hdr h2{font-size:13px;font-weight:700;color:#e8a020;text-transform:uppercase;letter-spacing:2px;flex:1;margin:0}
+.dl-hdr-btn{background:#0d2040;border:1px solid #1e4a7a;color:#7aabcc;padding:5px 14px;border-radius:3px;cursor:pointer;font-size:12px;font-weight:600;min-height:44px;transition:all .15s}
+.dl-hdr-btn:hover{background:#e8a020;border-color:#e8a020;color:#0a1520}
+.dl-hdr-btn.grn{border-color:#27ae60;color:#27ae60}.dl-hdr-btn.grn:hover{background:#27ae60;border-color:#27ae60;color:#fff}
+#designs-overlay-body{flex:1;overflow-y:auto;padding:12px}
+#dl-list{}
+.dl-badge{display:inline-block;padding:2px 9px;border-radius:10px;font-size:10px;font-weight:700;letter-spacing:1px;color:#fff}
+.dl-badge.active{background:#22aa44}
+.dl-badge.reference{background:#4488cc}
+.dl-badge.off{background:#555}
+.dl-state-btn{padding:5px 12px;border-radius:12px;cursor:pointer;font-size:10px;font-weight:700;min-height:44px;transition:all .15s;border:1px solid}
+.dl-state-btn.to-active{background:#1a3a1a;border-color:#27ae60;color:#27ae60}.dl-state-btn.to-active:hover{background:#27ae60;color:#fff}
+.dl-state-btn.to-ref{background:#0d2040;border-color:#4488cc;color:#4488cc}.dl-state-btn.to-ref:hover{background:#4488cc;color:#fff}
+.dl-state-btn.to-off{background:#1a1a1a;border-color:#555;color:#888}.dl-state-btn.to-off:hover{background:#555;color:#fff}
+.dl-action-btn{background:#0d2040;border:1px solid #1e4a7a;color:#7aabcc;padding:5px 12px;border-radius:12px;cursor:pointer;font-size:10px;min-height:44px;transition:all .15s}.dl-action-btn:hover{background:#1e4a7a}
+.dl-del-btn{background:#1a0808;border:1px solid #4a1010;color:#ef5350;padding:5px 12px;border-radius:12px;cursor:pointer;font-size:10px;min-height:44px;transition:all .15s}.dl-del-btn:hover{background:#4a1010}
 </style>
 </head>
 <body>
@@ -729,6 +749,7 @@ body.field-mode #field-rtk{display:flex}
     <div id="gps-status-dot" style="width:10px;height:10px;border-radius:50%;background:#27ae60;flex-shrink:0;margin-right:6px"></div>
     <button id="live-btn" class="fullscreen-btn" onclick="toggleLiveSensors()" title="Live Sensor Mode — real GPS + IMU drives simulation">📡 Live</button>
     <button class="fullscreen-btn" onclick="openGPSDiag()" title="GPS Diagnostics">📡 GPS</button>
+    <button class="fullscreen-btn" onclick="openDesignsPanel()" title="Design Library — manage ACTIVE/REFERENCE/OFF surfaces">📋 Designs</button>
     <button class="fullscreen-btn" onclick="document.documentElement.requestFullscreen()" title="Fullscreen">⛶</button>
   </div>
 
@@ -945,6 +966,7 @@ body.field-mode #field-rtk{display:flex}
         <button class="drawer-btn" onclick="document.getElementById('gps-import').click()">📡 Import GPS</button>
         <button class="drawer-btn" onclick="document.getElementById('design-import').click()">📐 Import Design</button>
         <button class="drawer-btn" onclick="openFPModal()">🟦 Flat Pad</button>
+        <button class="drawer-btn" onclick="openDesignsPanel();document.getElementById('side-drawer').classList.remove('open')">📋 Design Library</button>
         <button class="drawer-btn" onclick="captureScreenshot()">📷 Screenshot</button>
         <button class="drawer-btn grn" onclick="exportCSV()">📥 CSV</button>
         <button class="drawer-btn grn" onclick="exportAsBuilt()">📤 As-Built</button>
@@ -1582,6 +1604,7 @@ const design=new Float32Array(N*N);
 const hasD=new Uint8Array(N*N);
 const asBuilt=new Uint8Array(N*N);
 let designCount=0;
+let designLibrary=[];   // [{id,name,type,state,design,hasD,designCount,createdAt,refMeshes}]
 
 let tool='nav',toolState={};
 let machineOn=true;
@@ -4273,6 +4296,7 @@ function confirmFlatPad(){
   rebuildDesMesh();genContours();buildFlowLines();buildSlopeWarn();buildTolMesh();
   buildStakes();buildGradeArrows();buildDaylightMesh();buildStripPlan();calcVol();
   document.getElementById('st-hint').textContent='\u2705 Flat pad: '+val.toFixed(3)+'m RL \u2014 use V-Offset to adjust cut depth';
+  _registerDesign('Flat Pad '+val.toFixed(3)+'m','flatpad');
   closeFPModal();
 }
 function clearDesignSurface(){
@@ -4376,6 +4400,7 @@ function applyLandXMLSurface(surfaceEl,fname,target,surfName){
     buildTolMesh();buildStakes();buildGradeArrows();buildDaylightMesh();
     if(showStripPlan)buildStripPlan();calcVol();
     document.getElementById('st-dpts').textContent=designCount;
+    _registerDesign('LandXML: '+surfName,'landxml');
   } else {
     fillUnsurveyed();originalGround.set(ground);
     rebuildTerrMesh();genContours();buildFlowLines();buildSlopeWarn();
@@ -4433,6 +4458,7 @@ function parseImportedDesignPoints(txt,fname){
   document.getElementById('st-dpts').textContent=designCount;
   document.getElementById('st-hint').textContent=
     '\u2705 Design imported: '+applied.toLocaleString()+' pts from '+fname;
+  _registerDesign('CSV Import','csv');
 }
 
 function fillUnsurveyed(){
@@ -5117,8 +5143,12 @@ let _idb=null,_autoSaveTimer=null,_lastPosSave=0;
 
 function _openIDB(){
   return new Promise((res,rej)=>{
-    const r=indexedDB.open('gradeos',1);
-    r.onupgradeneeded=e=>e.target.result.createObjectStore('state');
+    const r=indexedDB.open('gradeos',2);
+    r.onupgradeneeded=e=>{
+      const db=e.target.result,old=e.oldVersion;
+      if(old<1)db.createObjectStore('state');
+      if(old<2)db.createObjectStore('designs');
+    };
     r.onsuccess=e=>res(e.target.result);
     r.onerror=e=>rej(e.target.error);
   });
@@ -5180,7 +5210,7 @@ async function restoreSession(){
       r.onsuccess=e=>res(e.target.result);
       r.onerror=e=>rej(e.target.error);
     });
-    if(!state)return;
+    if(!state){loadDesignLibrary();return;}
     design.set(state.design);
     hasD.set(state.hasD);
     designCount=state.designCount;
@@ -5193,6 +5223,7 @@ async function restoreSession(){
     rebuildDesMesh();genContours();buildFlowLines();buildSlopeWarn();
     buildTolMesh();buildStakes();buildGradeArrows();buildDaylightMesh();
     buildStripPlan();calcVol();updateVOffDisplay();
+    loadDesignLibrary();
     const toast=document.getElementById('update-toast');
     if(toast){
       toast.innerHTML='✅ Session restored';
@@ -5209,6 +5240,227 @@ async function restoreSession(){
   }catch(e){
     console.warn('GradeOS restore failed:',e);
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// DESIGN LIBRARY — multi-surface ACTIVE/REFERENCE/OFF management
+// ═══════════════════════════════════════════════════════════════════
+
+// ── IDB persistence ──────────────────────────────────────────────
+async function saveDesignLibrary(){
+  try{
+    const db=await _getIDB();
+    const tx=db.transaction('designs','readwrite');
+    const store=tx.objectStore('designs');
+    await new Promise((res,rej)=>{const r=store.clear();r.onsuccess=()=>res();r.onerror=e=>rej(e.target.error);});
+    for(const entry of designLibrary){
+      const data={id:entry.id,name:entry.name,type:entry.type,state:entry.state,
+        design:new Float32Array(entry.design),hasD:new Uint8Array(entry.hasD),
+        designCount:entry.designCount,createdAt:entry.createdAt};
+      await new Promise((res,rej)=>{const r=store.put(data,entry.id);r.onsuccess=()=>res();r.onerror=e=>rej(e.target.error);});
+    }
+  }catch(e){console.warn('GradeOS design library save failed:',e);}
+}
+
+async function loadDesignLibrary(){
+  try{
+    const db=await _getIDB();
+    const entries=await new Promise((res,rej)=>{
+      const tx=db.transaction('designs','readonly');
+      const r=tx.objectStore('designs').getAll();
+      r.onsuccess=e=>res(e.target.result);
+      r.onerror=e=>rej(e.target.error);
+    });
+    if(!entries||!entries.length){renderDesignPanel();return;}
+    designLibrary=entries.map(e=>({...e,refMeshes:null}));
+    // Rebuild ref meshes for reference entries (active design already set by restoreSession)
+    designLibrary.filter(e=>e.state==='reference').forEach(e=>buildRefMeshes(e));
+    renderDesignPanel();
+  }catch(e){console.warn('GradeOS design library load failed:',e);}
+}
+
+// ── Reference mesh building ──────────────────────────────────────
+function genContoursFromArray(elevArr){
+  const grp=new THREE.Group();
+  grp.position.y=0.12;
+  const MINOR=0.5,MAJOR=2.0;
+  const segs={};
+  for(let gz=0;gz<GR;gz++){
+    for(let gx=0;gx<GR;gx++){
+      const v00=elevArr[gi(gx,gz)],v10=elevArr[gi(gx+1,gz)];
+      const v11=elevArr[gi(gx+1,gz+1)],v01=elevArr[gi(gx,gz+1)];
+      if(!isFinite(v00)||!isFinite(v10)||!isFinite(v11)||!isFinite(v01))continue;
+      const cMin=Math.min(v00,v10,v11,v01),cMax=Math.max(v00,v10,v11,v01);
+      let e=Math.ceil(cMin/MINOR)*MINOR;
+      while(e<=cMax+0.001){
+        const key=e.toFixed(2);
+        if(!segs[key])segs[key]=[];
+        const pts=marchCell(gx,gz,v00,v10,v11,v01,e);
+        if(pts.length>=2){segs[key].push(pts[0],pts[1]);}
+        if(pts.length===4){segs[key].push(pts[2],pts[3]);}
+        e+=MINOR;
+      }
+    }
+  }
+  for(const[key,pts]of Object.entries(segs)){
+    if(pts.length<2)continue;
+    const e=parseFloat(key);
+    const isMajor=Math.abs(Math.round(e/MAJOR)*MAJOR-e)<0.02;
+    const geo=new THREE.BufferGeometry().setFromPoints(pts);
+    const mat=new THREE.LineBasicMaterial({color:0x5599cc,transparent:true,opacity:isMajor?0.55:0.28});
+    grp.add(new THREE.LineSegments(geo,mat));
+  }
+  return grp;
+}
+
+function buildRefMeshes(entry){
+  clearRefMeshes(entry);
+  if(!entry.designCount)return;
+  // Build a HasD-masked elevation array for marching squares
+  const elevArr=new Float32Array(N*N);
+  for(let i=0;i<N*N;i++)elevArr[i]=entry.hasD[i]?entry.design[i]:NaN;
+  const grp=genContoursFromArray(elevArr);
+  entry.refMeshes=grp;
+  scene.add(grp);
+}
+
+function clearRefMeshes(entry){
+  if(!entry.refMeshes)return;
+  scene.remove(entry.refMeshes);
+  entry.refMeshes.children.forEach(c=>{if(c.geometry)c.geometry.dispose();if(c.material)c.material.dispose();});
+  entry.refMeshes=null;
+}
+
+// ── State transition ─────────────────────────────────────────────
+function setDesignState(id,newState){
+  const entry=designLibrary.find(e=>e.id===id);
+  if(!entry)return;
+  const oldState=entry.state;
+
+  function fullRebuild(){
+    rebuildDesMesh();genContours();buildFlowLines();buildSlopeWarn();
+    buildTolMesh();buildStakes();buildGradeArrows();buildDaylightMesh();buildStripPlan();calcVol();
+  }
+
+  if(newState==='active'){
+    // Demote current active to reference
+    const prev=designLibrary.find(e=>e.state==='active'&&e.id!==id);
+    if(prev){prev.state='reference';clearRefMeshes(prev);buildRefMeshes(prev);}
+    // Activate this entry
+    entry.state='active';
+    design.set(entry.design);hasD.set(entry.hasD);designCount=entry.designCount;
+    clearRefMeshes(entry);
+    fullRebuild();
+  } else if(newState==='reference'){
+    if(oldState==='active'){design.fill(0);hasD.fill(0);designCount=0;fullRebuild();}
+    clearRefMeshes(entry);
+    entry.state='reference';
+    buildRefMeshes(entry);
+  } else if(newState==='off'){
+    if(oldState==='active'){design.fill(0);hasD.fill(0);designCount=0;fullRebuild();}
+    clearRefMeshes(entry);
+    entry.state='off';
+  }
+
+  saveDesignLibrary();
+  renderDesignPanel();
+}
+
+// ── Panel UI ─────────────────────────────────────────────────────
+function openDesignsPanel(){
+  renderDesignPanel();
+  document.getElementById('designs-overlay').classList.add('show');
+}
+function closeDesignsPanel(){
+  document.getElementById('designs-overlay').classList.remove('show');
+}
+
+function renderDesignPanel(){
+  const list=document.getElementById('dl-list');
+  if(!list)return;
+  if(!designLibrary.length){
+    list.innerHTML='<div style="color:#4a7aa0;text-align:center;padding:32px 0;font-size:13px">─── No designs saved ───</div>';
+    return;
+  }
+  list.innerHTML=designLibrary.map(entry=>{
+    const isActive=entry.state==='active',isRef=entry.state==='reference',isOff=entry.state==='off';
+    const badgeCls=isActive?'active':isRef?'reference':'off';
+    const badgeTxt=isActive?'ACTIVE':isRef?'REFERENCE':'OFF';
+    const typeLbl=entry.type==='flatpad'?'Flat pad':entry.type==='landxml'?'LandXML':'CSV Import';
+    const d=new Date(entry.createdAt);
+    const dateTxt=d.toLocaleDateString('en-AU',{day:'numeric',month:'short'})+' '+
+      d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0');
+    const stateBtns=[];
+    if(!isActive)stateBtns.push(`<button class="dl-state-btn to-active" onclick="setDesignState('${entry.id}','active')">→ ACTIVE</button>`);
+    if(!isRef)stateBtns.push(`<button class="dl-state-btn to-ref" onclick="setDesignState('${entry.id}','reference')">→ REFERENCE</button>`);
+    if(!isOff)stateBtns.push(`<button class="dl-state-btn to-off" onclick="setDesignState('${entry.id}','off')">→ OFF</button>`);
+    return `<div style="border:1px solid #1e4a7a;border-radius:5px;padding:11px 13px;margin-bottom:10px;background:#071525">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
+        <span class="dl-badge ${badgeCls}">${badgeTxt}</span>
+        <span id="dl-name-${entry.id}" style="color:#dce8f5;font-size:12px;font-weight:600;flex:1">${entry.name}</span>
+      </div>
+      <div style="color:#4a7aa0;font-size:10px;margin-bottom:9px">${typeLbl} · ${dateTxt} · ${entry.designCount.toLocaleString()} pts</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+        ${stateBtns.join('')}
+        <button class="dl-action-btn" onclick="renameDesignEntry('${entry.id}')">✏ Rename</button>
+        <button class="dl-del-btn" onclick="deleteDesignEntry('${entry.id}')">🗑</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renameDesignEntry(id){
+  const entry=designLibrary.find(e=>e.id===id);
+  if(!entry)return;
+  const nameEl=document.getElementById('dl-name-'+id);
+  if(!nameEl)return;
+  const inp=document.createElement('input');
+  inp.value=entry.name;
+  inp.style.cssText='background:#071525;border:1px solid #e8a020;color:#dce8f5;padding:3px 7px;border-radius:3px;font-size:12px;font-weight:600;width:100%';
+  nameEl.replaceWith(inp);
+  inp.focus();inp.select();
+  const confirm=()=>{
+    const v=inp.value.trim()||entry.name;
+    entry.name=v;
+    saveDesignLibrary();
+    renderDesignPanel();
+  };
+  inp.addEventListener('blur',confirm);
+  inp.addEventListener('keydown',e=>{if(e.key==='Enter')inp.blur();if(e.key==='Escape'){inp.value=entry.name;inp.blur();}});
+}
+
+function deleteDesignEntry(id){
+  const entry=designLibrary.find(e=>e.id===id);
+  if(!entry)return;
+  if(!confirm('Delete "'+entry.name+'"? This cannot be undone.'))return;
+  if(entry.state==='active'){
+    design.fill(0);hasD.fill(0);designCount=0;
+    rebuildDesMesh();genContours();buildFlowLines();buildSlopeWarn();
+    buildTolMesh();buildStakes();buildGradeArrows();buildDaylightMesh();buildStripPlan();calcVol();
+  }
+  clearRefMeshes(entry);
+  designLibrary=designLibrary.filter(e=>e.id!==id);
+  saveDesignLibrary();
+  renderDesignPanel();
+}
+
+// ── Helper: register a new design in the library ─────────────────
+function _registerDesign(name,type){
+  // Demote any current active entry to reference
+  const prev=designLibrary.find(e=>e.state==='active');
+  if(prev){prev.state='reference';clearRefMeshes(prev);buildRefMeshes(prev);}
+  const entry={
+    id:Date.now().toString(36)+Math.random().toString(36).slice(2,5),
+    name,type,state:'active',
+    design:new Float32Array(design),
+    hasD:new Uint8Array(hasD),
+    designCount,
+    createdAt:new Date().toISOString(),
+    refMeshes:null
+  };
+  designLibrary.push(entry);
+  saveDesignLibrary();
+  renderDesignPanel();
 }
 
 let last=0;
@@ -7956,6 +8208,19 @@ if('serviceWorker' in navigator){
 
 <!-- Save indicator -->
 <div id="save-indicator"></div>
+
+<!-- Design Library Overlay -->
+<div id="designs-overlay">
+  <div id="designs-overlay-hdr">
+    <h2>📋 Designs</h2>
+    <button class="dl-hdr-btn grn" onclick="openFPModal()" title="Create a new flat pad design">+ New Pad</button>
+    <button class="dl-hdr-btn" onclick="document.getElementById('design-import').click()" title="Import LandXML or CSV design">📐 Import</button>
+    <button class="dl-hdr-btn" onclick="closeDesignsPanel()" style="border-color:#c0392b;color:#c0392b" title="Close">✕</button>
+  </div>
+  <div id="designs-overlay-body">
+    <div id="dl-list"></div>
+  </div>
+</div>
 
 <!-- Flat Pad Modal -->
 <div id="fpModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:500;align-items:center;justify-content:center" onclick="if(event.target===this)closeFPModal()">
