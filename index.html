@@ -2464,12 +2464,12 @@ function handleDesignClick(p){
     if(toolState.sp)scene.remove(toolState.sp);
     toolState={};
     if(tool==='section'){drawSectionProfile(p1,p2);}
-    else if(tool==='batter'){pushUndo();applyBatter(p1,p2);}
-    else if(tool==='irrig'){pushUndo();applyIrrigBay(p1,p2);}
+    else if(tool==='batter'){pushUndo();applyBatter(p1,p2);_snapshotOrRegisterActive(tool);}
+    else if(tool==='irrig'){pushUndo();applyIrrigBay(p1,p2);_snapshotOrRegisterActive(tool);}
     else if(tool==='smooth'){pushUndo();applyTerrainSmooth(p1,p2);}
     else if(tool==='raise'){pushUndo();applyTerrainRaiseLower(p1,p2,1);}
     else if(tool==='lower'){pushUndo();applyTerrainRaiseLower(p1,p2,-1);}
-    else{pushUndo();applyTool(p1,p2);rebuildDesMesh();document.getElementById('st-hint').textContent='Design applied.';}
+    else{pushUndo();applyTool(p1,p2);rebuildDesMesh();document.getElementById('st-hint').textContent='Design applied.';_snapshotOrRegisterActive(tool);}
   }
 }
 
@@ -5584,6 +5584,23 @@ function _registerDesign(name,type){
   renderDesignPanel();
 }
 
+// Update active library entry snapshot (or create new entry if none exists)
+function _snapshotOrRegisterActive(toolName){
+  const names={flat:'Flat Pad',slope:'Single Slope',crown:'Crown Road',dam:'Dam',
+    bestfit:'Min Earthworks',batter:'Batter',irrig:'Irrig Bay',section:'Cross-Section'};
+  const label=names[toolName]||'Design';
+  const active=designLibrary.find(e=>e.state==='active');
+  if(active){
+    active.design=new Float32Array(design);
+    active.hasD=new Uint8Array(hasD);
+    active.designCount=designCount;
+    saveDesignLibrary();
+    renderDesignPanel();
+  } else if(designCount>0){
+    _registerDesign(label,toolName||'interactive');
+  }
+}
+
 let last=0;
 function loop(t){
   requestAnimationFrame(loop);
@@ -6921,27 +6938,33 @@ function updateGuidanceScreens(){
   const rGround = gElev(rx, rz);
   const cGround = mel;
   
-  const lDes = dElev(lx, lz);
-  const rDes = dElev(rx, rz);
-  const cDes = dElev(machinePos.x, machinePos.z);
-  
-  // Calculate cut/fill at reference point
+  const _lDes = dElev(lx, lz);
+  const _rDes = dElev(rx, rz);
+  const _cDes = dElev(machinePos.x, machinePos.z);
+  // Apply V-Offset (null stays null when no design at that point)
+  const lDes = _lDes !== null ? _lDes + vOffset : null;
+  const rDes = _rDes !== null ? _rDes + vOffset : null;
+  const cDes = _cDes !== null ? _cDes + vOffset : null;
+
+  // Helper: ground - design (0 if no design)
+  const _cf = (g, d) => d !== null ? g - d : 0;
+  // Calculate cut/fill at reference point (positive = cut, negative = fill)
   let refCut, refLmm, refRmm, refCmm;
   if(guidanceRefPoint === 'left'){
-    refCut = cGround - cDes;
-    refLmm = (lGround - lDes) * 1000;
-    refRmm = (rGround - rDes) * 1000;
-    refCmm = (cGround - cDes) * 1000;
+    refCut = _cf(lGround, lDes);
+    refLmm = _cf(lGround, lDes) * 1000;
+    refRmm = _cf(rGround, rDes) * 1000;
+    refCmm = _cf(cGround, cDes) * 1000;
   } else if(guidanceRefPoint === 'right'){
-    refCut = rGround - rDes;
-    refLmm = (lGround - lDes) * 1000;
-    refRmm = (rGround - rDes) * 1000;
-    refCmm = (cGround - cDes) * 1000;
+    refCut = _cf(rGround, rDes);
+    refLmm = _cf(lGround, lDes) * 1000;
+    refRmm = _cf(rGround, rDes) * 1000;
+    refCmm = _cf(cGround, cDes) * 1000;
   } else {  // center
-    refCut = cGround - cDes;
-    refLmm = (lGround - lDes) * 1000;
-    refRmm = (rGround - rDes) * 1000;
-    refCmm = (cGround - cDes) * 1000;
+    refCut = _cf(cGround, cDes);
+    refLmm = _cf(lGround, lDes) * 1000;
+    refRmm = _cf(rGround, rDes) * 1000;
+    refCmm = _cf(cGround, cDes) * 1000;
   }
   
   updateHorizontalAlignmentBar(refCmm);
@@ -7093,14 +7116,31 @@ function drawPlanViewGuidance(pos, lx, lz, rx, rz){
     ctx.stroke();
   }
   
-  // Draw terrain elevation contours (simplified)
-  ctx.strokeStyle = '#2a5a7a';
-  ctx.lineWidth = 0.5;
-  for(let i = 0; i < 160; i += 10){
-    const x1 = centerX - 80 * scale + (i % 20) * scale;
-    ctx.beginPath();
-    ctx.arc(centerX + (Math.random() - 0.5) * 20, centerY + (Math.random() - 0.5) * 20, Math.random() * 10, 0, Math.PI * 2);
-    ctx.stroke();
+  // Draw design cut/fill map (or terrain height map when no design)
+  const _cellPx = CS * scale + 0.5;
+  if(designCount > 0){
+    for(let _gz = 0; _gz < N; _gz++){
+      for(let _gx = 0; _gx < N; _gx++){
+        const _idx = gi(_gx, _gz);
+        if(!hasD[_idx]) continue;
+        const _diff = (design[_idx] + vOffset) - ground[_idx];
+        const _px = centerX + (_gx * CS - 80) * scale;
+        const _pz = centerY + (_gz * CS - 80) * scale;
+        if(_diff > 0.025){ const _t=Math.min(_diff/2,1); ctx.fillStyle=`rgba(66,165,245,${(0.25+_t*0.45).toFixed(2)})`; }
+        else if(_diff < -0.025){ const _t=Math.min(-_diff/2,1); ctx.fillStyle=`rgba(239,83,80,${(0.25+_t*0.45).toFixed(2)})`; }
+        else { ctx.fillStyle='rgba(102,187,106,0.55)'; }
+        ctx.fillRect(_px, _pz, _cellPx, _cellPx);
+      }
+    }
+  } else {
+    let _gMin=Infinity,_gMax=-Infinity;
+    for(let i=0;i<N*N;i++){if(ground[i]<_gMin)_gMin=ground[i];if(ground[i]>_gMax)_gMax=ground[i];}
+    const _gRng=_gMax-_gMin||1;
+    for(let _gz=0;_gz<N;_gz++) for(let _gx=0;_gx<N;_gx++){
+      const _t=(ground[gi(_gx,_gz)]-_gMin)/_gRng;
+      ctx.fillStyle=`rgba(${Math.round(20+_t*30)},${Math.round(55+_t*70)},${Math.round(90+_t*55)},0.45)`;
+      ctx.fillRect(centerX+(_gx*CS-80)*scale, centerY+(_gz*CS-80)*scale, _cellPx, _cellPx);
+    }
   }
   
   // Draw machine footprint (rectangle)
@@ -7163,27 +7203,29 @@ function drawBladeSection(leftMM, centerMM, rightMM){
   ctx.strokeStyle = '#4a7aa0';
   ctx.lineWidth = 1;
   ctx.setLineDash([4, 4]);
-  const designGradient = 0.02;  // 2% grade
+  // Draw tolerance band (±tolerance around design)
+  const _tolPx = typeof guidanceTolerance!=='undefined' ? guidanceTolerance*1000/100*scale : 0;
+  ctx.fillStyle = 'rgba(102,187,106,0.12)';
+  ctx.fillRect(margin, midlineY - _tolPx, w - margin * 2, _tolPx * 2);
+  // Design surface: flat at midlineY (values are already relative to design)
   ctx.beginPath();
-  ctx.moveTo(margin, midlineY - designGradient * scale * -8);
-  ctx.lineTo(w - margin, midlineY + designGradient * scale * 8);
+  ctx.moveTo(margin, midlineY);
+  ctx.lineTo(w - margin, midlineY);
   ctx.stroke();
   ctx.setLineDash([]);
   
-  // Draw blade line (current height)
+  // Draw blade line (consistent sign: positive mm = above design = above midlineY)
   ctx.strokeStyle = '#e8a020';
   ctx.lineWidth = 3;
   ctx.beginPath();
-  ctx.moveTo(margin, midlineY - Math.sign(leftMM) * Math.abs(leftMM) / 100 * scale);
-  ctx.lineTo(w - margin, midlineY + Math.sign(rightMM) * Math.abs(rightMM) / 100 * scale);
+  ctx.moveTo(margin, midlineY - leftMM / 100 * scale);
+  ctx.lineTo(w - margin, midlineY - rightMM / 100 * scale);
   ctx.stroke();
   
-  // Draw gap zones (cut/fill)
-  ctx.fillStyle = '#1a3a5c';
-  ctx.globalAlpha = 0.2;
+  // Cut zone (above design) and fill zone (below design)
+  ctx.fillStyle = 'rgba(239,83,80,0.08)';
   ctx.fillRect(margin, 0, w - margin * 2, midlineY);
-  ctx.fillStyle = '#4da6ff';
-  ctx.globalAlpha = 0.2;
+  ctx.fillStyle = 'rgba(66,165,245,0.08)';
   ctx.fillRect(margin, midlineY, w - margin * 2, h - midlineY);
   ctx.globalAlpha = 1;
   
@@ -7223,11 +7265,13 @@ function drawSideProfileGuidance(hdg){
     const tx = machinePos.x + Math.sin(hdg) * dist;
     const tz = machinePos.z + Math.cos(hdg) * dist;
     elevs.push(gElev(tx, tz));
-    deigns.push(dElev(tx, tz));
+    const _rd = dElev(tx, tz);
+    deigns.push(_rd !== null ? _rd + vOffset : null);
   }
   
-  const minElev = Math.min(...elevs, ...deigns);
-  const maxElev = Math.max(...elevs, ...deigns);
+  const _desValid = deigns.filter(d => d !== null);
+  const minElev = Math.min(...elevs, ...(_desValid.length ? _desValid : elevs));
+  const maxElev = Math.max(...elevs, ...(_desValid.length ? _desValid : elevs));
   const range = maxElev - minElev || 1;
   const scale = (h - margin * 2) / range;
   
@@ -7236,11 +7280,12 @@ function drawSideProfileGuidance(hdg){
   ctx.lineWidth = 1;
   ctx.setLineDash([4, 4]);
   ctx.beginPath();
+  let _penDown = false;
   for(let i = 0; i < samples; i++){
     const px = margin + (i / (samples - 1)) * (w - margin * 2);
+    if(deigns[i] === null){ _penDown = false; continue; }
     const py = h - margin - (deigns[i] - minElev) * scale;
-    if(i === 0) ctx.moveTo(px, py);
-    else ctx.lineTo(px, py);
+    if(!_penDown){ ctx.moveTo(px, py); _penDown = true; } else ctx.lineTo(px, py);
   }
   ctx.stroke();
   ctx.setLineDash([]);
