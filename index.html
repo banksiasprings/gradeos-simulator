@@ -6352,23 +6352,23 @@ setInterval(updateRTKDisplay,7000);
 // ═══════════════════════════════════════════════════════════════════
 // TABLET DEMO MODE — uses device GPS, compass and IMU as the machine
 // ═══════════════════════════════════════════════════════════════════
-let tabletDemoActive=false;
-let tabletGPSOrigin=null;   // {lat,lng} — first GPS fix becomes scene centre
-let tabletGPSWatchId=null;
-let tabletOrientHandler=null;
-let tabletEMAEnabled=true;
+var tabletDemoActive=false;
+var tabletGPSOrigin=null;   // {lat,lng} — first GPS fix becomes scene centre
+var tabletGPSWatchId=null;
+var tabletOrientHandler=null;
+var tabletEMAEnabled=true;
 
 // EMA (exponential moving average) — simulates RTK smoothing
-const tabletEMA={lat:0,lng:0,alpha:0.18,init:false};
-let tabletRawLat=0,tabletRawLng=0,tabletGPSAcc=999;
-let tabletHdg=0,tabletPitch=0,tabletRoll=0;
-let tabletGPSSpeed=null;
+var tabletEMA={lat:0,lng:0,alpha:0.18,init:false};
+var tabletRawLat=0,tabletRawLng=0,tabletGPSAcc=999;
+var tabletHdg=0,tabletPitch=0,tabletRoll=0;
+var tabletGPSSpeed=null;
 
 // NTRIP state
-let ntripWS=null;
-let ntripConnected=false;
-let ntripBytesRx=0;
-let ntripCorrOffset={x:0,z:0};
+var ntripWS=null;
+var ntripConnected=false;
+var ntripBytesRx=0;
+var ntripCorrOffset={x:0,z:0};
 
 // ── Sensor callbacks ────────────────────────────────────────────────
 function onTabletGPS(pos){
