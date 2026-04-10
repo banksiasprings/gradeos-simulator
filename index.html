@@ -4041,16 +4041,19 @@ vp2.addEventListener('dragover',e=>{e.preventDefault();document.getElementById('
 vp2.addEventListener('dragleave',e=>{if(!vp2.contains(e.relatedTarget))document.getElementById('drop-zone').classList.remove('show');});
 vp2.addEventListener('drop',e=>{
   e.preventDefault();document.getElementById('drop-zone').classList.remove('show');
-  const f=e.dataTransfer.files[0];if(f)readImportFile(f);
+  const f=e.dataTransfer.files[0];if(f)readImportFile(f,'ground');
 });
 
-function handleImportFile(ev){const f=ev.target.files[0];if(f)readImportFile(f);ev.target.value='';}
+function handleImportFile(ev){const f=ev.target.files[0];if(f)readImportFile(f,'ground');ev.target.value='';}function handleImportDesignFile(ev){const f=ev.target.files[0];if(f)readImportFile(f,'design');ev.target.value='';}
 
-function readImportFile(file){
+function readImportFile(file,target){
   const reader=new FileReader();
   reader.onload=ev=>{
     const txt=ev.target.result;
-    if(file.name.toLowerCase().endsWith('.gpx'))parseGPX(txt,file.name);
+    const nm=file.name.toLowerCase();
+    if(nm.endsWith('.xml'))parseLandXML(txt,file.name,target||'design');
+    else if(target==='design')parseImportedDesignPoints(txt,file.name);
+    else if(nm.endsWith('.gpx'))parseGPX(txt,file.name);
     else parseCSV(txt,file.name);
   };
   reader.readAsText(file);
@@ -4141,6 +4144,162 @@ function applyImportedPoints(pts,fname,colHint){
   document.getElementById('st-terrain').textContent='Imported: '+fname.replace(/\.[^.]+$/,'');
   if(showSurvey)rebuildSurveyMesh();
   document.getElementById('st-hint').textContent=`✅ Imported ${applied.toLocaleString()} points from ${fname}`;
+}
+
+
+// ═══════════════════════════════════════════════════════════════════
+// LANDXML + DESIGN SURFACE IMPORT
+// ═══════════════════════════════════════════════════════════════════
+function parseLandXML(txt,fname,defaultTarget){
+  const parser=new DOMParser();
+  const doc=parser.parseFromString(txt,'application/xml');
+  if(doc.querySelector('parsererror')){alert('Could not parse XML. Verify this is a valid LandXML file.');return;}
+  const surfaces=[...doc.querySelectorAll('Surface')];
+  if(!surfaces.length){
+    alert('No TIN surfaces found.\nExpected: <Surfaces><Surface><Definition><Pnts>...</Pnts></Definition></Surface>.');
+    return;
+  }
+  let imported=0;const names=[];
+  for(const surf of surfaces){
+    const rawName=surf.getAttribute('name')||surf.getAttribute('desc')||'Surface';
+    const nl=rawName.toLowerCase();
+    let target=defaultTarget||'design';
+    if(/exist|existing|\beg\b|ground|topo|natural|original|survey/.test(nl)) target='ground';
+    else if(/design|prop|proposed|\bfg\b|finish|finished|subgrade|dtm|target|construct/.test(nl)) target='design';
+    const applied=applyLandXMLSurface(surf,fname,target,rawName);
+    if(applied>0){imported++;names.push("'"+rawName+"' \u2192 "+target);}
+  }
+  if(!imported){alert('No surface data could be extracted. Check the file contains valid <Pnts> elements.');return;}
+  document.getElementById('st-hint').textContent='\u2705 LandXML: '+names.join(', ')+' from '+fname;
+}
+
+function applyLandXMLSurface(surfaceEl,fname,target,surfName){
+  const pntsEl=surfaceEl.querySelector('Pnts');
+  if(!pntsEl)return 0;
+  // LandXML coordinate order: Northing Easting Elevation (N E Z)
+  const rawPts=new Map();
+  pntsEl.querySelectorAll('P').forEach(p=>{
+    const id=p.getAttribute('id');
+    const parts=p.textContent.trim().split(/\s+/);
+    if(parts.length>=3){
+      const n=parseFloat(parts[0]),e=parseFloat(parts[1]),z=parseFloat(parts[2]);
+      if(!isNaN(n)&&!isNaN(e)&&!isNaN(z))rawPts.set(id,{e,n,z});
+    }
+  });
+  if(!rawPts.size)return 0;
+  const ptArr=[...rawPts.values()];
+  const eArr=ptArr.map(p=>p.e),nArr=ptArr.map(p=>p.n),zArr=ptArr.map(p=>p.z);
+  const eCtr=(Math.min(...eArr)+Math.max(...eArr))/2;
+  const nCtr=(Math.min(...nArr)+Math.max(...nArr))/2;
+  const eSpan=Math.max(...eArr)-Math.min(...eArr);
+  const nSpan=Math.max(...nArr)-Math.min(...nArr);
+  const isLatLon=Math.max(eSpan,nSpan)<10;
+  const mpu=isLatLon?(111320*Math.cos(nCtr*Math.PI/180)):1;
+  const worldSpan=Math.max(eSpan*mpu,nSpan*mpu)||1;
+  const sc=Math.min(SZ*0.85,worldSpan)/worldSpan;
+  const zMin=Math.min(...zArr),zMax=Math.max(...zArr);
+  const zRange=zMax-zMin||1;
+  const zSc=6/zRange,zOff=-3-zMin*zSc;
+  const wPts=new Map();
+  for(const [id,p] of rawPts){
+    wPts.set(id,{x:(p.e-eCtr)*mpu*sc,z:-(p.n-nCtr)*mpu*sc,elev:p.z*zSc+zOff});
+  }
+  let applied=0;
+  const write=(gx,gz,elev)=>{
+    const idx=gi(gx,gz);
+    if(target==='design'){if(!hasD[idx])designCount++;design[idx]=elev;hasD[idx]=1;}
+    else{ground[idx]=elev;surveyGrid[idx]=1;}
+    applied++;
+  };
+  const facesEl=surfaceEl.querySelector('Faces');
+  if(facesEl){
+    for(const face of facesEl.querySelectorAll('F')){
+      const ids=face.textContent.trim().split(/\s+/);
+      if(ids.length<3)continue;
+      const a=wPts.get(ids[0]),b=wPts.get(ids[1]),c=wPts.get(ids[2]);
+      if(!a||!b||!c)continue;
+      const gx0=Math.max(0,Math.floor((Math.min(a.x,b.x,c.x)+SZ/2)/CS)-1);
+      const gx1=Math.min(GR,Math.ceil((Math.max(a.x,b.x,c.x)+SZ/2)/CS)+1);
+      const gz0=Math.max(0,Math.floor((Math.min(a.z,b.z,c.z)+SZ/2)/CS)-1);
+      const gz1=Math.min(GR,Math.ceil((Math.max(a.z,b.z,c.z)+SZ/2)/CS)+1);
+      const denom=(b.z-c.z)*(a.x-c.x)+(c.x-b.x)*(a.z-c.z);
+      if(Math.abs(denom)<1e-10)continue;
+      for(let gz=gz0;gz<=gz1;gz++){
+        for(let gx=gx0;gx<=gx1;gx++){
+          const wx=gx*CS-SZ/2,wz=gz*CS-SZ/2;
+          const u=((b.z-c.z)*(wx-c.x)+(c.x-b.x)*(wz-c.z))/denom;
+          const v=((c.z-a.z)*(wx-c.x)+(a.x-c.x)*(wz-c.z))/denom;
+          const w=1-u-v;
+          if(u<0||v<0||w<0)continue;
+          write(gx,gz,u*a.elev+v*b.elev+w*c.elev);
+        }
+      }
+    }
+  } else {
+    for(const [,wp] of wPts){const{gx,gz}=w2g(wp.x,wp.z);write(gx,gz,wp.elev);}
+  }
+  if(target==='design'){
+    rebuildDesMesh();genContours();buildFlowLines();buildSlopeWarn();
+    buildTolMesh();buildStakes();buildGradeArrows();buildDaylightMesh();
+    if(showStripPlan)buildStripPlan();calcVol();
+    document.getElementById('st-dpts').textContent=designCount;
+  } else {
+    fillUnsurveyed();originalGround.set(ground);
+    rebuildTerrMesh();genContours();buildFlowLines();buildSlopeWarn();
+    surveyPointCount=applied;
+    const covPct=(surveyGrid.filter(v=>v>0).length/(N*N)*100).toFixed(0);
+    document.getElementById('si-pts').textContent=applied.toLocaleString();
+    document.getElementById('si-cov').textContent=covPct+'%';
+    document.getElementById('si-range').textContent=zMin.toFixed(2)+'m \u2013 '+zMax.toFixed(2)+'m';
+    document.getElementById('si-src').textContent=fname+' (LandXML: '+surfName+')';
+    if(showSurvey)rebuildSurveyMesh();
+  }
+  return applied;
+}
+
+function parseImportedDesignPoints(txt,fname){
+  const lines=txt.trim().split(/\r?\n/).filter(l=>l.trim()&&!l.startsWith('#'));
+  if(lines.length<2){alert('No data found in file.');return;}
+  const hdr=lines[0].split(/[,\t;]/).map(h=>h.trim().toLowerCase().replace(/[^a-z0-9_]/g,''));
+  const tryCol=names=>{for(const n of names){const i=hdr.findIndex(h=>h.includes(n));if(i>=0)return i;}return -1;};
+  let iE=tryCol(['easting','east','x','longitude','lon','long']);
+  let iN=tryCol(['northing','north','y','latitude','lat']);
+  let iZ=tryCol(['elevation','elev','z','height','alt','altitude','hgt']);
+  if(iE<0||iN<0||iZ<0){
+    if(hdr.length>=3){iE=0;iN=1;iZ=2;}
+    else{alert('Could not detect E/N/Elevation columns.');return;}
+  }
+  const pts=[];
+  for(let i=1;i<lines.length;i++){
+    const cols=lines[i].split(/[,\t;]/);
+    const e=parseFloat(cols[iE]),n=parseFloat(cols[iN]),z=parseFloat(cols[iZ]);
+    if(!isNaN(e)&&!isNaN(n)&&!isNaN(z))pts.push({e,n,z});
+  }
+  if(!pts.length){alert('No valid data rows found.');return;}
+  const eArr=pts.map(p=>p.e),nArr=pts.map(p=>p.n),zArr=pts.map(p=>p.z);
+  const eCtr=(Math.min(...eArr)+Math.max(...eArr))/2;
+  const nCtr=(Math.min(...nArr)+Math.max(...nArr))/2;
+  const isLatLon=Math.max(Math.max(...eArr)-Math.min(...eArr),Math.max(...nArr)-Math.min(...nArr))<10;
+  const mpu=isLatLon?(111320*Math.cos(nCtr*Math.PI/180)):1;
+  const worldSpan=Math.max((Math.max(...eArr)-Math.min(...eArr))*mpu,(Math.max(...nArr)-Math.min(...nArr))*mpu)||1;
+  const sc=Math.min(SZ*0.85,worldSpan)/worldSpan;
+  const zMin=Math.min(...zArr),zMax=Math.max(...zArr);
+  const zRange=zMax-zMin||1;
+  const zSc=6/zRange,zOff=-3-zMin*zSc;
+  let applied=0;
+  pts.forEach(p=>{
+    const wx=(p.e-eCtr)*mpu*sc,wz=-(p.n-nCtr)*mpu*sc;
+    const elev=p.z*zSc+zOff;
+    const{gx,gz}=w2g(wx,wz);
+    const idx=gi(gx,gz);
+    if(!hasD[idx])designCount++;design[idx]=elev;hasD[idx]=1;applied++;
+  });
+  rebuildDesMesh();genContours();buildFlowLines();buildSlopeWarn();
+  buildTolMesh();buildStakes();buildGradeArrows();buildDaylightMesh();
+  if(showStripPlan)buildStripPlan();calcVol();
+  document.getElementById('st-dpts').textContent=designCount;
+  document.getElementById('st-hint').textContent=
+    '\u2705 Design imported: '+applied.toLocaleString()+' pts from '+fname;
 }
 
 function fillUnsurveyed(){
