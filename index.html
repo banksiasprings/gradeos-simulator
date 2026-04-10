@@ -45,6 +45,8 @@ body{background:#0a1520;color:#dce8f5;font-family:'Segoe UI',Arial,sans-serif;ov
 #update-toast{position:fixed;bottom:20px;left:20px;background:#e8a020;color:#0a1520;padding:12px 16px;border-radius:4px;z-index:500;font-weight:700;font-size:12px;display:none;align-items:center;gap:10px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.3);animation:slideUp .3s}
 #update-toast.show{display:flex}
 @keyframes slideUp{from{transform:translateY(100px);opacity:0}to{transform:translateY(0);opacity:1}}
+/* ── Save indicator ──────────────────────────────────────────────── */
+#save-indicator{position:fixed;bottom:62px;left:6px;font-size:10px;font-family:monospace;color:#7aabcc;background:rgba(7,21,37,0.85);border:1px solid #1a3a5c;border-radius:3px;padding:2px 6px;z-index:12;opacity:0;transition:opacity 1.5s;pointer-events:none}
 #logo{font-size:18px;font-weight:900;color:#e8a020;letter-spacing:3px;white-space:nowrap}
 #logo span{color:#dce8f5}
 .tg{display:flex;gap:2px;align-items:center;flex-wrap:wrap}
@@ -1746,7 +1748,7 @@ function cfColor(diff,hasDes){
 
 function rebuildDesMesh(){
   if(desMesh){scene.remove(desMesh);desMesh.geometry.dispose();}
-  if(designCount===0) return;
+  if(designCount===0){autoSave();return;}
   const geo=new THREE.PlaneGeometry(SZ,SZ,GR,GR);
   const pos=geo.attributes.position;
   if(showCutFill){
@@ -1773,6 +1775,7 @@ function rebuildDesMesh(){
   calcVol();
   buildTolMesh();buildStakes();buildGradeArrows();buildDaylightMesh();if(showStripPlan)buildStripPlan();
   document.getElementById('st-dpts').textContent=designCount;
+  autoSave();
 }
 
 // ── Alignment line ────────────────────────────────────────────────
@@ -3935,11 +3938,11 @@ function exportAsBuilt(){
 function adjVOffset(delta){
   vOffset=Math.max(-1.0,Math.min(0.5,vOffset+delta));
   updateVOffDisplay();
-  if(designCount>0)rebuildDesMesh();
+  if(designCount>0)rebuildDesMesh();else autoSave();
 }
 function setVOffset(val,btn){
   vOffset=val;updateVOffDisplay();
-  if(designCount>0)rebuildDesMesh();
+  if(designCount>0)rebuildDesMesh();else autoSave();
   document.getElementById('voff-memories').style.display='none';
   document.querySelectorAll('.voff-mem-btn').forEach(b=>b.classList.remove('act'));
   if(btn)btn.classList.add('act');
@@ -5032,11 +5035,113 @@ function resize(){
 }
 window.addEventListener('resize',resize);resize();
 
+// ═══════════════════════════════════════════════════════════════════
+// INDEXEDDB AUTO-SAVE
+// ═══════════════════════════════════════════════════════════════════
+let _idb=null,_autoSaveTimer=null,_lastPosSave=0;
+
+function _openIDB(){
+  return new Promise((res,rej)=>{
+    const r=indexedDB.open('gradeos',1);
+    r.onupgradeneeded=e=>e.target.result.createObjectStore('state');
+    r.onsuccess=e=>res(e.target.result);
+    r.onerror=e=>rej(e.target.error);
+  });
+}
+async function _getIDB(){if(!_idb)_idb=await _openIDB();return _idb;}
+
+function _showSaveInd(txt){
+  const el=document.getElementById('save-indicator');
+  if(!el)return;
+  el.textContent=txt;el.style.opacity='1';
+  if(el._fadeT)clearTimeout(el._fadeT);
+  if(txt.includes('Saved'))el._fadeT=setTimeout(()=>{el.style.opacity='0.4';},5000);
+}
+
+async function _doAutoSave(){
+  try{
+    _showSaveInd('💾 Saving…');
+    const db=await _getIDB();
+    const state={
+      design:new Float32Array(design),
+      hasD:new Uint8Array(hasD),
+      designCount,vOffset,
+      machinePos:{x:machinePos.x,z:machinePos.z,hdg:machinePos.hdg},
+      lastSavedAt:new Date().toISOString()
+    };
+    await new Promise((res,rej)=>{
+      const tx=db.transaction('state','readwrite');
+      const req=tx.objectStore('state').put(state,'current');
+      req.onsuccess=()=>res();
+      tx.onerror=e=>rej(e.target.error);
+    });
+    const d=new Date();
+    const hh=d.getHours().toString().padStart(2,'0');
+    const mm=d.getMinutes().toString().padStart(2,'0');
+    _showSaveInd('💾 Saved '+hh+':'+mm);
+  }catch(e){
+    console.warn('GradeOS autosave failed:',e);
+    const el=document.getElementById('save-indicator');
+    if(el)el.style.opacity='0';
+  }
+}
+
+function autoSave(){
+  clearTimeout(_autoSaveTimer);
+  _autoSaveTimer=setTimeout(_doAutoSave,400);
+}
+
+function autoSavePosition(t){
+  if(t-_lastPosSave<5000)return;
+  _lastPosSave=t;autoSave();
+}
+
+async function restoreSession(){
+  try{
+    const db=await _getIDB();
+    const state=await new Promise((res,rej)=>{
+      const tx=db.transaction('state','readonly');
+      const r=tx.objectStore('state').get('current');
+      r.onsuccess=e=>res(e.target.result);
+      r.onerror=e=>rej(e.target.error);
+    });
+    if(!state)return;
+    design.set(state.design);
+    hasD.set(state.hasD);
+    designCount=state.designCount;
+    vOffset=state.vOffset||0;
+    if(state.machinePos){
+      machinePos.x=state.machinePos.x;
+      machinePos.z=state.machinePos.z;
+      machinePos.hdg=state.machinePos.hdg||0;
+    }
+    rebuildDesMesh();genContours();buildFlowLines();buildSlopeWarn();
+    buildTolMesh();buildStakes();buildGradeArrows();buildDaylightMesh();
+    buildStripPlan();calcVol();updateVOffDisplay();
+    const toast=document.getElementById('update-toast');
+    if(toast){
+      toast.innerHTML='✅ Session restored';
+      toast.classList.add('show');
+      setTimeout(()=>toast.classList.remove('show'),3000);
+    }
+    if(state.lastSavedAt){
+      const d=new Date(state.lastSavedAt);
+      const hh=d.getHours().toString().padStart(2,'0');
+      const mm=d.getMinutes().toString().padStart(2,'0');
+      const el=document.getElementById('save-indicator');
+      if(el){el.textContent='💾 Saved '+hh+':'+mm;el.style.opacity='0.4';}
+    }
+  }catch(e){
+    console.warn('GradeOS restore failed:',e);
+  }
+}
+
 let last=0;
 function loop(t){
   requestAnimationFrame(loop);
   const dt=Math.min((t-last)/1000,0.05);last=t;
   updateMachine(dt);
+  autoSavePosition(t);
   updateFleet2(dt);
   // Throttled GPS track rebuild
   if(trackNeedsRebuild&&machineOn){rebuildTrack();trackNeedsRebuild=false;}
@@ -5727,6 +5832,7 @@ function toggleReplay(){
 setTool('nav');
 loadTpl('road_std');
 drawLEDBar(0,0);
+restoreSession();
 
 // RTK simulation — realistic GNSS receiver display
 function updateRTKDisplay(){
@@ -7102,6 +7208,9 @@ if('serviceWorker' in navigator){
   </div>
   <div id="gps-sat-tooltip"></div>
 </div>
+
+<!-- Save indicator -->
+<div id="save-indicator"></div>
 
 <!-- Flat Pad Modal -->
 <div id="fpModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:500;align-items:center;justify-content:center" onclick="if(event.target===this)closeFPModal()">
