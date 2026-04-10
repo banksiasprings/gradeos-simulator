@@ -726,7 +726,9 @@ body.field-mode #field-rtk{display:flex}
     <button class="tb grn" onclick="saveDesign()" title="Save design to browser storage">💾 Save</button>
     <button class="tb grn" onclick="loadDesign()" title="Load design from browser storage">📂 Load</button>
     <button class="tb blu" onclick="document.getElementById('gps-import').click()" title="Import GPS/survey CSV">📡 Import GPS</button>
-    <input type="file" id="gps-import" accept=".csv,.gpx,.txt" style="display:none" onchange="handleImportFile(event)">
+    <input type="file" id="gps-import" accept=".csv,.gpx,.txt,.xml" style="display:none" onchange="handleImportFile(event)">
+    <input type="file" id="design-import" accept=".xml,.csv,.txt" style="display:none" onchange="handleImportDesignFile(event)">
+    <button class="tb blu" onclick="document.getElementById('design-import').click()" title="Import design surface from LandXML (.xml) or design CSV">📐 Import Design</button>
     <button class="tb" id="b-guidance" onclick="toggleGuidanceScreen()" title="Guidance Screen — 3-panel layout with alignment and cut/fill light bars">🎯 Guidance</button>
     <button class="tb" id="b-field" onclick="toggleFieldMode()" title="Field / Operator Mode — clean full-screen view with 3 profile windows (F key)">🖥 Field</button>
     <button class="tb" id="b-pitch" onclick="togglePitchCard()" title="Pitch / Site Status Card — live stats summary for demos (P key)">📊 Pitch</button>
@@ -841,6 +843,7 @@ body.field-mode #field-rtk{display:flex}
         <button class="drawer-btn grn" onclick="saveDesign()">💾 Save</button>
         <button class="drawer-btn grn" onclick="loadDesign()">📂 Load</button>
         <button class="drawer-btn" onclick="document.getElementById('gps-import').click()">📡 Import GPS</button>
+        <button class="drawer-btn" onclick="document.getElementById('design-import').click()">📐 Import Design</button>
         <button class="drawer-btn" onclick="captureScreenshot()">📷 Screenshot</button>
         <button class="drawer-btn grn" onclick="exportCSV()">📥 CSV</button>
         <button class="drawer-btn grn" onclick="exportAsBuilt()">📤 As-Built</button>
