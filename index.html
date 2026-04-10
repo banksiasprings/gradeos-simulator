@@ -4,7 +4,63 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>GradeOS Simulator v0.7</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js">
+// ── TOOLBAR: 3-BUTTON CONSOLIDATION ─────────────────────────────────────
+function openGPSPanel(){
+  document.getElementById('gps-diag-overlay').classList.add('show');
+  if(typeof gpsDiag!=='undefined')gpsDiag.start();
+}
+
+function openDesignPanel(tab){
+  document.getElementById('design-panel').style.display='flex';
+  switchDesignTab(tab||'designs');
+}
+function closeDesignPanel(){
+  document.getElementById('design-panel').style.display='none';
+}
+function switchDesignTab(tab){
+  const map={designs:'designs-overlay',profile:'profile-overlay',align:'align-overlay'};
+  const content=document.getElementById('dtab-content');
+  if(!content)return;
+  Object.entries(map).forEach(([t,id])=>{
+    const el=document.getElementById(id);
+    if(!el)return;
+    if(t===tab){
+      el.style.position='relative';
+      el.style.inset='auto';
+      el.style.zIndex='auto';
+      el.style.display='flex';
+      el.style.flexDirection='column';
+      el.style.flex='1';
+      el.style.minHeight='100%';
+      el.style.width='100%';
+      el.classList.add('show');
+      if(el.parentElement!==content)content.appendChild(el);
+    } else {
+      el.classList.remove('show');
+      el.style.display='none';
+    }
+  });
+  document.querySelectorAll('.dtab').forEach(b=>b.classList.remove('active'));
+  const tb=document.getElementById('dtab-'+tab);
+  if(tb)tb.classList.add('active');
+}
+function _updateGpsLiveToggle(active){
+  const btn=document.getElementById('gps-live-toggle');
+  const bar=document.getElementById('gps-live-status-bar');
+  if(!btn)return;
+  if(active){
+    btn.textContent='● LIVE';
+    btn.style.background='#22aa44';btn.style.color='#fff';btn.style.borderColor='#22aa44';
+    if(bar)bar.textContent='Live sensors active — GPS + motion running';
+  } else {
+    btn.textContent='OFF';
+    btn.style.background='#0d2040';btn.style.color='#888';btn.style.borderColor='#334';
+    if(bar)bar.textContent='Tap to enable iPad GPS + motion';
+  }
+}
+
+</script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#0a1520;color:#dce8f5;font-family:'Segoe UI',Arial,sans-serif;overflow:hidden;height:100vh;display:flex;flex-direction:column;font-size:13px}
@@ -774,6 +830,7 @@ body.field-mode #field-rtk{display:flex}
 #pro-load-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:300;align-items:center;justify-content:center}
 #pro-load-modal.show{display:flex}
 #pro-load-box{background:#0d1f35;border:1px solid #e8a020;border-radius:6px;width:380px;max-width:96vw}
+.dtab{padding:10px 18px;background:none;border:none;border-bottom:3px solid transparent;color:#7aa0c0;font-size:13px;font-weight:600;cursor:pointer;flex-shrink:0}.dtab.active{color:#ffaa00;border-bottom-color:#ffaa00;background:rgba(255,170,0,.07)}.dtab:hover:not(.active){color:#e0e8f0;background:rgba(255,255,255,.05)}
 </style>
 </head>
 <body>
@@ -785,11 +842,8 @@ body.field-mode #field-rtk{display:flex}
   <div class="topbar-right-btns">
     <div id="gps-status-dot" style="width:10px;height:10px;border-radius:50%;background:#27ae60;flex-shrink:0;margin-right:6px"></div>
     <button id="guide-topbar-btn" class="fullscreen-btn" onclick="toggleGuidanceScreen()" title="Guidance Screen — 3-panel layout with alignment and cut/fill light bars">🎯 Guide</button>
-    <button class="fullscreen-btn" onclick="openProfileDesigner()" title="Profile Designer — build road/drain cross-section and project to 3D surface">📐 Profile</button>
-    <button id="live-btn" class="fullscreen-btn" onclick="toggleLiveSensors()" title="Live Sensor Mode — real GPS + IMU drives simulation">📡 Live</button>
-    <button class="fullscreen-btn" onclick="openGPSDiag()" title="GPS Diagnostics">📡 GPS</button>
-    <button class="fullscreen-btn" onclick="openDesignsPanel()" title="Design Library — manage ACTIVE/REFERENCE/OFF surfaces">📋 Designs</button>
-    <button class="tb" id="b-align" onclick="openAlignOverlay()" title="Alignment Designer">🛣 Align</button>
+    <button class="tb" id="b-gps-main" onclick="openGPSPanel()" title="GPS and Live Sensors">📡 GPS</button>
+    <button class="tb" id="b-design-main" onclick="openDesignPanel('designs')" title="Design Tools">📐 Design</button>
     <button class="fullscreen-btn" onclick="document.documentElement.requestFullscreen()" title="Fullscreen">⛶</button>
   </div>
 
@@ -926,7 +980,7 @@ body.field-mode #field-rtk{display:flex}
         <button class="drawer-btn" onclick="setTool('batter')">⛰ Batter</button>
         <button class="drawer-btn" onclick="setTool('irrig')">💧 Irrig Bay</button>
         <button class="drawer-btn" onclick="setTool('section')">✂ Profile</button>
-        <button class="drawer-btn" onclick="openAlignOverlay()">🛣 Alignment Designer</button>
+        <button class="drawer-btn" onclick="openDesignPanel('align')">🛣 Alignment Designer</button>
         <div style="font-size:9px;color:#4a7aa0;text-transform:uppercase;letter-spacing:1px;padding:8px 4px 4px">Quick Scenarios</div>
         <button class="drawer-btn grn" onclick="runScenario('irrig');document.getElementById('side-drawer').classList.remove('open')">🌾 Irrigation Bay</button>
         <button class="drawer-btn grn" onclick="runScenario('housepad');document.getElementById('side-drawer').classList.remove('open')">🏠 House Pad</button>
@@ -1007,8 +1061,8 @@ body.field-mode #field-rtk{display:flex}
         <button class="drawer-btn" onclick="document.getElementById('gps-import').click()">📡 Import GPS</button>
         <button class="drawer-btn" onclick="document.getElementById('design-import').click()">📐 Import Design</button>
         <button class="drawer-btn" onclick="openFPModal()">🟦 Flat Pad</button>
-        <button class="drawer-btn" onclick="openDesignsPanel();document.getElementById('side-drawer').classList.remove('open')">📋 Design Library</button>
-        <button class="drawer-btn" onclick="openProfileDesigner();document.getElementById('side-drawer').classList.remove('open')">📐 Profile Designer</button>
+        <button class="drawer-btn" onclick="openDesignPanel('designs');document.getElementById('side-drawer').classList.remove('open')">📋 Design Library</button>
+        <button class="drawer-btn" onclick="openDesignPanel('profile');document.getElementById('side-drawer').classList.remove('open')">📐 Profile Designer</button>
         <button class="drawer-btn" onclick="captureScreenshot()">📷 Screenshot</button>
         <button class="drawer-btn grn" onclick="exportCSV()">📥 CSV</button>
         <button class="drawer-btn grn" onclick="exportAsBuilt()">📤 As-Built</button>
@@ -1737,7 +1791,7 @@ let remainingCutVol=0;   // set by calcVol; used for ETA
 let lastProdUpdateT=0;   // timestamp of last productivity display update
 
 // ── Live Sensor Mode globals ─────────────────────────────────────────
-let liveSensorMode=false;
+let liveSensorMode=false;_updateGpsLiveToggle(false);
 let gpsWatchId=null;
 let gpsOrigin=null;       // {lat, lon, alt}
 let smoothedBeta=0, smoothedGamma=0;
@@ -6517,7 +6571,7 @@ async function enableLiveSensors(){
     }
     // 3. Activate
     closeLiveSensorModal();
-    liveSensorMode=true;
+    liveSensorMode=true;_updateGpsLiveToggle(true);
     gpsOrigin=null; smoothedBeta=0; smoothedGamma=0; lastGpsUpdate=0; liveLastFixKey=null;
     // Re-use tabletDemoActive to block keyboard movement and route IMU to machine visual
     if(tabletDemoActive) deactivateTabletDemo();
@@ -8932,6 +8986,7 @@ function alignBuildDesign(){
     <span style="font-size:10px;color:#4a7aa0;font-family:monospace" id="gps-diag-time">—</span>
     <button id="gps-diag-close" onclick="closeGPSDiag()">✕ Close</button>
   </div>
+  <div style="display:flex;align-items:center;gap:10px;padding:8px 14px;background:#0a1830;border-bottom:1px solid #1e4a7a;flex-shrink:0"><span style="color:#7aa0c0;font-size:12px;font-weight:600">LIVE SENSORS</span><button id="gps-live-toggle" onclick="toggleLiveSensors()" style="padding:5px 14px;border-radius:16px;border:2px solid #334;background:#0d2040;color:#888;font-weight:700;cursor:pointer;font-size:12px">OFF</button><span id="gps-live-status-bar" style="font-size:11px;color:#557799">Tap to enable iPad GPS + motion</span></div>
   <div id="gps-diag-body">
 
     <!-- SECTION 1: Position & Accuracy (always open) -->
@@ -9382,6 +9437,17 @@ function alignBuildDesign(){
     <div id="align-load-list"></div>
     <button onclick="document.getElementById('align-load-modal').style.display='none'" style="margin-top:12px;width:100%;background:#334;border:1px solid #556;color:#ccc;padding:8px;border-radius:4px;cursor:pointer">Cancel</button>
   </div>
+</div>
+
+<!-- TABBED DESIGN PANEL -->
+<div id="design-panel" style="display:none;position:fixed;inset:0;background:#060f1e;z-index:440;flex-direction:column">
+  <div style="display:flex;background:#0d2040;border-bottom:2px solid #1e4a7a;flex-shrink:0;align-items:stretch">
+    <button class="dtab active" id="dtab-designs" onclick="switchDesignTab('designs')">📋 Designs</button>
+    <button class="dtab" id="dtab-profile" onclick="switchDesignTab('profile')">📐 Profile</button>
+    <button class="dtab" id="dtab-align" onclick="switchDesignTab('align')">🛣 Align</button>
+    <button onclick="closeDesignPanel()" style="margin-left:auto;padding:10px 18px;background:none;border:none;color:#aaa;font-size:20px;cursor:pointer;line-height:1">✕</button>
+  </div>
+  <div id="dtab-content" style="flex:1;overflow:auto;position:relative;display:flex;flex-direction:column"></div>
 </div>
 </body>
 </html>
