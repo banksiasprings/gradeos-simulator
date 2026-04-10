@@ -737,6 +737,43 @@ body.field-mode #field-rtk{display:flex}
 .dl-state-btn.to-off{background:#1a1a1a;border-color:#555;color:#888}.dl-state-btn.to-off:hover{background:#555;color:#fff}
 .dl-action-btn{background:#0d2040;border:1px solid #1e4a7a;color:#7aabcc;padding:5px 12px;border-radius:12px;cursor:pointer;font-size:10px;min-height:44px;transition:all .15s}.dl-action-btn:hover{background:#1e4a7a}
 .dl-del-btn{background:#1a0808;border:1px solid #4a1010;color:#ef5350;padding:5px 12px;border-radius:12px;cursor:pointer;font-size:10px;min-height:44px;transition:all .15s}.dl-del-btn:hover{background:#4a1010}
+/* ── Profile Designer Overlay ──────────────────────────────────── */
+#profile-overlay{display:none;position:fixed;inset:0;background:#0a1928;z-index:250;flex-direction:column}
+#profile-overlay.show{display:flex}
+#profile-overlay-hdr{background:#132843;border-bottom:2px solid #e8a020;padding:8px 14px;display:flex;align-items:center;gap:8px;flex-shrink:0}
+#profile-overlay-hdr h2{font-size:13px;font-weight:700;color:#e8a020;margin-right:auto}
+.pro-hdr-btn{background:#0d2040;border:1px solid #1e4a7a;color:#7aabcc;padding:5px 11px;border-radius:3px;cursor:pointer;font-size:11px;font-weight:600;transition:all .15s}
+.pro-hdr-btn:hover{background:#e8a020;border-color:#e8a020;color:#0a1520}
+.pro-hdr-btn.red{border-color:#c0392b;color:#c0392b}.pro-hdr-btn.red:hover{background:#c0392b;color:#fff}
+#profile-overlay-body{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:12px}
+#profile-canvas-wrap{background:#020810;border:1px solid #1a3a5c;border-radius:4px;overflow:hidden}
+#profile-canvas{display:block;width:100%;height:180px}
+#profile-elements-list{display:flex;flex-direction:column;gap:4px}
+.pro-el-row{display:flex;align-items:center;gap:6px;background:#071525;border:1px solid #1e4a7a;border-radius:3px;padding:5px 8px;font-size:11px}
+.pro-el-lbl{flex:1;color:#dce8f5;font-family:monospace}
+.pro-el-btn{background:#0d2040;border:1px solid #1e4a7a;color:#7aabcc;width:26px;height:26px;border-radius:3px;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;flex-shrink:0}
+.pro-el-btn:hover{background:#e8a020;border-color:#e8a020;color:#0a1520}
+.pro-el-btn.red:hover{background:#c0392b;border-color:#c0392b;color:#fff}
+.pro-el-type{font-size:9px;color:#4a7aa0;text-transform:uppercase;letter-spacing:1px;min-width:40px}
+#profile-load-list{display:flex;flex-direction:column;gap:4px;max-height:220px;overflow-y:auto}
+.pro-load-item{background:#071525;border:1px solid #1e4a7a;border-radius:3px;padding:6px 10px;cursor:pointer;font-size:11px;color:#dce8f5;display:flex;align-items:center;justify-content:space-between;transition:all .15s}
+.pro-load-item:hover{border-color:#e8a020;color:#e8a020}
+/* Profile element modal */
+#pro-el-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:300;align-items:center;justify-content:center}
+#pro-el-modal.show{display:flex}
+#pro-el-box{background:#0d1f35;border:1px solid #e8a020;border-radius:6px;width:360px;max-width:96vw;padding:0}
+.pro-el-modal-hdr{background:#132843;border-bottom:1px solid #1e4a7a;padding:10px 14px;border-radius:6px 6px 0 0;display:flex;justify-content:space-between;align-items:center}
+.pro-el-modal-hdr h3{font-size:12px;font-weight:700;color:#e8a020}
+.pro-el-modal-body{padding:14px;display:flex;flex-direction:column;gap:8px}
+.pro-el-modal-ftr{padding:8px 14px;border-top:1px solid #1a3a5c;display:flex;gap:8px;justify-content:flex-end;border-radius:0 0 6px 6px}
+.pro-type-tabs{display:flex;gap:4px;flex-wrap:wrap}
+.pro-type-tab{background:#071525;border:1px solid #1e4a7a;color:#7aabcc;padding:4px 10px;border-radius:3px;cursor:pointer;font-size:11px;transition:all .15s}
+.pro-type-tab:hover,.pro-type-tab.act{background:#e8a020;border-color:#e8a020;color:#0a1520;font-weight:700}
+#pro-el-preview{font-size:10px;color:#7aabcc;font-family:monospace;background:#040c18;border:1px solid #1a3a5c;border-radius:3px;padding:5px 8px;min-height:28px}
+/* Profile load modal */
+#pro-load-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:300;align-items:center;justify-content:center}
+#pro-load-modal.show{display:flex}
+#pro-load-box{background:#0d1f35;border:1px solid #e8a020;border-radius:6px;width:380px;max-width:96vw}
 </style>
 </head>
 <body>
@@ -747,6 +784,8 @@ body.field-mode #field-rtk{display:flex}
   <div id="topbar-spacer"></div>
   <div class="topbar-right-btns">
     <div id="gps-status-dot" style="width:10px;height:10px;border-radius:50%;background:#27ae60;flex-shrink:0;margin-right:6px"></div>
+    <button id="guide-topbar-btn" class="fullscreen-btn" onclick="toggleGuidanceScreen()" title="Guidance Screen — 3-panel layout with alignment and cut/fill light bars">🎯 Guide</button>
+    <button class="fullscreen-btn" onclick="openProfileDesigner()" title="Profile Designer — build road/drain cross-section and project to 3D surface">📐 Profile</button>
     <button id="live-btn" class="fullscreen-btn" onclick="toggleLiveSensors()" title="Live Sensor Mode — real GPS + IMU drives simulation">📡 Live</button>
     <button class="fullscreen-btn" onclick="openGPSDiag()" title="GPS Diagnostics">📡 GPS</button>
     <button class="fullscreen-btn" onclick="openDesignsPanel()" title="Design Library — manage ACTIVE/REFERENCE/OFF surfaces">📋 Designs</button>
@@ -967,6 +1006,7 @@ body.field-mode #field-rtk{display:flex}
         <button class="drawer-btn" onclick="document.getElementById('design-import').click()">📐 Import Design</button>
         <button class="drawer-btn" onclick="openFPModal()">🟦 Flat Pad</button>
         <button class="drawer-btn" onclick="openDesignsPanel();document.getElementById('side-drawer').classList.remove('open')">📋 Design Library</button>
+        <button class="drawer-btn" onclick="openProfileDesigner();document.getElementById('side-drawer').classList.remove('open')">📐 Profile Designer</button>
         <button class="drawer-btn" onclick="captureScreenshot()">📷 Screenshot</button>
         <button class="drawer-btn grn" onclick="exportCSV()">📥 CSV</button>
         <button class="drawer-btn grn" onclick="exportAsBuilt()">📤 As-Built</button>
@@ -5143,11 +5183,12 @@ let _idb=null,_autoSaveTimer=null,_lastPosSave=0;
 
 function _openIDB(){
   return new Promise((res,rej)=>{
-    const r=indexedDB.open('gradeos',2);
+    const r=indexedDB.open('gradeos',3);
     r.onupgradeneeded=e=>{
       const db=e.target.result,old=e.oldVersion;
       if(old<1)db.createObjectStore('state');
       if(old<2)db.createObjectStore('designs');
+      if(old<3)db.createObjectStore('profiles');
     };
     r.onsuccess=e=>res(e.target.result);
     r.onerror=e=>rej(e.target.error);
@@ -6751,6 +6792,8 @@ function toggleGuidanceScreen(){
   } else {
     screen.classList.remove('show');
   }
+  const guideBtn = document.getElementById('guide-topbar-btn');
+  if(guideBtn) guideBtn.classList.toggle('act', guidanceScreenActive);
 }
 
 function setGuidanceRefPoint(point){
@@ -7150,6 +7193,436 @@ function drawSideProfileGuidance(hdg){
   ctx.fillStyle = '#dce8f5';
   ctx.textAlign = 'left';
   ctx.fillText('Grade: ' + grade.toFixed(1) + '%', margin + 5, 20);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PROFILE DESIGNER
+// ═══════════════════════════════════════════════════════════════════
+var profileLibrary = [];   // loaded from IndexedDB
+var _profileElements = []; // current editor state
+var _proElEditIdx = -1;    // -1 = adding new, >=0 = editing existing
+var _proElType = 'grade';  // current modal type
+
+function openProfileDesigner(){
+  document.getElementById('profile-overlay').classList.add('show');
+  renderProfileElements();
+  drawProfileCanvas();
+  loadProfilesFromIDB();
+}
+function closeProfileDesigner(){
+  document.getElementById('profile-overlay').classList.remove('show');
+}
+function newProfile(){
+  _profileElements = [];
+  document.getElementById('pro-name').value = 'New Profile';
+  renderProfileElements();
+  drawProfileCanvas();
+}
+
+// ── Element CRUD ────────────────────────────────────────────────────
+function openAddElementModal(){
+  _proElEditIdx = -1;
+  document.getElementById('pro-el-modal-title').textContent = 'Add Element';
+  document.querySelector('#pro-el-modal .pro-el-modal-ftr button:last-child').textContent = '✓ Add';
+  _proElType = 'grade';
+  setProElType('grade', document.querySelectorAll('.pro-type-tab')[0]);
+  document.getElementById('pro-grade-w').value = '6.0';
+  document.getElementById('pro-grade-g').value = '-3.0';
+  document.getElementById('pro-bat-ratio').value = '4';
+  document.getElementById('pro-bat-h').value = '2.0';
+  document.getElementById('pro-bat-down').classList.add('act');
+  document.getElementById('pro-bat-up').classList.remove('act');
+  document.getElementById('pro-vd-in').value = '4';
+  document.getElementById('pro-vd-depth').value = '0.5';
+  document.getElementById('pro-vd-out').value = '4';
+  updateProElPreview();
+  document.getElementById('pro-el-modal').classList.add('show');
+}
+function editProEl(i){
+  _proElEditIdx = i;
+  const el = _profileElements[i];
+  document.getElementById('pro-el-modal-title').textContent = 'Edit Element';
+  document.querySelector('#pro-el-modal .pro-el-modal-ftr button:last-child').textContent = '✓ Save';
+  _proElType = el.type;
+  const tabs = document.querySelectorAll('.pro-type-tab');
+  tabs.forEach(t=>t.classList.remove('act'));
+  // find matching tab
+  const typeNames = ['grade','batter','vdrain','crown'];
+  const tabIdx = typeNames.indexOf(el.type);
+  if(tabIdx>=0) tabs[tabIdx].classList.add('act');
+  ['pro-fields-grade','pro-fields-batter','pro-fields-vdrain','pro-fields-crown'].forEach((id,j)=>{
+    document.getElementById(id).style.display = j===tabIdx?'':'none';
+  });
+  if(el.type==='grade'){
+    document.getElementById('pro-grade-w').value = el.width;
+    document.getElementById('pro-grade-g').value = el.grade;
+  } else if(el.type==='batter'){
+    document.getElementById('pro-bat-ratio').value = el.ratio;
+    document.getElementById('pro-bat-h').value = el.height;
+    document.getElementById('pro-bat-down').classList.toggle('act', el.dir==='down');
+    document.getElementById('pro-bat-up').classList.toggle('act', el.dir==='up');
+  } else if(el.type==='vdrain'){
+    document.getElementById('pro-vd-in').value = el.inRatio;
+    document.getElementById('pro-vd-depth').value = el.depth;
+    document.getElementById('pro-vd-out').value = el.outRatio;
+  }
+  updateProElPreview();
+  document.getElementById('pro-el-modal').classList.add('show');
+}
+function setProElType(type, btn){
+  _proElType = type;
+  document.querySelectorAll('.pro-type-tabs .pro-type-tab').forEach(t=>t.classList.remove('act'));
+  btn.classList.add('act');
+  const ids = ['pro-fields-grade','pro-fields-batter','pro-fields-vdrain','pro-fields-crown'];
+  const types = ['grade','batter','vdrain','crown'];
+  ids.forEach((id,i)=>document.getElementById(id).style.display=types[i]===type?'':'none');
+  updateProElPreview();
+}
+function updateProElPreview(){
+  const el = _readProElModal();
+  document.getElementById('pro-el-preview').textContent = _proElLabel(el);
+}
+function _readProElModal(){
+  if(_proElType==='grade') return {type:'grade',width:parseFloat(document.getElementById('pro-grade-w').value)||6,grade:parseFloat(document.getElementById('pro-grade-g').value)||0};
+  if(_proElType==='batter') return {type:'batter',ratio:parseFloat(document.getElementById('pro-bat-ratio').value)||4,height:parseFloat(document.getElementById('pro-bat-h').value)||2,dir:document.getElementById('pro-bat-up').classList.contains('act')?'up':'down'};
+  if(_proElType==='vdrain') return {type:'vdrain',inRatio:parseFloat(document.getElementById('pro-vd-in').value)||4,depth:parseFloat(document.getElementById('pro-vd-depth').value)||0.5,outRatio:parseFloat(document.getElementById('pro-vd-out').value)||4};
+  return {type:'crown'};
+}
+function _proElLabel(el){
+  if(!el) return '—';
+  if(el.type==='grade') return `Road ${el.width.toFixed(1)}m at ${el.grade>=0?'+':''}${el.grade.toFixed(1)}%`;
+  if(el.type==='batter') return `Batter ${el.ratio}:1 ${el.dir==='down'?'↓':'↑'} ${el.height.toFixed(2)}m`;
+  if(el.type==='vdrain') return `V-Drain ${el.inRatio}:1 / ${el.depth.toFixed(2)}m / ${el.outRatio}:1`;
+  if(el.type==='crown') return 'Crown ◆ (centreline)';
+  return '—';
+}
+function confirmProEl(){
+  const el = _readProElModal();
+  if(_proElEditIdx>=0){
+    _profileElements[_proElEditIdx] = el;
+  } else {
+    _profileElements.push(el);
+  }
+  closeProElModal();
+  renderProfileElements();
+  drawProfileCanvas();
+}
+function closeProElModal(){
+  document.getElementById('pro-el-modal').classList.remove('show');
+}
+function removeProEl(i){
+  _profileElements.splice(i,1);
+  renderProfileElements();
+  drawProfileCanvas();
+}
+function moveProEl(i, dir){
+  const j = i+dir;
+  if(j<0||j>=_profileElements.length) return;
+  const tmp = _profileElements[i];
+  _profileElements[i] = _profileElements[j];
+  _profileElements[j] = tmp;
+  renderProfileElements();
+  drawProfileCanvas();
+}
+function renderProfileElements(){
+  const list = document.getElementById('profile-elements-list');
+  if(!_profileElements.length){
+    list.innerHTML='<div style="color:#4a7aa0;font-size:11px;text-align:center;padding:20px 0">No elements yet. Add a Crown first, then build outward.</div>';
+    return;
+  }
+  list.innerHTML = _profileElements.map((el,i)=>`
+    <div class="pro-el-row">
+      <span class="pro-el-type">${el.type}</span>
+      <span class="pro-el-lbl">${_proElLabel(el)}</span>
+      <button class="pro-el-btn" onclick="moveProEl(${i},-1)" title="Move up">↑</button>
+      <button class="pro-el-btn" onclick="moveProEl(${i},1)" title="Move down">↓</button>
+      <button class="pro-el-btn" onclick="editProEl(${i})" title="Edit">✏</button>
+      <button class="pro-el-btn red" onclick="removeProEl(${i})" title="Remove">✕</button>
+    </div>`).join('');
+}
+
+// ── Mirror ──────────────────────────────────────────────────────────
+function mirrorProfileLeft(){
+  const crownIdx = _profileElements.findIndex(e=>e.type==='crown');
+  if(crownIdx<0){alert('No Crown element found. Add a Crown element to mark the centreline.');return;}
+  const rightSide = _profileElements.slice(crownIdx+1);
+  if(!rightSide.length){alert('No elements to the right of Crown to mirror.');return;}
+  // mirror: reverse order, flip batter direction, negate grade
+  const mirrored = rightSide.slice().reverse().map(el=>{
+    if(el.type==='grade') return {...el, grade: -el.grade};
+    if(el.type==='batter') return {...el, dir: el.dir==='down'?'up':'down'};
+    if(el.type==='vdrain') return {...el, inRatio: el.outRatio, outRatio: el.inRatio};
+    return {...el};
+  });
+  _profileElements = [...mirrored, ..._profileElements.slice(crownIdx)];
+  renderProfileElements();
+  drawProfileCanvas();
+}
+
+// ── 2D Canvas Preview ───────────────────────────────────────────────
+function drawProfileCanvas(){
+  const canvas = document.getElementById('profile-canvas');
+  if(!canvas) return;
+  const W = canvas.offsetWidth || 800;
+  const H = canvas.height || 180;
+  canvas.width = W;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#020810';
+  ctx.fillRect(0,0,W,H);
+  if(!_profileElements.length) return;
+
+  // Walk elements to compute points
+  const pts = _calcProfilePoints();
+  if(pts.length<2) return;
+
+  // Find extents
+  let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
+  pts.forEach(p=>{minX=Math.min(minX,p.x);maxX=Math.max(maxX,p.x);minY=Math.min(minY,p.y);maxY=Math.max(maxY,p.y);});
+  const padX=2,padY=0.5;
+  const scaleX=(W-60)/(Math.max(maxX-minX,1));
+  const scaleY=(H-40)/(Math.max(maxY-minY+padY*2,1));
+  const scale = Math.min(scaleX,scaleY);
+  const offX = 30 + (W-60-(maxX-minX)*scale)/2 - minX*scale;
+  const offY = H-20 - (-(minY-padY))*scale;
+
+  function px(x,y){return{cx:offX+x*scale,cy:offY-y*scale};}
+
+  // Ground line at y=0
+  ctx.strokeStyle='#1e4a7a';ctx.lineWidth=1;ctx.setLineDash([4,4]);
+  ctx.beginPath();
+  const g0=px(minX-2,0),g1=px(maxX+2,0);
+  ctx.moveTo(g0.cx,g0.cy);ctx.lineTo(g1.cx,g1.cy);
+  ctx.stroke();ctx.setLineDash([]);
+
+  // Crown line
+  const crownX = pts.find(p=>p.isCrown);
+  if(crownX!==undefined){
+    const cp=px(crownX.x,minY-0.1);
+    const cp2=px(crownX.x,maxY+0.3);
+    ctx.strokeStyle='#4a7aa0';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+    ctx.beginPath();ctx.moveTo(cp.cx,cp2.cy);ctx.lineTo(cp.cx,H-10);
+    ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle='#4a7aa0';ctx.font='9px monospace';ctx.textAlign='center';
+    ctx.fillText('CL',cp.cx,H-2);
+  }
+
+  // Profile line
+  ctx.strokeStyle='#ffaa00';ctx.lineWidth=2;ctx.setLineDash([]);
+  ctx.beginPath();
+  pts.forEach((p,i)=>{
+    const c=px(p.x,p.y);
+    if(i===0)ctx.moveTo(c.cx,c.cy);else ctx.lineTo(c.cx,c.cy);
+  });
+  ctx.stroke();
+
+  // Labels
+  ctx.fillStyle='#7aabcc';ctx.font='9px sans-serif';
+  pts.filter(p=>p.label).forEach(p=>{
+    const c=px(p.x,p.y);
+    ctx.textAlign='center';
+    ctx.fillText(p.label,c.cx,c.cy-6);
+  });
+
+  // Scale indicator
+  ctx.fillStyle='#2a5a7a';ctx.font='9px monospace';ctx.textAlign='left';
+  ctx.fillText(`H: ${(1/scale).toFixed(2)}m/px`,4,H-4);
+}
+
+function _calcProfilePoints(){
+  const pts=[];
+  let x=0,y=0;
+  _profileElements.forEach(el=>{
+    if(el.type==='crown'){
+      pts.push({x,y,isCrown:true,label:'CL'});
+    } else if(el.type==='grade'){
+      const dx=el.width;
+      const dy=dx*el.grade/100;
+      pts.push({x,y,label:''});
+      x+=dx;y+=dy;
+      pts.push({x,y,label:`${el.grade>=0?'+':''}${el.grade}%`});
+    } else if(el.type==='batter'){
+      const dh=el.height;
+      const dx=dh*el.ratio;
+      const dy=el.dir==='down'?-dh:dh;
+      pts.push({x,y,label:''});
+      x+=dx;y+=dy;
+      pts.push({x,y,label:`${el.ratio}:1`});
+    } else if(el.type==='vdrain'){
+      const d=el.depth;
+      const dxIn=d*el.inRatio;
+      const dxOut=d*el.outRatio;
+      pts.push({x,y,label:''});
+      x+=dxIn;y-=d;
+      pts.push({x,y,label:`d=${d}m`});
+      x+=dxOut;y+=d;
+      pts.push({x,y,label:''});
+    }
+  });
+  return pts;
+}
+
+// ── Save / Load ──────────────────────────────────────────────────────
+function saveProfile(){
+  const name = document.getElementById('pro-name').value.trim()||'Profile';
+  if(!_profileElements.length){alert('No elements to save.');return;}
+  const entry={
+    id:Date.now().toString(36)+Math.random().toString(36).slice(2,5),
+    name,
+    createdAt:new Date().toISOString(),
+    elements:JSON.parse(JSON.stringify(_profileElements))
+  };
+  // remove same-name existing
+  profileLibrary = profileLibrary.filter(p=>p.name!==name);
+  profileLibrary.push(entry);
+  _openIDB().then(db=>{
+    const tx=db.transaction('profiles','readwrite');
+    tx.objectStore('profiles').put(entry,entry.id);
+    tx.oncomplete=()=>{
+      showUpdateToast('💾 Profile "'+name+'" saved',2500);
+    };
+  }).catch(()=>showUpdateToast('💾 Profile saved (local only)',2500));
+}
+function loadProfilesFromIDB(){
+  _openIDB().then(db=>{
+    const tx=db.transaction('profiles','readonly');
+    const req=tx.objectStore('profiles').getAll();
+    req.onsuccess=()=>{profileLibrary=req.result||[];};
+  }).catch(()=>{});
+}
+function openProfileLoadModal(){
+  loadProfilesFromIDB();
+  setTimeout(()=>{
+    const list = document.getElementById('profile-load-list');
+    if(!profileLibrary.length){
+      list.innerHTML='<div style="color:#4a7aa0;text-align:center;padding:20px;font-size:11px">No saved profiles</div>';
+    } else {
+      list.innerHTML = profileLibrary.map(p=>`
+        <div class="pro-load-item" onclick="loadProfileEntry('${p.id}')">
+          <span>${p.name}</span>
+          <span style="font-size:9px;color:#4a7aa0">${p.elements.length} elements · ${new Date(p.createdAt).toLocaleDateString()}</span>
+        </div>`).join('');
+    }
+    document.getElementById('pro-load-modal').classList.add('show');
+  },150);
+}
+function loadProfileEntry(id){
+  const p = profileLibrary.find(e=>e.id===id);
+  if(!p) return;
+  _profileElements = JSON.parse(JSON.stringify(p.elements));
+  document.getElementById('pro-name').value = p.name;
+  closeProfileLoadModal();
+  renderProfileElements();
+  drawProfileCanvas();
+}
+function closeProfileLoadModal(){
+  document.getElementById('pro-load-modal').classList.remove('show');
+}
+
+// ── Build Design Surface ─────────────────────────────────────────────
+function buildProfileDesignSurface(){
+  if(!_profileElements.length){alert('No profile elements defined.');return;}
+  const crownIdx = _profileElements.findIndex(e=>e.type==='crown');
+  if(crownIdx<0){alert('Profile must contain a Crown element marking the centreline.');return;}
+
+  const sx=parseFloat(document.getElementById('pro-sx').value)||0;
+  const sz=parseFloat(document.getElementById('pro-sz').value)||0;
+  const ex=parseFloat(document.getElementById('pro-ex').value)||40;
+  const ez=parseFloat(document.getElementById('pro-ez').value)||0;
+  const rlStart=parseFloat(document.getElementById('pro-rl-start').value)||101.5;
+  const rlEnd=parseFloat(document.getElementById('pro-rl-end').value)||101.2;
+  const interval=Math.max(0.25,parseFloat(document.getElementById('pro-interval').value)||1.0);
+  const profName=document.getElementById('pro-name').value.trim()||'Profile';
+
+  const adx=ex-sx,adz=ez-sz;
+  const totalLen=Math.sqrt(adx*adx+adz*adz);
+  if(totalLen<0.1){alert('Start and end points are too close.');return;}
+
+  // Unit vectors: along alignment and perpendicular
+  const alongX=adx/totalLen,alongZ=adz/totalLen;
+  const perpX=-alongZ,perpZ=alongX;  // 90° left = perpendicular
+
+  const nStations=Math.ceil(totalLen/interval)+1;
+  let applied=0;
+
+  for(let si=0;si<nStations;si++){
+    const t=Math.min(si*interval,totalLen);
+    const frac=t/totalLen;
+    const crownRL=rlStart+(rlEnd-rlStart)*frac;
+    const cx=sx+alongX*t;
+    const cz=sz+alongZ*t;
+
+    // Build points for this station using profile elements
+    // Starting from crown (0), walk left (reverse of elements before crown) and right (elements after crown)
+    const stationPts = [{ox:0,oy:0}]; // crown at offset 0
+
+    // Right side: elements after crown
+    let ox=0,oy=0;
+    for(let i=crownIdx+1;i<_profileElements.length;i++){
+      const el=_profileElements[i];
+      if(el.type==='grade'){
+        ox+=el.width; oy+=el.width*el.grade/100;
+        stationPts.push({ox,oy});
+      } else if(el.type==='batter'){
+        const dh=el.height;
+        const dx=dh*el.ratio;
+        const dy=el.dir==='down'?-dh:dh;
+        ox+=dx; oy+=dy;
+        stationPts.push({ox,oy});
+      } else if(el.type==='vdrain'){
+        const d=el.depth;
+        ox+=d*el.inRatio; oy-=d;
+        stationPts.push({ox,oy});
+        ox+=d*el.outRatio; oy+=d;
+        stationPts.push({ox,oy});
+      }
+    }
+
+    // Left side: elements before crown in reverse
+    ox=0; oy=0;
+    for(let i=crownIdx-1;i>=0;i--){
+      const el=_profileElements[i];
+      if(el.type==='grade'){
+        ox-=el.width; oy-=el.width*el.grade/100;
+        stationPts.push({ox,oy});
+      } else if(el.type==='batter'){
+        const dh=el.height;
+        const dx=dh*el.ratio;
+        const dy=el.dir==='down'?-dh:dh;
+        ox-=dx; oy+=dy;  // left side: horizontal goes left, vertical mirrors
+        stationPts.push({ox,oy});
+      } else if(el.type==='vdrain'){
+        const d=el.depth;
+        // going left: reverse drain geometry
+        ox-=d*el.outRatio; oy-=d;
+        stationPts.push({ox,oy});
+        ox-=d*el.inRatio; oy+=d;
+        stationPts.push({ox,oy});
+      }
+    }
+
+    // Write each point to design grid
+    stationPts.forEach(p=>{
+      // World coords: move perpX/perpZ by offset, elevation = crownRL + oy
+      const wx = cx + perpX*p.ox;
+      const wz = cz + perpZ*p.ox;
+      // Clamp to grid bounds ±39m
+      if(wx<-39||wx>39||wz<-39||wz>39) return;
+      const elev = crownRL + p.oy;
+      const{gx,gz}=w2g(wx,wz);
+      const idx=gi(gx,gz);
+      if(!hasD[idx])designCount++;
+      design[idx]=elev;
+      hasD[idx]=1;
+      applied++;
+    });
+  }
+
+  // Rebuild all meshes
+  rebuildDesMesh();genContours();buildFlowLines();buildSlopeWarn();buildTolMesh();
+  buildStakes();buildGradeArrows();buildDaylightMesh();buildStripPlan();calcVol();
+  _registerDesign('Road: '+profName,'profile');
+  showUpdateToast('✅ Built road design from profile — '+applied+' design points',4000);
+  closeProfileDesigner();
 }
 
 // Call updateGuidanceScreens in the main loop
@@ -8240,6 +8713,149 @@ if('serviceWorker' in navigator){
       <button onclick="confirmFlatPad()" style="flex:1;background:#1a5a28;border:1px solid #2a8a3a;color:#8adfaa;padding:9px;border-radius:3px;cursor:pointer;font-weight:700;font-size:13px">✓ Apply</button>
       <button onclick="clearDesignSurface()" title="Clear design surface" style="background:#3a1010;border:1px solid #7a2020;color:#df9090;padding:9px 14px;border-radius:3px;cursor:pointer;font-size:13px">🗑</button>
       <button onclick="closeFPModal()" style="background:#0d2040;border:1px solid #1e4a7a;color:#7aabcc;padding:9px 14px;border-radius:3px;cursor:pointer;font-size:13px">✕</button>
+    </div>
+  </div>
+</div>
+
+<!-- Profile Designer Overlay -->
+<div id="profile-overlay">
+  <div id="profile-overlay-hdr">
+    <h2>📐 PROFILE DESIGNER</h2>
+    <button class="pro-hdr-btn" onclick="newProfile()">+ New</button>
+    <button class="pro-hdr-btn" onclick="openProfileLoadModal()">📂 Load</button>
+    <button class="pro-hdr-btn red" onclick="closeProfileDesigner()">✕</button>
+  </div>
+  <div id="profile-overlay-body">
+    <!-- Name -->
+    <div style="display:flex;align-items:center;gap:10px">
+      <label style="font-size:10px;color:#7aabcc;text-transform:uppercase;letter-spacing:1px;white-space:nowrap">Profile Name:</label>
+      <input id="pro-name" type="text" value="New Profile" style="flex:1;background:#071525;border:1px solid #1e4a7a;color:#dce8f5;padding:5px 8px;border-radius:3px;font-size:13px;font-weight:600">
+    </div>
+    <!-- Canvas -->
+    <div id="profile-canvas-wrap">
+      <canvas id="profile-canvas" height="180"></canvas>
+    </div>
+    <!-- Elements list -->
+    <div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <span style="font-size:10px;color:#e8a020;text-transform:uppercase;letter-spacing:1.5px;font-weight:700">Elements (left → right)</span>
+        <button class="pro-hdr-btn" onclick="openAddElementModal()">+ Add Element</button>
+      </div>
+      <div id="profile-elements-list">
+        <div style="color:#4a7aa0;font-size:11px;text-align:center;padding:20px 0">No elements yet. Add a Crown first, then build outward.</div>
+      </div>
+    </div>
+    <!-- Actions -->
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="pro-hdr-btn" onclick="mirrorProfileLeft()">🔁 Mirror Left→Right</button>
+      <button class="pro-hdr-btn" style="background:#1a5a28;border-color:#2a8a3a;color:#8adfaa" onclick="saveProfile()">💾 Save Profile</button>
+    </div>
+    <!-- Apply to alignment -->
+    <div style="border-top:1px solid #1a3a5c;padding-top:12px">
+      <div style="font-size:10px;color:#e8a020;text-transform:uppercase;letter-spacing:1.5px;font-weight:700;margin-bottom:10px">─── Apply to Alignment ───</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+        <div>
+          <label style="font-size:10px;color:#7aabcc;display:block;margin-bottom:3px">Crown RL at Start (m)</label>
+          <input id="pro-rl-start" type="number" value="101.500" step="0.001" style="width:100%;background:#071525;border:1px solid #1e4a7a;color:#dce8f5;padding:4px 7px;border-radius:3px;font-size:12px;font-family:monospace">
+        </div>
+        <div>
+          <label style="font-size:10px;color:#7aabcc;display:block;margin-bottom:3px">Crown RL at End (m)</label>
+          <input id="pro-rl-end" type="number" value="101.200" step="0.001" style="width:100%;background:#071525;border:1px solid #1e4a7a;color:#dce8f5;padding:4px 7px;border-radius:3px;font-size:12px;font-family:monospace">
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:8px">
+        <div>
+          <label style="font-size:10px;color:#7aabcc;display:block;margin-bottom:3px">Start X (m)</label>
+          <input id="pro-sx" type="number" value="0.0" step="0.1" style="width:100%;background:#071525;border:1px solid #1e4a7a;color:#dce8f5;padding:4px 7px;border-radius:3px;font-size:12px;font-family:monospace">
+        </div>
+        <div>
+          <label style="font-size:10px;color:#7aabcc;display:block;margin-bottom:3px">Start Z (m)</label>
+          <input id="pro-sz" type="number" value="0.0" step="0.1" style="width:100%;background:#071525;border:1px solid #1e4a7a;color:#dce8f5;padding:4px 7px;border-radius:3px;font-size:12px;font-family:monospace">
+        </div>
+        <div>
+          <label style="font-size:10px;color:#7aabcc;display:block;margin-bottom:3px">End X (m)</label>
+          <input id="pro-ex" type="number" value="40.0" step="0.1" style="width:100%;background:#071525;border:1px solid #1e4a7a;color:#dce8f5;padding:4px 7px;border-radius:3px;font-size:12px;font-family:monospace">
+        </div>
+        <div>
+          <label style="font-size:10px;color:#7aabcc;display:block;margin-bottom:3px">End Z (m)</label>
+          <input id="pro-ez" type="number" value="0.0" step="0.1" style="width:100%;background:#071525;border:1px solid #1e4a7a;color:#dce8f5;padding:4px 7px;border-radius:3px;font-size:12px;font-family:monospace">
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        <label style="font-size:10px;color:#7aabcc;white-space:nowrap">Station Interval (m)</label>
+        <input id="pro-interval" type="number" value="1.0" step="0.5" min="0.25" max="5" style="width:100px;background:#071525;border:1px solid #1e4a7a;color:#dce8f5;padding:4px 7px;border-radius:3px;font-size:12px;font-family:monospace">
+      </div>
+      <button style="width:100%;background:#1a3a6a;border:1px solid #2a5aaa;color:#8ab4ff;padding:9px;border-radius:3px;cursor:pointer;font-size:13px;font-weight:700;transition:all .15s" onmouseover="this.style.background='#2a5aaa'" onmouseout="this.style.background='#1a3a6a'" onclick="buildProfileDesignSurface()">🏗 Build Design Surface</button>
+    </div>
+  </div>
+</div>
+
+<!-- Profile Element Modal -->
+<div id="pro-el-modal">
+  <div id="pro-el-box">
+    <div class="pro-el-modal-hdr">
+      <h3 id="pro-el-modal-title">Add Element</h3>
+      <button style="background:none;border:none;color:#7aabcc;font-size:16px;cursor:pointer" onclick="closeProElModal()">✕</button>
+    </div>
+    <div class="pro-el-modal-body">
+      <div class="pro-type-tabs">
+        <button class="pro-type-tab act" onclick="setProElType('grade',this)">Grade</button>
+        <button class="pro-type-tab" onclick="setProElType('batter',this)">Batter</button>
+        <button class="pro-type-tab" onclick="setProElType('vdrain',this)">V-Drain</button>
+        <button class="pro-type-tab" onclick="setProElType('crown',this)">Crown</button>
+      </div>
+      <!-- Grade fields -->
+      <div id="pro-fields-grade">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div><label style="font-size:10px;color:#7aabcc;display:block;margin-bottom:3px">Width (m)</label><input id="pro-grade-w" type="number" value="6.0" step="0.5" min="0.1" style="width:100%;background:#071525;border:1px solid #1e4a7a;color:#dce8f5;padding:4px 7px;border-radius:3px;font-size:12px;font-family:monospace" oninput="updateProElPreview()"></div>
+          <div><label style="font-size:10px;color:#7aabcc;display:block;margin-bottom:3px">Grade (%, +ve=rises right)</label><input id="pro-grade-g" type="number" value="-3.0" step="0.5" style="width:100%;background:#071525;border:1px solid #1e4a7a;color:#dce8f5;padding:4px 7px;border-radius:3px;font-size:12px;font-family:monospace" oninput="updateProElPreview()"></div>
+        </div>
+      </div>
+      <!-- Batter fields -->
+      <div id="pro-fields-batter" style="display:none">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+          <div><label style="font-size:10px;color:#7aabcc;display:block;margin-bottom:3px">H:V Ratio</label><input id="pro-bat-ratio" type="number" value="4" step="0.5" min="0.5" style="width:100%;background:#071525;border:1px solid #1e4a7a;color:#dce8f5;padding:4px 7px;border-radius:3px;font-size:12px;font-family:monospace" oninput="updateProElPreview()"></div>
+          <div><label style="font-size:10px;color:#7aabcc;display:block;margin-bottom:3px">Height (m)</label><input id="pro-bat-h" type="number" value="2.0" step="0.25" min="0.1" style="width:100%;background:#071525;border:1px solid #1e4a7a;color:#dce8f5;padding:4px 7px;border-radius:3px;font-size:12px;font-family:monospace" oninput="updateProElPreview()"></div>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button id="pro-bat-down" class="pro-type-tab act" onclick="document.getElementById('pro-bat-down').classList.add('act');document.getElementById('pro-bat-up').classList.remove('act');updateProElPreview()">↓ Cut Down</button>
+          <button id="pro-bat-up" class="pro-type-tab" onclick="document.getElementById('pro-bat-up').classList.add('act');document.getElementById('pro-bat-down').classList.remove('act');updateProElPreview()">↑ Fill Up</button>
+        </div>
+      </div>
+      <!-- VDrain fields -->
+      <div id="pro-fields-vdrain" style="display:none">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+          <div><label style="font-size:10px;color:#7aabcc;display:block;margin-bottom:3px">In-slope H:V</label><input id="pro-vd-in" type="number" value="4" step="0.5" min="0.5" style="width:100%;background:#071525;border:1px solid #1e4a7a;color:#dce8f5;padding:4px 7px;border-radius:3px;font-size:12px;font-family:monospace" oninput="updateProElPreview()"></div>
+          <div><label style="font-size:10px;color:#7aabcc;display:block;margin-bottom:3px">Depth (m)</label><input id="pro-vd-depth" type="number" value="0.5" step="0.1" min="0.1" style="width:100%;background:#071525;border:1px solid #1e4a7a;color:#dce8f5;padding:4px 7px;border-radius:3px;font-size:12px;font-family:monospace" oninput="updateProElPreview()"></div>
+          <div><label style="font-size:10px;color:#7aabcc;display:block;margin-bottom:3px">Out-slope H:V</label><input id="pro-vd-out" type="number" value="4" step="0.5" min="0.5" style="width:100%;background:#071525;border:1px solid #1e4a7a;color:#dce8f5;padding:4px 7px;border-radius:3px;font-size:12px;font-family:monospace" oninput="updateProElPreview()"></div>
+        </div>
+      </div>
+      <!-- Crown fields -->
+      <div id="pro-fields-crown" style="display:none">
+        <p style="font-size:11px;color:#4a7aa0;line-height:1.6">Crown / centreline reference marker — no parameters needed. Place this to mark the apex of the road cross-section.</p>
+      </div>
+      <!-- Preview label -->
+      <div id="pro-el-preview">—</div>
+    </div>
+    <div class="pro-el-modal-ftr">
+      <button class="pro-hdr-btn" onclick="closeProElModal()">Cancel</button>
+      <button class="pro-hdr-btn" style="background:#1a5a28;border-color:#2a8a3a;color:#8adfaa" onclick="confirmProEl()">✓ Add</button>
+    </div>
+  </div>
+</div>
+
+<!-- Profile Load Modal -->
+<div id="pro-load-modal">
+  <div id="pro-load-box">
+    <div style="background:#132843;border-bottom:2px solid #e8a020;padding:10px 14px;border-radius:6px 6px 0 0;display:flex;justify-content:space-between;align-items:center">
+      <h3 style="font-size:12px;font-weight:700;color:#e8a020">📂 Load Profile</h3>
+      <button style="background:none;border:none;color:#7aabcc;font-size:16px;cursor:pointer" onclick="closeProfileLoadModal()">✕</button>
+    </div>
+    <div style="padding:12px">
+      <div id="profile-load-list"><div style="color:#4a7aa0;text-align:center;padding:20px;font-size:11px">No saved profiles</div></div>
+    </div>
+    <div style="padding:8px 12px;border-top:1px solid #1a3a5c;border-radius:0 0 6px 6px">
+      <button class="pro-hdr-btn" onclick="closeProfileLoadModal()">Close</button>
     </div>
   </div>
 </div>
