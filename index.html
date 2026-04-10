@@ -8,7 +8,43 @@
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#0a1520;color:#dce8f5;font-family:'Segoe UI',Arial,sans-serif;overflow:hidden;height:100vh;display:flex;flex-direction:column;font-size:13px}
-#topbar{background:#132843;border-bottom:2px solid #e8a020;padding:4px 8px;display:flex;align-items:center;gap:8px;flex-shrink:0;flex-wrap:wrap}
+#topbar{background:#132843;border-bottom:2px solid #e8a020;padding:4px 8px;display:flex;align-items:center;gap:8px;flex-shrink:0;flex-wrap:nowrap}
+.toolbar-group{display:none}
+#hamburger-btn{background:#0a1f35;border:1px solid #1e4a7a;color:#7aabcc;padding:6px 8px;border-radius:3px;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;width:32px;height:32px;transition:all .15s;flex-shrink:0}
+#hamburger-btn:hover{background:#e8a020;border-color:#e8a020;color:#0a1520}
+#logo{display:flex;align-items:center;gap:8px}
+#topbar-spacer{flex:1}
+.topbar-right-btns{display:flex;gap:2px;flex-shrink:0}
+.fullscreen-btn{background:#0a1f35;border:1px solid #1e4a7a;color:#7aabcc;padding:6px 8px;border-radius:3px;cursor:pointer;font-size:14px;transition:all .15s}
+.fullscreen-btn:hover{background:#e8a020;border-color:#e8a020;color:#0a1520}
+/* Side drawer styles */
+#side-drawer{position:fixed;left:-300px;top:0;width:300px;height:100vh;background:#0d1f35;border-right:2px solid #1a3a5c;z-index:175;overflow-y:auto;transition:left .3s;display:flex;flex-direction:column}
+#side-drawer.open{left:0}
+#drawer-header{background:#132843;border-bottom:2px solid #e8a020;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0}
+#drawer-header h2{font-size:12px;font-weight:700;color:#e8a020;text-transform:uppercase;letter-spacing:2px}
+#drawer-close{background:none;border:none;color:#7aabcc;font-size:18px;cursor:pointer;padding:0;width:28px;height:28px;display:flex;align-items:center;justify-content:center}
+#drawer-close:hover{color:#e8a020}
+.drawer-content{flex:1;overflow-y:auto;padding:8px}
+.drawer-section{margin-bottom:12px;border:1px solid #1e4a7a;border-radius:4px;overflow:hidden}
+.drawer-section-hdr{background:#0f2540;padding:8px 12px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;user-select:none;font-size:11px;font-weight:700;color:#e8a020;text-transform:uppercase;letter-spacing:1px}
+.drawer-section-hdr:hover{background:#1a3050}
+.drawer-section-hdr .toggle{color:#4a7aa0;font-size:10px;transition:transform .2s}
+.drawer-section-hdr.closed .toggle{transform:rotate(-90deg)}
+.drawer-section-body{padding:6px;display:flex;flex-direction:column;gap:3px;background:#071525}
+.drawer-section.collapsed .drawer-section-body{display:none}
+.drawer-btn{background:#0d2040;border:1px solid #1e4a7a;color:#7aabcc;padding:5px 8px;border-radius:3px;cursor:pointer;font-size:10px;text-align:left;transition:all .15s;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}
+.drawer-btn:hover{background:#e8a020;border-color:#e8a020;color:#0a1520}
+.drawer-btn.act{background:#e8a020;border-color:#e8a020;color:#0a1520}
+.drawer-btn.grn:hover{background:#27ae60;border-color:#27ae60}
+.drawer-btn.red:hover{background:#c0392b;border-color:#c0392b;color:#fff}
+#drawer-settings{margin-top:auto;padding-top:8px;border-top:1px solid #1e4a7a}
+.update-btn{width:100%;background:#e8a020;border:none;color:#0a1520;padding:8px 12px;border-radius:3px;cursor:pointer;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;transition:all .15s;margin-bottom:6px}
+.update-btn:hover{background:#f0b030}
+.update-btn:active{transform:scale(0.98)}
+/* Toast notification */
+#update-toast{position:fixed;bottom:20px;left:20px;background:#e8a020;color:#0a1520;padding:12px 16px;border-radius:4px;z-index:500;font-weight:700;font-size:12px;display:none;align-items:center;gap:10px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.3);animation:slideUp .3s}
+#update-toast.show{display:flex}
+@keyframes slideUp{from{transform:translateY(100px);opacity:0}to{transform:translateY(0);opacity:1}}
 #logo{font-size:18px;font-weight:900;color:#e8a020;letter-spacing:3px;white-space:nowrap}
 #logo span{color:#dce8f5}
 .tg{display:flex;gap:2px;align-items:center;flex-wrap:wrap}
@@ -584,11 +620,15 @@ body.field-mode #field-rtk{display:flex}
 <body>
 
 <div id="topbar">
-  <div id="logo">GRADE<span>OS</span> <span style="font-size:10px;color:#4a7aa0;font-weight:400">v0.7</span>
-    <span style="font-size:9px;color:#2a5a7a;margin-left:8px;font-weight:400;letter-spacing:0">RTK GPS Machine Control · 10× cheaper than Trimble</span>
+  <button id="hamburger-btn" onclick="toggleDrawer()" title="Menu">☰</button>
+  <div id="logo">GRADE<span>OS</span> <span style="font-size:10px;color:#4a7aa0;font-weight:400">v0.7</span></div>
+  <div id="topbar-spacer"></div>
+  <div class="topbar-right-btns">
+    <div id="gps-status-dot" style="width:10px;height:10px;border-radius:50%;background:#27ae60;flex-shrink:0;margin-right:6px"></div>
+    <button class="fullscreen-btn" onclick="document.documentElement.requestFullscreen()" title="Fullscreen">⛶</button>
   </div>
 
-  <div class="tg">
+  <div class="toolbar-group tg">
     <span class="tg-label">Machine</span>
     <button class="tb" id="b-mach" onclick="toggleMachine()">🚜 Power On</button>
     <button class="tb" id="b-mtype" onclick="toggleMachineType()" title="Switch between Dozer and Excavator">🚜 Dozer</button>
@@ -596,7 +636,7 @@ body.field-mode #field-rtk{display:flex}
     <button class="tb" id="b-autosteer" onclick="toggleAutoSteer()" title="Auto-steer: machine drives parallel N-S grade strips automatically">⚙ Auto</button>
   </div>
 
-  <div class="tg">
+  <div class="toolbar-group tg">
     <span class="tg-label">Design</span>
     <button class="tb act" id="b-nav" onclick="setTool('nav')" title="Back to navigate / orbit mode">🧭 Nav</button>
     <button class="tb" id="b-flat" onclick="setTool('flat')">⬛ Flat Pad</button>
@@ -610,7 +650,7 @@ body.field-mode #field-rtk{display:flex}
     <button class="tb" id="b-section" onclick="setTool('section')" title="Cross-section profile: click two points to see ground vs design elevation">✂ Profile</button>
   </div>
 
-  <div class="tg">
+  <div class="toolbar-group tg">
     <span class="tg-label">Terrain</span>
     <button class="tb" onclick="genTerrain('flat')">Paddock</button>
     <button class="tb" onclick="genTerrain('hilly')">Hilly</button>
@@ -624,14 +664,14 @@ body.field-mode #field-rtk{display:flex}
     <button class="tb" onclick="genTerrain('house_pad')" title="Residential development: hillside with gully — multiple house pads needed">🏠 House Pad</button>
   </div>
 
-  <div class="tg">
+  <div class="toolbar-group tg">
     <span class="tg-label">Terrain Mod</span>
     <button class="tb" id="b-smooth" onclick="setTool('smooth')" title="Smooth terrain: reduces roughness in selected area">〰 Smooth</button>
     <button class="tb" id="b-raise" onclick="setTool('raise')" title="Raise terrain: add bulk fill to selected area">🔼 Raise</button>
     <button class="tb" id="b-lower" onclick="setTool('lower')" title="Lower terrain: bulk cut in selected area">🔽 Lower</button>
   </div>
 
-  <div class="tg">
+  <div class="toolbar-group tg">
     <span class="tg-label">Features</span>
     <button class="tb" id="b-waypoint" onclick="setTool('waypoint')" title="GPS Waypoint: click terrain to mark a reference point with elevation">📌 Waypoint</button>
     <button class="tb" id="b-measure" onclick="setTool('measure')" title="Measure: click two points to get horizontal distance, slope %, and height difference">📏 Measure</button>
@@ -643,7 +683,7 @@ body.field-mode #field-rtk{display:flex}
     <button class="tb" id="b-treeline" onclick="setTool('treeline')" title="Tree / shelter belt">🌲 Trees</button>
   </div>
 
-  <div class="tg">
+  <div class="toolbar-group tg">
     <span class="tg-label">Display</span>
     <button class="tb act" id="b-cf" onclick="toggleCutFill()">🎨 Cut/Fill</button>
     <button class="tb act" id="b-ctr" onclick="toggleContours()">〰 Contours</button>
@@ -664,7 +704,7 @@ body.field-mode #field-rtk{display:flex}
     <button class="tb blu" onclick="openJobReport()" title="Generate earthwork job report">📊 Report</button>
   </div>
 
-  <div class="tg" style="margin-left:auto">
+  <div class="toolbar-group tg" style="margin-left:auto">
     <button class="tb" onclick="doUndo()" title="Undo last design change (Ctrl+Z)">↩ Undo</button>
     <button class="tb" onclick="doRedo()" title="Redo (Ctrl+Y)">↪ Redo</button>
     <button class="tb grn" onclick="saveDesign()" title="Save design to browser storage">💾 Save</button>
@@ -681,6 +721,148 @@ body.field-mode #field-rtk{display:flex}
     <button class="tb grn" onclick="exportCSV()" title="Export design vs existing to CSV">📥 CSV</button>
     <button class="tb grn" onclick="exportAsBuilt()" title="Export as-built survey after grading">📤 As-Built</button>
   </div>
+</div>
+
+<!-- Side Drawer Menu -->
+<div id="side-drawer">
+  <div id="drawer-header">
+    <h2>Menu</h2>
+    <button id="drawer-close" onclick="toggleDrawer()">✕</button>
+  </div>
+  <div class="drawer-content">
+    <!-- Design Section -->
+    <div class="drawer-section">
+      <div class="drawer-section-hdr" onclick="toggleDrawerSection(this)">
+        🧭 Design <span class="toggle">▶</span>
+      </div>
+      <div class="drawer-section-body">
+        <button class="drawer-btn act" onclick="setTool('nav')">Nav</button>
+        <button class="drawer-btn" onclick="setTool('flat')">Flat Pad</button>
+        <button class="drawer-btn" onclick="setTool('slope')">Slope</button>
+        <button class="drawer-btn" onclick="setTool('crown')">Crown</button>
+        <button class="drawer-btn" onclick="setTool('align')">Align+Profile</button>
+        <button class="drawer-btn" onclick="setTool('dam')">Dam</button>
+        <button class="drawer-btn" onclick="setTool('bestfit')">Best-Fit</button>
+        <button class="drawer-btn" onclick="setTool('batter')">Batter</button>
+        <button class="drawer-btn" onclick="setTool('irrig')">Irrig Bay</button>
+        <button class="drawer-btn" onclick="setTool('section')">Profile</button>
+      </div>
+    </div>
+
+    <!-- Terrain Section -->
+    <div class="drawer-section">
+      <div class="drawer-section-hdr" onclick="toggleDrawerSection(this)">
+        🏔 Terrain <span class="toggle">▶</span>
+      </div>
+      <div class="drawer-section-body">
+        <button class="drawer-btn" onclick="genTerrain('flat')">Paddock</button>
+        <button class="drawer-btn" onclick="genTerrain('hilly')">Hilly</button>
+        <button class="drawer-btn" onclick="genTerrain('valley')">Valley</button>
+        <button class="drawer-btn" onclick="genTerrain('dam_site')">Dam Site</button>
+        <button class="drawer-btn" onclick="genTerrain('embankment')">Embankment</button>
+        <button class="drawer-btn" onclick="genTerrain('cut_hill')">Cut Hill</button>
+        <button class="drawer-btn" onclick="genTerrain('irrig_bay')">Irrig Bay</button>
+        <button class="drawer-btn" onclick="genTerrain('drone')">Drone DEM</button>
+        <button class="drawer-btn" onclick="genTerrain('road_cut')">Road Cut</button>
+        <button class="drawer-btn" onclick="genTerrain('house_pad')">House Pad</button>
+      </div>
+    </div>
+
+    <!-- View/Display Section -->
+    <div class="drawer-section">
+      <div class="drawer-section-hdr" onclick="toggleDrawerSection(this)">
+        🎨 View <span class="toggle">▶</span>
+      </div>
+      <div class="drawer-section-body">
+        <button class="drawer-btn act" onclick="toggleCutFill()">Cut/Fill</button>
+        <button class="drawer-btn act" onclick="toggleContours()">Contours</button>
+        <button class="drawer-btn" onclick="toggleSurvey()">Survey</button>
+        <button class="drawer-btn" onclick="toggleSplit()">Split</button>
+        <button class="drawer-btn act" onclick="toggleCutSim()">Cut Sim</button>
+        <button class="drawer-btn" onclick="toggleFlow()">Flow</button>
+        <button class="drawer-btn" onclick="toggleSlopeWarn()">Steep</button>
+        <button class="drawer-btn" onclick="toggleTol()">Tol</button>
+        <button class="drawer-btn" onclick="toggleStakes()">Stakes</button>
+        <button class="drawer-btn" onclick="toggleGradeArrows()">Grade</button>
+        <button class="drawer-btn" onclick="toggleContourLabels()">Labels</button>
+        <button class="drawer-btn" onclick="toggleDaylight()">Daylight</button>
+        <button class="drawer-btn" onclick="togglePassCount()">Passes</button>
+        <button class="drawer-btn" onclick="toggleStripPlan()">Strips</button>
+        <button class="drawer-btn" onclick="toggleReplay()">Replay</button>
+        <button class="drawer-btn" onclick="toggleGhost()">Ghost</button>
+      </div>
+    </div>
+
+    <!-- Tools Section -->
+    <div class="drawer-section">
+      <div class="drawer-section-hdr" onclick="toggleDrawerSection(this)">
+        🔧 Tools <span class="toggle">▶</span>
+      </div>
+      <div class="drawer-section-body">
+        <button class="drawer-btn" onclick="doUndo()">Undo</button>
+        <button class="drawer-btn" onclick="doRedo()">Redo</button>
+        <button class="drawer-btn grn" onclick="saveDesign()">Save</button>
+        <button class="drawer-btn grn" onclick="loadDesign()">Load</button>
+        <button class="drawer-btn" onclick="document.getElementById('gps-import').click()">Import GPS</button>
+        <button class="drawer-btn" onclick="toggleGuidanceScreen()">Guidance</button>
+        <button class="drawer-btn" onclick="toggleFieldMode()">Field</button>
+        <button class="drawer-btn" onclick="togglePitchCard()">Pitch</button>
+        <button class="drawer-btn" onclick="toggleKeyHelp()">Keys</button>
+        <button class="drawer-btn" onclick="captureScreenshot()">Screenshot</button>
+        <button class="drawer-btn grn" onclick="toggleTabletDemo()">Tablet</button>
+        <button class="drawer-btn red" onclick="clearAll()">Clear</button>
+        <button class="drawer-btn grn" onclick="exportCSV()">CSV</button>
+        <button class="drawer-btn grn" onclick="exportAsBuilt()">As-Built</button>
+      </div>
+    </div>
+
+    <!-- Machine/Features Section -->
+    <div class="drawer-section">
+      <div class="drawer-section-hdr" onclick="toggleDrawerSection(this)">
+        🚜 Machine <span class="toggle">▶</span>
+      </div>
+      <div class="drawer-section-body">
+        <button class="drawer-btn" onclick="toggleMachine()">Power On</button>
+        <button class="drawer-btn" onclick="toggleMachineType()">Dozer</button>
+        <button class="drawer-btn" onclick="toggleFleet()">Fleet</button>
+        <button class="drawer-btn" onclick="toggleAutoSteer()">Auto</button>
+      </div>
+    </div>
+
+    <!-- Features Section -->
+    <div class="drawer-section">
+      <div class="drawer-section-hdr" onclick="toggleDrawerSection(this)">
+        ⭐ Features <span class="toggle">▶</span>
+      </div>
+      <div class="drawer-section-body">
+        <button class="drawer-btn" onclick="setTool('waypoint')">Waypoint</button>
+        <button class="drawer-btn" onclick="setTool('measure')">Measure</button>
+        <button class="drawer-btn" onclick="setTool('bank')">Bank</button>
+        <button class="drawer-btn" onclick="setTool('channel')">Channel</button>
+        <button class="drawer-btn" onclick="setTool('waterway')">Waterway</button>
+        <button class="drawer-btn" onclick="setTool('pivot')">Pivot</button>
+        <button class="drawer-btn" onclick="setTool('boundary')">Boundary</button>
+        <button class="drawer-btn" onclick="setTool('treeline')">Trees</button>
+      </div>
+    </div>
+
+    <!-- Settings Section -->
+    <div id="drawer-settings">
+      <div class="drawer-section">
+        <div class="drawer-section-hdr" onclick="toggleDrawerSection(this)">
+          ⚙ Settings <span class="toggle">▶</span>
+        </div>
+        <div class="drawer-section-body">
+          <button class="update-btn" onclick="checkForUpdate()">Check for Update</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Update Toast Notification -->
+<div id="update-toast" onclick="window.location.reload()">
+  <span>New version available — tap to reload</span>
 </div>
 
 <div id="main">
@@ -6175,11 +6357,70 @@ setInterval(() => {
 </div>
 
 <script>
+// ─────────────────────────────────────────────────────────────────
+// SIDE DRAWER MENU FUNCTIONS
+// ─────────────────────────────────────────────────────────────────
+function toggleDrawer(){
+  const drawer=document.getElementById('side-drawer');
+  drawer.classList.toggle('open');
+}
+
+function toggleDrawerSection(hdr){
+  const section=hdr.closest('.drawer-section');
+  section.classList.toggle('collapsed');
+}
+
+// ─────────────────────────────────────────────────────────────────
+// UPDATE CHECK FUNCTION
+// ─────────────────────────────────────────────────────────────────
+async function checkForUpdate(){
+  if('serviceWorker' in navigator){
+    try{
+      const registration=await navigator.serviceWorker.ready;
+      const updateResult=await registration.update();
+
+      // Check if a new service worker is waiting
+      if(registration.waiting){
+        // New SW is installed and waiting
+        showUpdateToast('New version available — tap to reload');
+      }else if(registration.installing){
+        // SW is currently installing
+        showUpdateToast('Checking for updates...');
+      }else{
+        // Already up to date
+        showUpdateToast('Already up to date ✓', 3000);
+      }
+    }catch(err){
+      console.error('Update check failed:',err);
+      showUpdateToast('Update check failed', 3000);
+    }
+  }
+}
+
+function showUpdateToast(message, duration=0){
+  const toast=document.getElementById('update-toast');
+  const span=toast.querySelector('span');
+  span.textContent=message;
+  toast.classList.add('show');
+
+  if(duration>0){
+    setTimeout(()=>{
+      toast.classList.remove('show');
+    }, duration);
+  }
+}
+
+// Service Worker registration
 if('serviceWorker' in navigator){
   navigator.serviceWorker.register('./sw.js').then(r=>{
     r.onupdatefound=()=>{
       const w=r.installing;
-      w.onstatechange=()=>{if(w.state==='installed'&&navigator.serviceWorker.controller){window.location.reload();}}
+      w.onstatechange=()=>{
+        if(w.state==='installed'&&navigator.serviceWorker.controller){
+          // New version available, show toast
+          showUpdateToast('New version available — tap to reload');
+        }
+      };
     };
   });
 }
