@@ -844,6 +844,7 @@ body.field-mode #field-rtk{display:flex}
         <button class="drawer-btn grn" onclick="loadDesign()">📂 Load</button>
         <button class="drawer-btn" onclick="document.getElementById('gps-import').click()">📡 Import GPS</button>
         <button class="drawer-btn" onclick="document.getElementById('design-import').click()">📐 Import Design</button>
+        <button class="drawer-btn" onclick="openFPModal()">🟦 Flat Pad</button>
         <button class="drawer-btn" onclick="captureScreenshot()">📷 Screenshot</button>
         <button class="drawer-btn grn" onclick="exportCSV()">📥 CSV</button>
         <button class="drawer-btn grn" onclick="exportAsBuilt()">📤 As-Built</button>
@@ -4153,6 +4154,41 @@ function applyImportedPoints(pts,fname,colHint){
 // ═══════════════════════════════════════════════════════════════════
 // LANDXML + DESIGN SURFACE IMPORT
 // ═══════════════════════════════════════════════════════════════════
+
+// ── Flat Pad ──────────────────────────────────────────────────────────
+function openFPModal(){
+  const gp=w2g(machinePos.x,machinePos.z);
+  const ge=ground[gi(gp.gx,gp.gz)];
+  const inp=document.getElementById('fpElev');
+  inp.value=(isFinite(ge)&&ge!==0)?ge.toFixed(3):'';
+  document.getElementById('fpModal').style.display='flex';
+  setTimeout(()=>{inp.focus();inp.select();},50);
+}
+function closeFPModal(){document.getElementById('fpModal').style.display='none';}
+function fpUseGPS(){
+  const gp=w2g(machinePos.x,machinePos.z);
+  const ge=ground[gi(gp.gx,gp.gz)];
+  if(isFinite(ge))document.getElementById('fpElev').value=ge.toFixed(3);
+}
+function confirmFlatPad(){
+  const val=parseFloat(document.getElementById('fpElev').value);
+  if(isNaN(val)){document.getElementById('fpElev').style.outline='2px solid #e05050';return;}
+  document.getElementById('fpElev').style.outline='';
+  for(let i=0;i<N*N;i++){design[i]=val;hasD[i]=1;}
+  designCount=N*N;
+  rebuildDesMesh();genContours();buildFlowLines();buildSlopeWarn();buildTolMesh();
+  buildStakes();buildGradeArrows();buildDaylightMesh();buildStripPlan();calcVol();
+  document.getElementById('st-hint').textContent='\u2705 Flat pad: '+val.toFixed(3)+'m RL \u2014 use V-Offset to adjust cut depth';
+  closeFPModal();
+}
+function clearDesignSurface(){
+  if(!confirm('Clear design surface?'))return;
+  design.fill(0);hasD.fill(0);designCount=0;
+  rebuildDesMesh();genContours();buildFlowLines();buildSlopeWarn();buildTolMesh();
+  buildStakes();buildGradeArrows();buildDaylightMesh();buildStripPlan();calcVol();
+  document.getElementById('st-hint').textContent='Design surface cleared';
+  closeFPModal();
+}
 function parseLandXML(txt,fname,defaultTarget){
   const parser=new DOMParser();
   const doc=parser.parseFromString(txt,'application/xml');
@@ -6722,5 +6758,26 @@ if('serviceWorker' in navigator){
   });
 }
 </script>
+
+<!-- Flat Pad Modal -->
+<div id="fpModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:500;align-items:center;justify-content:center" onclick="if(event.target===this)closeFPModal()">
+  <div style="background:#0d2040;border:1px solid #1e4a7a;border-radius:6px;padding:18px 20px;min-width:280px;color:#c8dff0;box-shadow:0 4px 24px rgba(0,0,0,.6)">
+    <div style="font-size:13px;font-weight:700;margin-bottom:14px;color:#7aabcc;letter-spacing:.05em">🟦 CREATE FLAT PAD</div>
+    <div style="font-size:11px;color:#5a8ab0;margin-bottom:5px">Target RL (metres)</div>
+    <div style="display:flex;gap:6px;margin-bottom:12px">
+      <input id="fpElev" type="number" step="0.001" placeholder="e.g. 101.500"
+        onkeydown="if(event.key==='Enter')confirmFlatPad();if(event.key==='Escape')closeFPModal()"
+        style="flex:1;background:#071525;border:1px solid #1e4a7a;color:#e8f4ff;padding:7px 10px;border-radius:3px;font-size:14px;font-weight:600">
+      <button onclick="fpUseGPS()" title="Set from ground elevation under machine"
+        style="background:#0d2040;border:1px solid #1e4a7a;color:#7aabcc;padding:7px 12px;border-radius:3px;cursor:pointer;font-size:12px;white-space:nowrap">📡 Use GPS</button>
+    </div>
+    <div style="font-size:10px;color:#4a7aa0;margin-bottom:14px;line-height:1.5">Set base RL here, then use the <strong style="color:#7aabcc">V-Offset panel</strong> for cut depth (sub-base, topsoil strip, compaction, etc).</div>
+    <div style="display:flex;gap:8px">
+      <button onclick="confirmFlatPad()" style="flex:1;background:#1a5a28;border:1px solid #2a8a3a;color:#8adfaa;padding:9px;border-radius:3px;cursor:pointer;font-weight:700;font-size:13px">✓ Apply</button>
+      <button onclick="clearDesignSurface()" title="Clear design surface" style="background:#3a1010;border:1px solid #7a2020;color:#df9090;padding:9px 14px;border-radius:3px;cursor:pointer;font-size:13px">🗑</button>
+      <button onclick="closeFPModal()" style="background:#0d2040;border:1px solid #1e4a7a;color:#7aabcc;padding:9px 14px;border-radius:3px;cursor:pointer;font-size:13px">✕</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>
