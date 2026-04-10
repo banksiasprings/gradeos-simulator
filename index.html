@@ -667,6 +667,25 @@ body.field-mode #field-rtk{display:flex}
 #gps-nmea-toggle:hover{background:#1e4a7a}
 #gps-sat-tooltip{position:fixed;display:none;background:#071525;border:1px solid #e8a020;border-radius:3px;padding:4px 8px;font-size:11px;pointer-events:none;color:#e8a020;z-index:260;white-space:nowrap}
 @media(max-width:680px){#gps-diag-body{grid-template-columns:1fr}#gps-sat-table-wrap{grid-column:1}}
+/* ── Live Sensor Mode ────────────────────────────────────────────── */
+@keyframes livePulse{0%,100%{box-shadow:0 0 0 0 rgba(39,174,96,0.7)}50%{box-shadow:0 0 0 6px rgba(39,174,96,0)}}
+#live-btn.live-active{border:1.5px solid #27ae60!important;color:#27ae60!important;animation:livePulse 1.4s infinite}
+#live-sensor-bar{display:none;background:#040e18;border-bottom:1px solid #0d2040;padding:3px 10px;font-size:10px;font-family:monospace;color:#7aabcc;flex-shrink:0;align-items:center;gap:14px;flex-wrap:nowrap;overflow:hidden}
+#live-sensor-bar.show{display:flex}
+#live-sensor-bar.no-fix{background:#1a0a08;border-bottom-color:#4a1010}
+.lsb-tag{background:#1a3a1a;color:#27ae60;border:1px solid #27ae60;border-radius:3px;padding:1px 6px;font-weight:700;font-size:9px;letter-spacing:1px;flex-shrink:0}
+.lsb-tag.no-fix{background:#2a1010;color:#e53935;border-color:#e53935}
+.lsb-val{color:#dce8f5;font-weight:700}
+.lsb-sep{color:#2a5a7a}
+#live-sensor-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:400;align-items:center;justify-content:center}
+#live-sensor-modal.show{display:flex}
+#lsm-box{background:#0d1f35;border:1px solid #27ae60;border-radius:8px;width:400px;max-width:95vw;overflow:hidden}
+.lsm-hdr{background:#132843;border-bottom:2px solid #27ae60;padding:10px 16px;display:flex;justify-content:space-between;align-items:center}
+.lsm-hdr h2{font-size:13px;font-weight:700;color:#27ae60;margin:0;text-transform:uppercase;letter-spacing:1px}
+.lsm-body{padding:16px}
+.lsm-perm{display:flex;align-items:flex-start;gap:10px;margin-bottom:10px;font-size:12px;color:#7aabcc}
+.lsm-perm-icon{font-size:20px;flex-shrink:0;line-height:1.4}
+.lsm-foot{padding:10px 16px;border-top:1px solid #1e4a7a;display:flex;gap:8px;justify-content:flex-end}
 </style>
 </head>
 <body>
@@ -677,6 +696,7 @@ body.field-mode #field-rtk{display:flex}
   <div id="topbar-spacer"></div>
   <div class="topbar-right-btns">
     <div id="gps-status-dot" style="width:10px;height:10px;border-radius:50%;background:#27ae60;flex-shrink:0;margin-right:6px"></div>
+    <button id="live-btn" class="fullscreen-btn" onclick="toggleLiveSensors()" title="Live Sensor Mode — real GPS + IMU drives simulation">📡 Live</button>
     <button class="fullscreen-btn" onclick="openGPSDiag()" title="GPS Diagnostics">📡 GPS</button>
     <button class="fullscreen-btn" onclick="document.documentElement.requestFullscreen()" title="Fullscreen">⛶</button>
   </div>
@@ -775,6 +795,19 @@ body.field-mode #field-rtk{display:flex}
     <button class="tb grn" onclick="exportCSV()" title="Export design vs existing to CSV">📥 CSV</button>
     <button class="tb grn" onclick="exportAsBuilt()" title="Export as-built survey after grading">📤 As-Built</button>
   </div>
+</div>
+
+<!-- Live Sensor Status Bar -->
+<div id="live-sensor-bar">
+  <span class="lsb-tag" id="lsb-tag">LIVE</span>
+  <span class="lsb-sep">GPS:</span>&nbsp;<span class="lsb-val" id="lsb-fix">Searching…</span>
+  <span class="lsb-sep">&nbsp;±</span><span class="lsb-val" id="lsb-acc">—</span>
+  <span class="lsb-sep">&nbsp;|&nbsp;</span>
+  <span class="lsb-sep">Tilt:</span>&nbsp;<span class="lsb-val" id="lsb-tilt">β—° γ—°</span>
+  <span class="lsb-sep">&nbsp;|&nbsp;</span>
+  <span class="lsb-sep">🧭</span>&nbsp;<span class="lsb-val" id="lsb-hdg">—°</span>
+  <span style="flex:1"></span>
+  <button onclick="disableLiveSensors()" style="background:#1a0c0c;border:1px solid #4a1010;color:#ef5350;padding:1px 8px;border-radius:3px;cursor:pointer;font-size:10px;font-weight:700">✕ EXIT LIVE</button>
 </div>
 
 <!-- Side Drawer Menu -->
@@ -1599,6 +1632,16 @@ let isCutting=false;     // true while blade is actively cutting
 let prodOnTime=0;        // cumulative seconds machine has been driving
 let remainingCutVol=0;   // set by calcVol; used for ETA
 let lastProdUpdateT=0;   // timestamp of last productivity display update
+
+// ── Live Sensor Mode globals ─────────────────────────────────────────
+let liveSensorMode=false;
+let gpsWatchId=null;
+let gpsOrigin=null;       // {lat, lon, alt}
+let smoothedBeta=0, smoothedGamma=0;
+let lastGpsUpdate=0;
+let liveOrientHandler=null;
+let liveStatusInterval=null;
+let liveLastFixKey=null;
 
 // ═══════════════════════════════════════════════════════════════════
 // THREE.JS SCENE
@@ -2850,8 +2893,9 @@ function updateMachine(dt){
     const lMM2=lDes2!==null?(lDes2+vOffset-lGnd2)*1000:null;
     const rMM2=rDes2!==null?(rDes2+vOffset-rGnd2)*1000:null;
     const cMM2=cDes2!==null?(cDes2+vOffset-mel2)*1000:null;
-    const grade2=((gElev(machinePos.x+Math.sin(machinePos.hdg)*2,machinePos.z+Math.cos(machinePos.hdg)*2)-mel2)/2)*100;
-    const xslope2=((rGnd2-lGnd2)/(BH2*2))*100;
+    // When live sensor mode is active, use real inclinometer for grade/xslope
+    const grade2=liveSensorMode?Math.tan(smoothedBeta*Math.PI/180)*100:((gElev(machinePos.x+Math.sin(machinePos.hdg)*2,machinePos.z+Math.cos(machinePos.hdg)*2)-mel2)/2)*100;
+    const xslope2=liveSensorMode?Math.tan(smoothedGamma*Math.PI/180)*100:((rGnd2-lGnd2)/(BH2*2))*100;
     updateTextRibbon(lMM2,cMM2,rMM2,grade2,mel2,xslope2);
     drawLEDBar(lMM2||0,rMM2||0);
     if(splitMode)updateBladePanel(lMM2,cMM2,rMM2,grade2,mel2,xslope2);
@@ -6100,6 +6144,202 @@ function toggleEMACorrection(){
   if(tabletEMAEnabled&&tabletGPSOrigin){tabletEMA.lat=tabletRawLat;tabletEMA.lng=tabletRawLng;}
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// LIVE SENSOR MODE — real iPad GPS + inclinometer drives guidance
+// ═══════════════════════════════════════════════════════════════════
+
+function toggleLiveSensors(){
+  if(liveSensorMode) disableLiveSensors();
+  else document.getElementById('live-sensor-modal').classList.add('show');
+}
+
+function closeLiveSensorModal(){
+  document.getElementById('live-sensor-modal').classList.remove('show');
+  document.getElementById('lsm-error').style.display='none';
+}
+
+async function enableLiveSensors(){
+  const errEl=document.getElementById('lsm-error');
+  errEl.style.display='none';
+  try{
+    // 1. iOS 13+ motion permission — must come from a user gesture
+    if(typeof DeviceOrientationEvent!=='undefined'&&
+       typeof DeviceOrientationEvent.requestPermission==='function'){
+      const perm=await DeviceOrientationEvent.requestPermission();
+      if(perm!=='granted'){
+        errEl.textContent='Motion permission denied — tilt/heading unavailable. GPS-only mode.';
+        errEl.style.display='block';
+        // continue without tilt — GPS still works
+      }
+    }
+    // 2. GPS availability check
+    if(!navigator.geolocation){
+      errEl.textContent='GPS not available on this device.';
+      errEl.style.display='block';
+      return;
+    }
+    // 3. Activate
+    closeLiveSensorModal();
+    liveSensorMode=true;
+    gpsOrigin=null; smoothedBeta=0; smoothedGamma=0; lastGpsUpdate=0; liveLastFixKey=null;
+    // Re-use tabletDemoActive to block keyboard movement and route IMU to machine visual
+    if(tabletDemoActive) deactivateTabletDemo();
+    tabletDemoActive=true;
+    // 4. Start GPS watch
+    gpsWatchId=navigator.geolocation.watchPosition(
+      onLiveGPS,
+      e=>{console.warn('Live GPS error:',e);showSensorError('GPS signal lost');},
+      {enableHighAccuracy:true,maximumAge:0,timeout:10000}
+    );
+    // 5. Start orientation listener
+    liveOrientHandler=e=>onLiveOrientation(e);
+    window.addEventListener('deviceorientation',liveOrientHandler,true);
+    window.addEventListener('deviceorientationabsolute',liveOrientHandler,true);
+    // 6. Show UI
+    document.getElementById('live-sensor-bar').classList.add('show');
+    document.getElementById('live-btn').classList.add('live-active');
+    liveStatusInterval=setInterval(updateLiveSensorBar,1000);
+    document.getElementById('st-hint').textContent='📡 LIVE SENSORS ACTIVE — real GPS + IMU driving simulation. Grade/slope from inclinometer.';
+  }catch(e){
+    errEl.textContent='Error enabling sensors: '+e.message;
+    errEl.style.display='block';
+    console.warn('enableLiveSensors error:',e);
+  }
+}
+
+function disableLiveSensors(){
+  liveSensorMode=false;
+  // Stop GPS watch
+  if(gpsWatchId!==null){try{navigator.geolocation.clearWatch(gpsWatchId);}catch(e){}gpsWatchId=null;}
+  // Stop orientation
+  if(liveOrientHandler){
+    try{
+      window.removeEventListener('deviceorientation',liveOrientHandler,true);
+      window.removeEventListener('deviceorientationabsolute',liveOrientHandler,true);
+    }catch(e){}
+    liveOrientHandler=null;
+  }
+  if(liveStatusInterval){clearInterval(liveStatusInterval);liveStatusInterval=null;}
+  // Release tabletDemoActive (unless tablet demo was independently started)
+  tabletDemoActive=false;
+  // Reset smoothed values
+  gpsOrigin=null; smoothedBeta=0; smoothedGamma=0; lastGpsUpdate=0; liveLastFixKey=null;
+  tabletPitch=0; tabletRoll=0;
+  // Hide UI
+  document.getElementById('live-sensor-bar').classList.remove('show');
+  document.getElementById('live-btn').classList.remove('live-active');
+  showUpdateToast('Returning to simulator',2500);
+  document.getElementById('st-hint').textContent='Live sensors deactivated — keyboard control restored.';
+}
+
+function onLiveGPS(pos){
+  try{
+    const{latitude:lat,longitude:lon,altitude:alt,accuracy:acc,altitudeAccuracy:vAccRaw,speed:spd}=pos.coords;
+    lastGpsUpdate=Date.now();
+    tabletGPSSpeed=spd;  // reuse for speed display in tabletDemoActive branch
+
+    // On first valid fix, store origin
+    if(!gpsOrigin){
+      gpsOrigin={lat,lon,alt:alt||0};
+      machinePos.x=0; machinePos.z=0;
+    }
+
+    // Haversine flat-earth projection to local metres (East=X, North=-Z)
+    const dx=(lon-gpsOrigin.lon)*Math.cos(gpsOrigin.lat*Math.PI/180)*111319.9;
+    const dz=(lat-gpsOrigin.lat)*111319.9;
+    machinePos.x=Math.max(-SZ/2+3,Math.min(SZ/2-3,dx));
+    machinePos.z=Math.max(-SZ/2+3,Math.min(SZ/2-3,-dz));
+
+    // Derive fix quality from horizontal accuracy
+    let fixLabel,fixKey,fixColor;
+    if(acc<0.05){fixLabel='RTK Fixed';fixKey='rtk_fixed';fixColor='#27ae60';}
+    else if(acc<0.5){fixLabel='RTK Float';fixKey='rtk_float';fixColor='#e8a020';}
+    else if(acc<5){fixLabel='DGPS';fixKey='dgps';fixColor='#ffd600';}
+    else{fixLabel='3D Fix';fixKey='3d_fix';fixColor='#e53935';}
+    liveLastFixKey=fixKey;
+    rtkFixType=fixKey==='rtk_fixed'?'RTK FIXED':fixKey==='rtk_float'?'RTK FLOAT':'DGPS';
+
+    // Update main RTK strip
+    const dot=document.getElementById('rtk-dot');
+    const rtkTxt=document.getElementById('rtk-txt');
+    if(dot){dot.style.background=fixColor;dot.className='rtk-dot'+(fixKey==='rtk_float'?' searching':'');}
+    if(rtkTxt){rtkTxt.textContent=fixLabel+' · LIVE · ±'+Math.round(acc*1000)+'mm';rtkTxt.style.color=fixColor;}
+
+    // Feed GPS diagnostic overlay with real data
+    if(gpsDiag.open){
+      gpsDiag.currentFix=fixKey==='3d_fix'?'3d_fix':fixKey;
+      gpsDiag.hAcc=acc*1000;
+      gpsDiag.vAcc=vAccRaw!==null&&vAccRaw!==undefined?vAccRaw*1000:acc*1000*1.6;
+      gpsDiag.acc3d=Math.sqrt(gpsDiag.hAcc**2+gpsDiag.vAcc**2);
+      // Generate a real NMEA GGA sentence from live coordinates
+      const now=new Date();
+      const t=now.getUTCHours().toString().padStart(2,'0')+now.getUTCMinutes().toString().padStart(2,'0')+now.getUTCSeconds().toString().padStart(2,'0')+'.00';
+      const latD=Math.abs(lat),lonD=Math.abs(lon);
+      const lats=(Math.floor(latD)*100+(latD%1)*60).toFixed(5).padStart(10,'0');
+      const lons=(Math.floor(lonD)*100+(lonD%1)*60).toFixed(5).padStart(11,'0');
+      const ns=lat>=0?'N':'S', ew=lon>=0?'E':'W';
+      const fq=fixKey==='rtk_fixed'?'5':fixKey==='rtk_float'?'4':fixKey==='dgps'?'2':'1';
+      const nu=gpsDiag.sats.filter(s=>s.used).length;
+      const elevStr=(alt!==null&&alt!==undefined?alt:0).toFixed(3);
+      const nmea_cs=s=>{let c=0;for(let i=0;i<s.length;i++)c^=s.charCodeAt(i);return c.toString(16).toUpperCase().padStart(2,'0');};
+      const gga=`GPGGA,${t},${lats},${ns},${lons},${ew},${fq},${nu},${gpsDiag.hdop.toFixed(1)},${elevStr},M,0.000,M,,`;
+      gpsDiag.nmeaLog.push('$'+gga+'*'+nmea_cs(gga));
+      if(gpsDiag.nmeaLog.length>20)gpsDiag.nmeaLog=gpsDiag.nmeaLog.slice(-20);
+      gpsDiag.render();
+    }
+
+    // Update status bar fix display
+    const lsb=document.getElementById('live-sensor-bar');
+    const lsbFix=document.getElementById('lsb-fix');
+    const lsbAcc=document.getElementById('lsb-acc');
+    const lsbTag=document.getElementById('lsb-tag');
+    if(lsbFix)lsbFix.textContent=fixLabel;
+    if(lsbAcc)lsbAcc.textContent='±'+Math.round(acc*1000)+'mm';
+    if(lsbTag)lsbTag.className=acc>5?'lsb-tag no-fix':'lsb-tag';
+    if(lsb)lsb.className=acc>5?'live-sensor-bar show no-fix':'live-sensor-bar show';
+  }catch(err){console.warn('onLiveGPS error:',err);}
+}
+
+function onLiveOrientation(e){
+  try{
+    if(e.beta!==null&&e.beta!==undefined){
+      smoothedBeta=smoothedBeta*0.7+e.beta*0.3;
+      tabletPitch=smoothedBeta;  // 3D visual pitch via tabletDemoActive branch
+    }
+    if(e.gamma!==null&&e.gamma!==undefined){
+      smoothedGamma=smoothedGamma*0.7+e.gamma*0.3;
+      tabletRoll=smoothedGamma;  // 3D visual roll
+    }
+    if(e.alpha!==null&&e.alpha!==undefined){
+      // Convert compass alpha (0=N, CW) → GradeOS heading radians (0=N, CW)
+      machinePos.hdg=(360-e.alpha)*Math.PI/180;
+      tabletHdg=machinePos.hdg;
+    }
+  }catch(err){console.warn('onLiveOrientation error:',err);}
+}
+
+function updateLiveSensorBar(){
+  if(!liveSensorMode)return;
+  const tiltEl=document.getElementById('lsb-tilt');
+  const hdgEl=document.getElementById('lsb-hdg');
+  if(tiltEl)tiltEl.textContent='β'+(smoothedBeta>=0?'+':'')+smoothedBeta.toFixed(1)+'° γ'+(smoothedGamma>=0?'+':'')+smoothedGamma.toFixed(1)+'°';
+  const hdgDeg=Math.round((machinePos.hdg*180/Math.PI%360+360)%360);
+  if(hdgEl)hdgEl.textContent=String(hdgDeg).padStart(3,'0')+'°';
+  // Red background if GPS stale (>5 s since last update and we've had a fix)
+  if(lastGpsUpdate>0&&Date.now()-lastGpsUpdate>5000){
+    const bar=document.getElementById('live-sensor-bar');
+    if(bar)bar.className='live-sensor-bar show no-fix';
+    const tag=document.getElementById('lsb-tag');
+    if(tag)tag.className='lsb-tag no-fix';
+    const fix=document.getElementById('lsb-fix');
+    if(fix)fix.textContent='No Fix';
+  }
+}
+
+function showSensorError(msg){
+  document.getElementById('st-hint').textContent='⚠ Live Sensors: '+msg;
+}
+
 // ── NTRIP 2.0 client ────────────────────────────────────────────────
 // Uses Fetch streaming (NTRIP 2.0 is HTTP-based, so we can use fetch()
 // directly if the caster sends proper CORS headers; otherwise falls back
@@ -6947,6 +7187,13 @@ const gpsDiag = {
     ctx.textAlign='center';ctx.fillText('N',cx,cy-R-4);ctx.fillText('S',cx,cy+R+12);
     ctx.textAlign='right';ctx.fillText('W',cx-R-3,cy+4);
     ctx.textAlign='left';ctx.fillText('E',cx+R+3,cy+4);
+    // LIVE badge when real sensors are active
+    if(liveSensorMode){
+      ctx.fillStyle='rgba(39,174,96,0.18)';
+      ctx.beginPath();ctx.arc(cx,cy,R+8,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle='#27ae60';ctx.font='bold 9px monospace';ctx.textAlign='center';
+      ctx.fillText('● LIVE',cx,cy+R+26);
+    }
     // Satellites
     this.sats.forEach(s=>{
       const rp=(90-s.elev)/90*R;
@@ -6968,6 +7215,17 @@ const gpsDiag = {
 
   update(){
     if(!this.open)return;
+    // When live sensor mode is active, real data is pushed via onLiveGPS — skip simulation
+    if(liveSensorMode){
+      // Still animate satellites and redraw sky plot
+      this.sats.forEach(s=>{
+        s.snr+=(Math.random()-.5)*1.5;s.snr=Math.min(52,Math.max(16,s.snr));
+        s.az=(s.az+(Math.random()-.5)*.3+360)%360;
+        s.used=s.elev>12&&s.snr>21;
+      });
+      this.render();
+      return;
+    }
     // Advance fix cycle every ~12 ticks
     this.fixCycleTimer++;
     if(this.fixCycleTimer>12){
@@ -7207,6 +7465,36 @@ if('serviceWorker' in navigator){
 
   </div>
   <div id="gps-sat-tooltip"></div>
+</div>
+
+<!-- Live Sensor Mode Modal -->
+<div id="live-sensor-modal">
+  <div id="lsm-box">
+    <div class="lsm-hdr">
+      <h2>Enable Live Sensor Mode</h2>
+      <button onclick="closeLiveSensorModal()" style="background:none;border:none;color:#7aabcc;font-size:18px;cursor:pointer;padding:0;line-height:1">✕</button>
+    </div>
+    <div class="lsm-body">
+      <p style="font-size:11px;color:#4a7aa0;margin-bottom:14px;line-height:1.7">Your real device sensors will drive the simulation — move the iPad to move the machine on the terrain grid.</p>
+      <div class="lsm-perm">
+        <span class="lsm-perm-icon">📍</span>
+        <div><strong style="color:#dce8f5">GPS</strong> — tracks your position on the terrain<br><span style="font-size:10px;color:#4a7aa0">Browser will request location permission</span></div>
+      </div>
+      <div class="lsm-perm">
+        <span class="lsm-perm-icon">📐</span>
+        <div><strong style="color:#dce8f5">Motion</strong> — reads iPad tilt for blade fore/aft grade &amp; cross-slope<br><span style="font-size:10px;color:#4a7aa0">iOS will show a permission dialog</span></div>
+      </div>
+      <div class="lsm-perm">
+        <span class="lsm-perm-icon">🧭</span>
+        <div><strong style="color:#dce8f5">Compass</strong> — sets machine heading from true north</div>
+      </div>
+      <div id="lsm-error" style="display:none;color:#ef5350;font-size:11px;margin-top:10px;padding:6px 10px;background:#1a0808;border-radius:3px;border:1px solid #4a1010"></div>
+    </div>
+    <div class="lsm-foot">
+      <button onclick="closeLiveSensorModal()" style="background:none;border:1px solid #1e4a7a;color:#7aabcc;padding:7px 16px;border-radius:4px;cursor:pointer;font-size:12px">Stay in Simulator</button>
+      <button onclick="enableLiveSensors()" style="background:#27ae60;border:none;color:#fff;padding:7px 18px;border-radius:4px;cursor:pointer;font-size:12px;font-weight:700">Enable Live Sensors</button>
+    </div>
+  </div>
 </div>
 
 <!-- Save indicator -->
