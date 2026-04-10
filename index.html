@@ -68,7 +68,7 @@ body{background:#0a1520;color:#dce8f5;font-family:'Segoe UI',Arial,sans-serif;ov
 #xsec-box{position:absolute;bottom:60px;left:6px;background:rgba(2,8,16,.92);border:1px solid #1a3a5c;border-radius:4px;overflow:hidden;z-index:8;display:none}
 #xsec-box canvas{display:block}
 #xsec-title{font-size:9px;color:#4a7aa0;text-align:center;padding:2px 0;background:#040c18;text-transform:uppercase;letter-spacing:1px}
-#text-ribbon{position:absolute;bottom:0;left:0;right:0;height:56px;background:#040c18;border-top:2px solid #0d2040;display:none;align-items:stretch;z-index:10}
+#text-ribbon{position:absolute;bottom:0;left:0;right:0;height:56px;background:#040c18;border-top:2px solid #0d2040;display:flex;align-items:stretch;z-index:10}
 .tr-manual{background:#0a1f35;border-right:1px solid #0d2040;display:flex;align-items:center;justify-content:center;padding:0 10px;cursor:pointer;transition:background .15s;flex-shrink:0}
 .tr-manual:last-child{border-right:none;border-left:1px solid #0d2040}
 .tr-manual:hover{background:#e8a020}
@@ -646,8 +646,7 @@ body.field-mode #field-rtk{display:flex}
 
   <div class="toolbar-group tg">
     <span class="tg-label">Machine</span>
-    <button class="tb" id="b-mach" onclick="toggleMachine()">🚜 Power On</button>
-    <button class="tb" id="b-mtype" onclick="toggleMachineType()" title="Switch between Dozer and Excavator">🚜 Dozer</button>
+<button class="tb" id="b-mtype" onclick="toggleMachineType()" title="Switch between Dozer and Excavator">🚜 Dozer</button>
     <button class="tb" id="b-fleet" onclick="toggleFleet()" title="Deploy a second autonomous machine to grade parallel strips">🤖 Fleet</button>
     <button class="tb" id="b-autosteer" onclick="toggleAutoSteer()" title="Auto-steer: machine drives parallel N-S grade strips automatically">⚙ Auto</button>
   </div>
@@ -860,8 +859,7 @@ body.field-mode #field-rtk{display:flex}
         🚜 Machine <span class="toggle">▶</span>
       </div>
       <div class="drawer-section-body">
-        <button class="drawer-btn" id="drawer-power-btn" onclick="toggleMachine()">⚡ Power On</button>
-        <button class="drawer-btn" id="drawer-mtype-btn" onclick="toggleMachineType()">🚜 Dozer</button>
+<button class="drawer-btn" id="drawer-mtype-btn" onclick="toggleMachineType()">🚜 Dozer</button>
         <button class="drawer-btn" id="drawer-fleet-btn" onclick="toggleFleet()">🚛 Fleet</button>
         <button class="drawer-btn" id="drawer-autosteer-btn" onclick="toggleAutoSteer()">🎯 Auto-Steer</button>
       </div>
@@ -1142,8 +1140,7 @@ body.field-mode #field-rtk{display:flex}
     <!-- Floating toolbar top-left (field mode) -->
     <div id="field-toolbar">
       <button onclick="toggleFieldMode()" style="background:#071c2e;border:1px solid #1a3a5c;color:#7aabcc;cursor:pointer;padding:5px 8px;border-radius:4px;font-size:14px" title="Exit Field Mode (F)">☰</button>
-      <button onclick="toggleMachine()" style="background:#071c2e;border:1px solid #1a3a5c;color:#7aabcc;cursor:pointer;padding:4px 8px;border-radius:4px;font-size:11px" title="Toggle machine on/off" id="field-mach-btn">⚙ OFF</button>
-      <button onclick="toggleAutosteer()" style="background:#071c2e;border:1px solid #1a3a5c;color:#e8a020;cursor:pointer;padding:4px 8px;border-radius:4px;font-size:11px" title="Auto-steer">⟳ AUTO</button>
+<button onclick="toggleAutosteer()" style="background:#071c2e;border:1px solid #1a3a5c;color:#e8a020;cursor:pointer;padding:4px 8px;border-radius:4px;font-size:11px" title="Auto-steer">⟳ AUTO</button>
     </div>
 
     <!-- RTK strip top-right of viewport (field mode) -->
@@ -1316,7 +1313,7 @@ body.field-mode #field-rtk{display:flex}
   <div>Tool: <span id="st-tool">Navigate</span></div>
   <div>Terrain: <span id="st-terrain">Hilly Farm</span></div>
   <div>Design: <span id="st-dpts">0</span> pts</div>
-  <div>Machine: <span id="st-mach">OFF</span></div>
+  <div>Machine: <span id="st-mach">ON — WASD/Arrows</span></div>
   <div>Cut: <span id="st-cut" style="color:#42a5f5">0.0m³</span></div>
   <div id="st-prod" style="display:none">Rate: <span id="st-rate" style="color:#66bb6a">—</span> &nbsp; ETA: <span id="st-eta" style="color:#ffb74d">—</span></div>
   <div id="st-speed" style="display:none">Spd: <span id="st-spd-val" style="color:#7aabcc;font-family:monospace">0.0</span> km/h · <span id="st-hdg" style="color:#7aabcc;font-family:monospace">000</span>°</div>
@@ -1486,7 +1483,7 @@ const asBuilt=new Uint8Array(N*N);
 let designCount=0;
 
 let tool='nav',toolState={};
-let machineOn=false;
+let machineOn=true;
 let machineType='dozer'; // 'dozer' | 'excavator'
 let excavDigging=false;  // true while SPACE is held in excavator mode
 let excavDigT=0;         // for bucket animation timing
@@ -1790,7 +1787,7 @@ const safeRing=new THREE.Mesh(new THREE.RingGeometry(5,5.15,32),
   new THREE.MeshBasicMaterial({color:0xff6600,side:THREE.DoubleSide,transparent:true,opacity:0.6}));
 safeRing.rotation.x=-Math.PI/2;safeRing.position.y=0.1;
 machGrp.add(safeRing);
-machGrp.visible=false;scene.add(machGrp);
+machGrp.visible=true;scene.add(machGrp);
 
 // ── Excavator model ───────────────────────────────────────────────
 const excavGrp=new THREE.Group();
@@ -2765,29 +2762,6 @@ document.addEventListener('keydown',e=>{
 });
 document.addEventListener('keyup',e=>{keys[e.key]=false;});
 
-function toggleMachine(){
-  machineOn=!machineOn;
-  // Show correct machine model
-  machGrp.visible=machineOn&&machineType==='dozer';
-  excavGrp.visible=machineOn&&machineType==='excavator';
-  document.getElementById('b-mach').classList.toggle('act',machineOn);
-  document.getElementById('st-mach').textContent=machineOn?'ON — WASD/Arrows'+(machineType==='excavator'?' · SPACE=Dig':''):'OFF';
-  // Sync drawer power button
-  const dpb=document.getElementById('drawer-power-btn');
-  if(dpb){dpb.textContent=machineOn?'⚡ Power Off':'⚡ Power On';dpb.classList.toggle('act',machineOn);}
-  // Close drawer when powering on
-  if(machineOn)document.getElementById('side-drawer').classList.remove('open');
-  // Show/hide blade guidance ribbon with machine power
-  document.getElementById('text-ribbon').style.display=machineOn?'flex':'none';
-  const xb=document.getElementById('xsec-box');
-  if(machineOn&&showXsec)xb.style.display='block';
-  if(!machineOn){
-    xb.style.display='none';
-    updateTextRibbon(null,null,null,null,null,null);
-    document.getElementById('tr-xslope').textContent='—';
-    drawLEDBar(0,0);
-  }
-}
 
 function toggleMachineType(){
   machineType=machineType==='dozer'?'excavator':'dozer';
@@ -2797,14 +2771,10 @@ function toggleMachineType(){
   // Sync drawer machine type button
   const dmb=document.getElementById('drawer-mtype-btn');
   if(dmb){dmb.textContent=machineType==='dozer'?'🚜 Dozer':'🦾 Excavator';dmb.classList.toggle('act',machineType==='excavator');}
-  // Swap visible model if machine is on
-  if(machineOn){
-    machGrp.visible=machineType==='dozer';
-    excavGrp.visible=machineType==='excavator';
-  }
-  document.getElementById('st-mach').textContent=machineOn
-    ? 'ON — WASD/Arrows'+(machineType==='excavator'?' · SPACE=Dig':'')
-    : 'OFF';
+  // Swap visible model
+  machGrp.visible=machineType==='dozer';
+  excavGrp.visible=machineType==='excavator';
+  document.getElementById('st-mach').textContent='ON — WASD/Arrows'+(machineType==='excavator'?' · SPACE=Dig':'');
   document.getElementById('st-hint').textContent=machineType==='excavator'
     ? '🦾 Excavator mode: WASD to track, SPACE to dig at current position'
     : '🚜 Dozer mode: WASD/Arrows to drive, blade cuts as you move';
@@ -4000,9 +3970,8 @@ function setCamMode(mode){
     planCam.lookAt(planPanX,0,planPanZ);
     planCam.updateProjectionMatrix();
   }
-  // Cab mode: turn on machine if not on, show hint
+  // Cab mode: show hint
   if(mode==='cab'){
-    if(!machineOn)toggleMachine();
     document.getElementById('st-hint').textContent='🚜 Cab view — WASD to drive · text ribbon shows live grade guidance';
   }
 }
@@ -4173,9 +4142,6 @@ function openFPModal(){
     info.textContent=`Terrain: ${gMin.toFixed(1)}\u2013${gMax.toFixed(1)}m (avg ${gAvg.toFixed(1)}m)`;
     info.style.display='block';
   }
-  // Warn if machine is off
-  const warn=document.getElementById('fpMachWarn');
-  if(warn)warn.style.display=machineOn?'none':'block';
   document.getElementById('fpModal').style.display='flex';
   setTimeout(()=>{inp.focus();inp.select();},50);
 }
@@ -5146,7 +5112,6 @@ function runScenario(type){
     surveyGrid.fill(0);surveyPointCount=0;
     if(!showSurvey){showSurvey=true;document.getElementById('b-survey').classList.add('act');document.getElementById('survey-legend').style.display='block';}
     rebuildSurveyMesh();
-    if(!machineOn)toggleMachine();
     if(!autoSteer)toggleAutoSteer();
     document.getElementById('scout-stats').innerHTML=
       `🌿 Scout mapping in progress…<br>📡 Coverage: <b id="scout-live-cov" style="color:#66bb6a">0%</b> · <span id="scout-live-pts">0</span> pts`;
@@ -5186,7 +5151,6 @@ function toggleAutoSteer(){
   autoSteer=!autoSteer;
   document.getElementById('b-autosteer').classList.toggle('act',autoSteer);
   if(autoSteer){
-    if(!machineOn)toggleMachine();
     const BH=1.7;
     autoSt.stripX=-SZ/2+BH+2;
     autoSt.dir=1;
@@ -5294,9 +5258,6 @@ function toggleFieldMode(){
   fieldMode=!fieldMode;
   document.body.classList.toggle('field-mode',fieldMode);
   document.getElementById('b-field').classList.toggle('act',fieldMode);
-  // Update machine button label in field toolbar
-  const mb=document.getElementById('field-mach-btn');
-  if(mb)mb.textContent=machineOn?'⚙ ON':'⚙ OFF';
   resize();
   if(fieldMode){sizeFieldPanels();updateFieldPanels();}
 }
@@ -5536,9 +5497,6 @@ function updateFieldPanels(){
     const col=rtkFixType==='RTK FIXED'?'#27ae60':rtkFixType==='RTK FLOAT'?'#e8a020':'#ffd600';
     fhRtk.textContent=rtkFixType;fhRtk.style.color=col;
   }
-  // Machine button label
-  const mb=document.getElementById('field-mach-btn');
-  if(mb)mb.textContent=machineOn?'⚙ ON':'⚙ OFF';
   // Draw profile panels
   sizeFieldPanels();
   const cvLong=document.getElementById('fp-long');
@@ -5959,8 +5917,6 @@ async function startTabletDemo(){
   document.getElementById('tablet-hud').style.display='block';
   document.getElementById('b-tablet-demo').classList.add('act');
   document.getElementById('st-hint').textContent='📱 Tablet Demo ACTIVE — move tablet to drive. Tilt = blade pitch/roll. Exit via HUD.';
-  if(!machineOn) toggleMachine();
-
   // GPS watch
   tabletGPSWatchId=navigator.geolocation.watchPosition(
     onTabletGPS,
@@ -6787,8 +6743,7 @@ if('serviceWorker' in navigator){
         style="background:#0d2040;border:1px solid #1e4a7a;color:#7aabcc;padding:7px 12px;border-radius:3px;cursor:pointer;font-size:12px;white-space:nowrap">📡 Use GPS</button>
     </div>
     <div id="fpTerrainInfo" style="display:none;font-size:10px;color:#2a9a6a;margin-bottom:6px;font-weight:600"></div>
-    <div id="fpMachWarn" style="display:none;font-size:10px;color:#e8a020;margin-bottom:6px;padding:4px 6px;background:rgba(232,160,32,.1);border:1px solid rgba(232,160,32,.3);border-radius:3px">⚠️ Press <strong>🚜 Power On</strong> first — guidance views need the machine running.</div>
-    <div style="font-size:10px;color:#4a7aa0;margin-bottom:14px;line-height:1.5">Set base RL here, then use the <strong style="color:#7aabcc">V-Offset panel</strong> for cut depth (sub-base, topsoil strip, compaction, etc).</div>
+<div style="font-size:10px;color:#4a7aa0;margin-bottom:14px;line-height:1.5">Set base RL here, then use the <strong style="color:#7aabcc">V-Offset panel</strong> for cut depth (sub-base, topsoil strip, compaction, etc).</div>
     <div style="display:flex;gap:8px">
       <button onclick="confirmFlatPad()" style="flex:1;background:#1a5a28;border:1px solid #2a8a3a;color:#8adfaa;padding:9px;border-radius:3px;cursor:pointer;font-weight:700;font-size:13px">✓ Apply</button>
       <button onclick="clearDesignSurface()" title="Clear design surface" style="background:#3a1010;border:1px solid #7a2020;color:#df9090;padding:9px 14px;border-radius:3px;cursor:pointer;font-size:13px">🗑</button>
