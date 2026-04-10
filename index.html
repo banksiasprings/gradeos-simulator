@@ -774,6 +774,13 @@ body.field-mode #field-rtk{display:flex}
         🎨 View <span class="toggle">▶</span>
       </div>
       <div class="drawer-section-body">
+        <div style="font-size:9px;color:#4a7aa0;text-transform:uppercase;letter-spacing:1px;padding:2px 4px 4px">Camera</div>
+        <button class="drawer-btn act" data-cam="3d" onclick="setCamMode('3d')">📷 3D View</button>
+        <button class="drawer-btn" data-cam="plan" onclick="setCamMode('plan')">🗺 Plan View</button>
+        <button class="drawer-btn" data-cam="follow" onclick="setCamMode('follow')">🎯 Follow Cam</button>
+        <button class="drawer-btn" data-cam="cab" onclick="setCamMode('cab')">🚜 Cab View</button>
+        <button class="drawer-btn" onclick="toggleGuidanceScreen()">📐 Guidance Screen</button>
+        <div style="font-size:9px;color:#4a7aa0;text-transform:uppercase;letter-spacing:1px;padding:6px 4px 4px">Display</div>
         <button class="drawer-btn act" onclick="toggleCutFill()">Cut/Fill</button>
         <button class="drawer-btn act" onclick="toggleContours()">Contours</button>
         <button class="drawer-btn" onclick="toggleSurvey()">Survey</button>
@@ -3919,6 +3926,11 @@ document.addEventListener('click',e=>{
 // ═══════════════════════════════════════════════════════════════════
 function setCamMode(mode){
   camMode=mode;
+  // Sync all camera buttons (both hidden cam-btns and drawer buttons)
+  document.querySelectorAll('[data-cam]').forEach(btn=>{
+    btn.classList.toggle('act',btn.dataset.cam===mode);
+  });
+  // Legacy sync for hidden cam-btns
   ['3d','plan','follow','cab'].forEach(m=>{
     const btn=document.getElementById('b-cam'+m);
     if(btn)btn.classList.toggle('act',m===mode);
