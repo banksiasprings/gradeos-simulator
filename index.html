@@ -640,7 +640,7 @@ body.field-mode #field-rtk{display:flex}
 #gps-diag-hdr h2{font-size:13px;font-weight:700;color:#e8a020;text-transform:uppercase;letter-spacing:2px;flex:1;margin:0}
 #gps-diag-close{background:#0d2040;border:1px solid #1e4a7a;color:#7aabcc;padding:4px 12px;border-radius:3px;cursor:pointer;font-size:12px;font-weight:600}
 #gps-diag-close:hover{background:#c0392b;border-color:#c0392b;color:#fff}
-#gps-diag-body{flex:1;overflow-y:auto;padding:10px;display:grid;grid-template-columns:1fr 1fr;gap:10px;align-content:start}
+#gps-diag-body{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:8px}
 .gps-card{background:#071525;border:1px solid #1e4a7a;border-radius:5px;padding:10px}
 .gps-card-title{font-size:9px;color:#4a7aa0;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px;font-weight:700}
 #gps-fix-banner{padding:14px 10px;border-radius:4px;text-align:center;font-size:24px;font-weight:900;font-family:'Courier New',monospace;letter-spacing:2px;margin-bottom:10px;transition:background .5s}
@@ -686,6 +686,37 @@ body.field-mode #field-rtk{display:flex}
 .lsm-perm{display:flex;align-items:flex-start;gap:10px;margin-bottom:10px;font-size:12px;color:#7aabcc}
 .lsm-perm-icon{font-size:20px;flex-shrink:0;line-height:1.4}
 .lsm-foot{padding:10px 16px;border-top:1px solid #1e4a7a;display:flex;gap:8px;justify-content:flex-end}
+/* ── GPS Overlay Collapsible Sections ───────────────────────────── */
+.gps-section{border:1px solid #1e4a7a;border-radius:5px;overflow:hidden}
+.gps-section-hdr{background:#0f2540;padding:8px 12px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;user-select:none;font-size:10px;font-weight:700;color:#e8a020;text-transform:uppercase;letter-spacing:1px}
+.gps-section-hdr:hover{background:#1a3050}
+.gs-toggle{color:#4a7aa0;font-size:11px;transition:transform .2s;display:inline-block}
+.gps-section.collapsed .gs-toggle{transform:rotate(-90deg)}
+.gps-section-body{padding:10px;background:#071525}
+.gps-section.collapsed .gps-section-body{display:none}
+.gps-inner-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media(max-width:680px){.gps-inner-grid{grid-template-columns:1fr}}
+/* NTRIP / External Receiver panels */
+.nconn-row{display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap}
+.nconn-row label{font-size:9px;color:#4a7aa0;text-transform:uppercase;letter-spacing:.8px;min-width:68px;flex-shrink:0}
+.nconn-row input{flex:1;min-width:70px;background:#040e1c;border:1px solid #1e4a7a;color:#dce8f5;padding:3px 6px;border-radius:3px;font-size:12px;font-family:monospace}
+.nconn-row input:focus{outline:none;border-color:#e8a020}
+.nconn-btns{display:flex;gap:6px;margin:8px 0;flex-wrap:wrap}
+.nb{background:#0d2040;border:1px solid #1e4a7a;color:#7aabcc;padding:4px 10px;border-radius:3px;cursor:pointer;font-size:11px;font-weight:600;transition:all .15s;white-space:nowrap}
+.nb:hover{background:#1e4a7a}
+.nb.grn{border-color:#27ae60;color:#27ae60}.nb.grn:hover{background:#27ae60;color:#fff}
+.nb.red{border-color:#c0392b;color:#c0392b}.nb.red:hover{background:#c0392b;color:#fff}
+.nstat-bar{display:flex;align-items:center;gap:6px;padding:5px 0;border-top:1px solid #1a3a5c;margin-top:4px;flex-wrap:wrap}
+.ndot{width:8px;height:8px;border-radius:50%;background:#2a4a5a;flex-shrink:0;transition:background .3s}
+.ndot.conn{background:#27ae60}.ndot.connecting{background:#e8a020;animation:blink 1s infinite}.ndot.err{background:#e53935}
+.nstat-grid{display:grid;grid-template-columns:auto 1fr auto 1fr;gap:3px 10px;font-size:10px;font-family:monospace;margin-top:8px}
+.nstat-k{color:#4a7aa0}.nstat-v{color:#dce8f5;font-weight:700}
+#ntrip-mount-wrap{max-height:180px;overflow-y:auto;border:1px solid #1e4a7a;border-radius:3px;display:none;margin-top:4px}
+#ntrip-mount-wrap.show{display:block}
+#ntrip-mount-table{width:100%;border-collapse:collapse;font-size:10px;font-family:monospace}
+#ntrip-mount-table th{background:#0f2540;color:#e8a020;font-size:8px;text-transform:uppercase;padding:4px 6px;text-align:left;position:sticky;top:0;z-index:1}
+#ntrip-mount-table td{padding:3px 6px;border-bottom:1px solid #0d2040;cursor:pointer}
+#ntrip-mount-table tr:hover td{background:#0d2040}
 </style>
 </head>
 <body>
@@ -6238,6 +6269,8 @@ function onLiveGPS(pos){
     lastGpsUpdate=Date.now();
     tabletGPSSpeed=spd;  // reuse for speed display in tabletDemoActive branch
 
+    // External receiver has priority — ignore iPad GPS when it's connected
+    if(typeof extReceiver!=='undefined'&&extReceiver.connected)return;
     // On first valid fix, store origin
     if(!gpsOrigin){
       gpsOrigin={lat,lon,alt:alt||0};
@@ -7187,8 +7220,13 @@ const gpsDiag = {
     ctx.textAlign='center';ctx.fillText('N',cx,cy-R-4);ctx.fillText('S',cx,cy+R+12);
     ctx.textAlign='right';ctx.fillText('W',cx-R-3,cy+4);
     ctx.textAlign='left';ctx.fillText('E',cx+R+3,cy+4);
-    // LIVE badge when real sensors are active
-    if(liveSensorMode){
+    // Badge: EXT RCVR > LIVE > none
+    if(typeof extReceiver!=='undefined'&&extReceiver.connected){
+      ctx.fillStyle='rgba(77,166,255,0.15)';
+      ctx.beginPath();ctx.arc(cx,cy,R+8,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle='#4da6ff';ctx.font='bold 9px monospace';ctx.textAlign='center';
+      ctx.fillText('● EXT RCVR',cx,cy+R+26);
+    }else if(liveSensorMode){
       ctx.fillStyle='rgba(39,174,96,0.18)';
       ctx.beginPath();ctx.arc(cx,cy,R+8,0,Math.PI*2);ctx.fill();
       ctx.fillStyle='#27ae60';ctx.font='bold 9px monospace';ctx.textAlign='center';
@@ -7215,6 +7253,10 @@ const gpsDiag = {
 
   update(){
     if(!this.open)return;
+    // External receiver has highest priority — data comes via NMEA callbacks
+    if(typeof extReceiver!=='undefined'&&extReceiver.connected){
+      this.render();return;
+    }
     // When live sensor mode is active, real data is pushed via onLiveGPS — skip simulation
     if(liveSensorMode){
       // Still animate satellites and redraw sky plot
@@ -7343,6 +7385,355 @@ function toggleNMEAStream(){
   if(gpsDiag.nmeaVisible)gpsDiag.render();
 }
 
+// ─── GPS Overlay section toggle ────────────────────────────────────
+function toggleGPSSection(id){
+  const sec=document.getElementById(id);
+  if(sec)sec.classList.toggle('collapsed');
+}
+
+// ─── NTRIP RTK Corrections Client ──────────────────────────────────
+const NTRIP_PROXY_SCRIPT=`#!/usr/bin/env node
+// GradeOS NTRIP WebSocket Proxy
+// Usage: npm install ws && node ntrip-proxy.js
+// Bridges ws://localhost:2102 to a real NTRIP caster over TCP
+const net=require('net');
+const {WebSocketServer}=require('ws');
+const WS_PORT=2102;
+const wss=new WebSocketServer({port:WS_PORT});
+console.log(\`NTRIP proxy listening on ws://localhost:\${WS_PORT}\`);
+wss.on('connection',(ws,req)=>{
+  const params=new URLSearchParams(req.url.slice(1));
+  const host=params.get('host')||'ntrip.data.gnss.ga.gov.au';
+  const port=parseInt(params.get('port')||'2101');
+  const mount=params.get('mount')||'MOBS0';
+  const user=params.get('user')||'';
+  const pass=params.get('pass')||'';
+  const auth=(user||pass)?'Basic '+Buffer.from(user+':'+pass).toString('base64'):null;
+  console.log(\`Connecting to \${host}:\${port}/\${mount}\`);
+  const tcp=net.createConnection({host,port},()=>{
+    const hdrs=[\`GET /\${mount} HTTP/1.1\`,\`Host: \${host}:\${port}\`,'Ntrip-Version: Ntrip/2.0','User-Agent: NTRIP GradeOS/1.0',...(auth?[\`Authorization: \${auth}\`]:[]),'Connection: close','',''].join('\\r\\n');
+    tcp.write(hdrs);
+  });
+  let hdrDone=false;
+  tcp.on('data',chunk=>{
+    if(!hdrDone){const end=chunk.indexOf('\\r\\n\\r\\n');if(end<0)return;hdrDone=true;const body=chunk.slice(end+4);if(body.length&&ws.readyState===1)ws.send(body);}
+    else{if(ws.readyState===1)ws.send(chunk);}
+  });
+  tcp.on('close',()=>{try{ws.close();}catch(e){}});
+  tcp.on('error',e=>{console.error('TCP:',e.message);try{ws.close();}catch(_){}});
+  ws.on('message',data=>{if(tcp.writable)tcp.write(data);});
+  ws.on('close',()=>tcp.destroy());
+  ws.on('error',()=>tcp.destroy());
+});
+`;
+
+const ntripClient={
+  ws:null,reader:null,connected:false,connecting:false,
+  host:'ntrip.data.gnss.ga.gov.au',port:2101,mount:'MOBS0',user:'',pass:'',
+  rtcmCount:0,rtcmTypes:{},correctionsAge:null,lastRtcmTime:null,ageTimer:null,
+  statusText:'Disconnected',statusColor:'#4a7aa0',
+
+  async connect(){
+    if(this.connected||this.connecting)return;
+    this.connecting=true;this.statusText='Connecting…';this.statusColor='#e8a020';this.renderStatus();
+    const host=(document.getElementById('ntrip-host')?.value.trim()||this.host);
+    const port=parseInt(document.getElementById('ntrip-port')?.value||this.port);
+    const mount=(document.getElementById('ntrip-mount')?.value.trim()||this.mount);
+    const user=(document.getElementById('ntrip-user')?.value.trim()||'');
+    const pass=(document.getElementById('ntrip-pass')?.value.trim()||'');
+    this.host=host;this.port=port;this.mount=mount;this.user=user;this.pass=pass;
+    try{await this._connectFetch(host,port,mount,user,pass);return;}
+    catch(e){console.log('NTRIP direct fetch failed, trying WS proxy:',e.message);}
+    try{await this._connectWS(host,port,mount,user,pass);}
+    catch(e){this.connecting=false;this.statusText='Error: '+e.message;this.statusColor='#e53935';this.renderStatus();}
+  },
+
+  async _connectFetch(host,port,mount,user,pass){
+    const url=`http://${host}:${port}/${mount}`;
+    const headers={'Ntrip-Version':'Ntrip/2.0','User-Agent':'NTRIP GradeOS/1.0'};
+    if(user||pass)headers['Authorization']='Basic '+btoa(user+':'+pass);
+    const resp=await fetch(url,{headers,signal:AbortSignal.timeout(8000)});
+    if(!resp.ok||!resp.body)throw new Error('HTTP '+resp.status);
+    this.connecting=false;this.connected=true;
+    this.statusText='Connected (direct)';this.statusColor='#27ae60';
+    this._startAgeTimer();this.renderStatus();
+    this.reader=resp.body.getReader();
+    const pump=async()=>{
+      while(this.connected){
+        const{done,value}=await this.reader.read();
+        if(done)break;
+        if(value)this._onRtcmData(value);
+      }
+      if(this.connected)this.disconnect();
+    };
+    pump().catch(e=>{if(this.connected){this.statusText='Stream ended: '+e.message;this.disconnect();}});
+  },
+
+  async _connectWS(host,port,mount,user,pass){
+    const wsUrl=`ws://localhost:2102?host=${encodeURIComponent(host)}&port=${port}&mount=${encodeURIComponent(mount)}&user=${encodeURIComponent(user)}&pass=${encodeURIComponent(pass)}`;
+    return new Promise((resolve,reject)=>{
+      const ws=new WebSocket(wsUrl);ws.binaryType='arraybuffer';
+      const timer=setTimeout(()=>{ws.close();reject(new Error('WS timeout'));},8000);
+      ws.onopen=()=>{
+        clearTimeout(timer);this.ws=ws;this.connecting=false;this.connected=true;
+        this.statusText='Connected (proxy)';this.statusColor='#27ae60';
+        this._startAgeTimer();this.renderStatus();resolve();
+      };
+      ws.onmessage=e=>{
+        const data=e.data instanceof ArrayBuffer?new Uint8Array(e.data):new TextEncoder().encode(e.data);
+        this._onRtcmData(data);
+      };
+      ws.onerror=()=>{clearTimeout(timer);reject(new Error('WS connect failed'));};
+      ws.onclose=()=>{
+        if(this.connected){this.connected=false;this._stopAgeTimer();this.statusText='Disconnected';this.statusColor='#4a7aa0';this.renderStatus();}
+      };
+    });
+  },
+
+  disconnect(){
+    this.connected=false;this.connecting=false;
+    if(this.ws){try{this.ws.close();}catch(e){}this.ws=null;}
+    if(this.reader){try{this.reader.cancel();}catch(e){}this.reader=null;}
+    this._stopAgeTimer();this.statusText='Disconnected';this.statusColor='#4a7aa0';
+    this.correctionsAge=null;this.renderStatus();
+  },
+
+  _onRtcmData(data){
+    this.lastRtcmTime=Date.now();this.correctionsAge=0;
+    for(let i=0;i<data.length-2;i++){
+      if(data[i]===0xD3){
+        const len=((data[i+1]&0x03)<<8)|data[i+2];
+        if(i+3+len+3<=data.length){
+          const msgType=((data[i+3]&0xFF)<<4)|((data[i+4]&0xF0)>>4);
+          this.rtcmCount++;this.rtcmTypes[msgType]=(this.rtcmTypes[msgType]||0)+1;
+          if(extReceiver.ws&&extReceiver.ws.readyState===WebSocket.OPEN)extReceiver.ws.send(data.slice(i,i+3+len+3));
+          i+=3+len+2;
+        }
+      }
+    }
+    this.renderStatus();
+  },
+
+  _startAgeTimer(){
+    this._stopAgeTimer();
+    this.ageTimer=setInterval(()=>{
+      if(!this.connected)return;
+      if(this.lastRtcmTime!==null)this.correctionsAge=(Date.now()-this.lastRtcmTime)/1000;
+      this.renderStatus();
+      if(this.correctionsAge!==null&&this.correctionsAge>30&&gpsDiag.currentFix==='rtk_fixed')gpsDiag.currentFix='rtk_float';
+    },1000);
+  },
+  _stopAgeTimer(){if(this.ageTimer){clearInterval(this.ageTimer);this.ageTimer=null;}},
+
+  renderStatus(){
+    const dot=document.getElementById('ntrip-status-dot');
+    const txt=document.getElementById('ntrip-status-txt');
+    const age=document.getElementById('ntrip-corr-age');
+    const ageVal=document.getElementById('ntrip-age-val');
+    const cnt=document.getElementById('ntrip-rtcm-count');
+    const last=document.getElementById('ntrip-last-msg');
+    const types=document.getElementById('ntrip-rtcm-types');
+    const badge=document.getElementById('ntrip-hdr-badge');
+    if(dot)dot.className='ndot'+(this.connected?' conn':this.connecting?' connecting':'');
+    if(txt){txt.textContent=this.statusText;txt.style.color=this.statusColor;}
+    if(badge)badge.textContent=this.connected?'● Connected':'';
+    if(age){
+      if(this.correctionsAge===null){age.textContent='—';age.style.color='#4a7aa0';}
+      else{const a=this.correctionsAge;age.textContent=a.toFixed(1)+'s';age.style.color=a>30?'#e53935':a>15?'#e8a020':'#27ae60';}
+    }
+    if(ageVal)ageVal.textContent=this.correctionsAge===null?'—':(this.correctionsAge.toFixed(1)+'s');
+    if(cnt)cnt.textContent=this.rtcmCount;
+    if(last){
+      if(this.lastRtcmTime){const s=(Date.now()-this.lastRtcmTime)/1000;last.textContent=s<2?'just now':s.toFixed(0)+'s ago';}
+      else last.textContent='—';
+    }
+    if(types){
+      const top=Object.entries(this.rtcmTypes).sort((a,b)=>b[1]-a[1]).slice(0,6);
+      types.textContent=top.length?top.map(([t,c])=>`${t}(${c})`).join(' '):'—';
+    }
+  },
+
+  async browseSourceTable(){
+    const host=(document.getElementById('ntrip-host')?.value.trim()||this.host);
+    const port=parseInt(document.getElementById('ntrip-port')?.value||this.port);
+    const wrap=document.getElementById('ntrip-mount-wrap');
+    const tbody=document.getElementById('ntrip-mount-tbody');
+    if(!wrap||!tbody)return;
+    tbody.innerHTML='<tr><td colspan="4" style="color:#4a7aa0;text-align:center;padding:8px">Loading…</td></tr>';
+    wrap.classList.add('show');
+    try{
+      const resp=await fetch(`http://${host}:${port}/`,{headers:{'Ntrip-Version':'Ntrip/2.0','User-Agent':'NTRIP GradeOS/1.0'},signal:AbortSignal.timeout(8000)});
+      const text=await resp.text();
+      const rows=text.split('\n').filter(l=>l.startsWith('STR;'));
+      if(!rows.length)throw new Error('No STR entries in source table');
+      tbody.innerHTML=rows.map(row=>{
+        const f=row.split(';');
+        const name=f[1]||'',fmt=f[3]||'',nav=f[5]||'',country=f[8]||'';
+        return `<tr onclick="document.getElementById('ntrip-mount').value='${name.replace(/'/g,"\\'")}';document.getElementById('ntrip-mount-wrap').classList.remove('show')">
+          <td style="color:#e8a020">${name}</td><td style="color:#7aabcc">${fmt}</td><td>${nav}</td><td>${country}</td>
+        </tr>`;
+      }).join('');
+    }catch(e){
+      tbody.innerHTML=`<tr><td colspan="4" style="color:#e53935;padding:8px">Error: ${e.message}</td></tr>`;
+    }
+  },
+
+  copyProxyScript(){
+    navigator.clipboard.writeText(NTRIP_PROXY_SCRIPT).then(()=>{
+      const btn=document.getElementById('ntrip-copy-proxy');
+      if(btn){btn.textContent='✓ Copied!';setTimeout(()=>btn.textContent='📋 Copy proxy script',2000);}
+    }).catch(()=>{
+      const btn=document.getElementById('ntrip-copy-proxy');
+      if(btn)btn.textContent='Clipboard denied';
+    });
+  }
+};
+
+// ─── External NMEA Receiver (WebSocket) ───────────────────────────
+const extReceiver={
+  ws:null,connected:false,connecting:false,
+  url:'ws://192.168.1.100:9000',
+  statusText:'Disconnected',statusColor:'#4a7aa0',
+  lastPos:null,lastSats:[],nmeaBuf:'',
+
+  connect(){
+    if(this.connected||this.connecting)return;
+    this.connecting=true;this.statusText='Connecting…';this.statusColor='#e8a020';this.renderStatus();
+    const url=(document.getElementById('ext-rcvr-url')?.value.trim()||this.url);
+    this.url=url;
+    const ws=new WebSocket(url);
+    const timer=setTimeout(()=>{ws.close();},8000);
+    ws.onopen=()=>{
+      clearTimeout(timer);this.ws=ws;this.connecting=false;this.connected=true;
+      this.statusText='Connected';this.statusColor='#27ae60';
+      this.renderStatus();this._updateRTKStrip();
+    };
+    ws.onmessage=e=>{
+      this.nmeaBuf+=(typeof e.data==='string'?e.data:new TextDecoder().decode(e.data));
+      const lines=this.nmeaBuf.split('\n');
+      this.nmeaBuf=lines.pop()||'';
+      lines.forEach(l=>this._parseNMEA(l.trim()));
+    };
+    ws.onerror=()=>{clearTimeout(timer);};
+    ws.onclose=()=>{
+      this.ws=null;
+      if(this.connected||this.connecting){
+        this.connected=false;this.connecting=false;
+        this.statusText='Disconnected';this.statusColor='#4a7aa0';
+        this.renderStatus();this._updateRTKStrip();
+      }
+    };
+  },
+
+  disconnect(){
+    this.connected=false;this.connecting=false;
+    if(this.ws){try{this.ws.close();}catch(e){}this.ws=null;}
+    this.statusText='Disconnected';this.statusColor='#4a7aa0';
+    this.lastPos=null;this.renderStatus();this._updateRTKStrip();
+  },
+
+  _parseDDMM(raw,hem){
+    if(!raw)return null;
+    const dot=raw.indexOf('.');
+    if(dot<2)return null;
+    const deg=parseInt(raw.slice(0,dot-2));
+    const min=parseFloat(raw.slice(dot-2));
+    let val=deg+min/60;
+    if(hem==='S'||hem==='W')val=-val;
+    return isNaN(val)?null:val;
+  },
+
+  _parseNMEA(line){
+    if(!line.startsWith('$'))return;
+    const starIdx=line.lastIndexOf('*');
+    const body=starIdx>0?line.slice(1,starIdx):line.slice(1);
+    const f=body.split(',');
+    const type=f[0];
+    if(type==='GPGGA'||type==='GNGGA'){
+      const lat=this._parseDDMM(f[2],f[3]);
+      const lon=this._parseDDMM(f[4],f[5]);
+      if(lat===null||lon===null)return;
+      const quality=parseInt(f[6])||0;
+      const numSV=parseInt(f[7])||0;
+      const hdop=parseFloat(f[8])||1;
+      const alt=parseFloat(f[9])||0;
+      const fixKey=quality===5?'rtk_fixed':quality===4?'rtk_float':quality===2?'dgps':quality>=1?'3d_fix':'no_fix';
+      if(!this.lastPos)this.lastPos={};
+      Object.assign(this.lastPos,{lat,lon,alt,fixKey,quality,hdop,numSV});
+      this._applyPosition();
+    }else if(type==='GPRMC'||type==='GNRMC'){
+      const speed=(parseFloat(f[7])||0)*0.5144;
+      const heading=parseFloat(f[8])||0;
+      if(!this.lastPos)this.lastPos={};
+      Object.assign(this.lastPos,{speed,heading});
+    }else if(type==='GPGSA'||type==='GNGSA'){
+      const pdop=parseFloat(f[15])||1;
+      const hdop2=parseFloat(f[16])||1;
+      if(!this.lastPos)this.lastPos={};
+      if(!isNaN(pdop))this.lastPos.pdop=pdop;
+      if(!isNaN(hdop2)&&hdop2>0)this.lastPos.hdop=hdop2;
+    }else if(type==='GPGSV'||type==='GLGSV'||type==='GAGSV'||type==='GBGSV'){
+      const totalMsgs=parseInt(f[1])||1;
+      const msgNum=parseInt(f[2])||1;
+      const conMap={GP:'GPS',GL:'GLONASS',GA:'Galileo',GB:'BeiDou'};
+      const prefix=type.slice(1,3);
+      const con=conMap[prefix]||'GPS';
+      if(msgNum===1)this.lastSats=[];
+      for(let i=4;i+3<f.length;i+=4){
+        const prn=f[i];const elev=parseFloat(f[i+1])||0;
+        const az=parseFloat(f[i+2])||0;const snr=parseFloat(f[i+3])||0;
+        if(prn)this.lastSats.push({prn:prefix+prn.padStart(2,'0'),con,elev,az,snr,used:snr>20});
+      }
+      if(msgNum===totalMsgs&&gpsDiag.open){
+        gpsDiag.sats=this.lastSats.map(s=>({...s}));gpsDiag.render();
+      }
+    }
+    if(gpsDiag.open&&gpsDiag.nmeaVisible){
+      gpsDiag.nmeaLog.push(line);
+      if(gpsDiag.nmeaLog.length>20)gpsDiag.nmeaLog=gpsDiag.nmeaLog.slice(-20);
+    }
+  },
+
+  _applyPosition(){
+    if(!this.lastPos)return;
+    const{lat,lon,alt,fixKey,hdop,numSV}=this.lastPos;
+    if(!gpsOrigin){gpsOrigin={lat,lon,alt:alt||0};machinePos.x=0;machinePos.z=0;}
+    const dx=(lon-gpsOrigin.lon)*Math.cos(gpsOrigin.lat*Math.PI/180)*111319.9;
+    const dz=(lat-gpsOrigin.lat)*111319.9;
+    machinePos.x=Math.max(-SZ/2+3,Math.min(SZ/2-3,dx));
+    machinePos.z=Math.max(-SZ/2+3,Math.min(SZ/2-3,-dz));
+    if(this.lastPos.heading!==undefined)machinePos.hdg=this.lastPos.heading*Math.PI/180;
+    if(gpsDiag.open){
+      gpsDiag.currentFix=fixKey;
+      gpsDiag.hAcc=(hdop||1)*5;gpsDiag.vAcc=gpsDiag.hAcc*1.5;
+      gpsDiag.acc3d=Math.sqrt(gpsDiag.hAcc**2+gpsDiag.vAcc**2);
+      gpsDiag.hdop=hdop||1;gpsDiag.render();
+    }
+    this._updateRTKStrip();
+  },
+
+  _updateRTKStrip(){
+    const rtk=document.getElementById('rtk-txt');
+    const dot=document.getElementById('rtk-dot');
+    const badge=document.getElementById('ext-rcvr-hdr-badge');
+    if(badge)badge.textContent=this.connected?'● Connected':'';
+    if(!this.connected){return;}
+    const fp=this.lastPos;if(!fp)return;
+    const fixLabel=fp.fixKey==='rtk_fixed'?'RTK Fixed':fp.fixKey==='rtk_float'?'RTK Float':fp.fixKey==='dgps'?'DGPS':'3D Fix';
+    const accMm=Math.round((fp.hdop||1)*5);
+    const fixColor=fp.fixKey==='rtk_fixed'?'#27ae60':fp.fixKey==='rtk_float'?'#e8a020':'#ffd600';
+    if(rtk){rtk.textContent=`📡 EXT RCVR  ${fixLabel} ±${accMm}mm  Sats: ${fp.numSV||'?'}`;rtk.style.color=fixColor;}
+    if(dot){dot.style.background=fixColor;dot.className='rtk-dot';}
+  },
+
+  renderStatus(){
+    const dot=document.getElementById('ext-rcvr-dot');
+    const txt=document.getElementById('ext-rcvr-status-txt');
+    if(dot)dot.className='ndot'+(this.connected?' conn':this.connecting?' connecting':'');
+    if(txt){txt.textContent=this.statusText;txt.style.color=this.statusColor;}
+  }
+};
+
 // Service Worker registration
 if('serviceWorker' in navigator){
   navigator.serviceWorker.register('./sw.js').then(r=>{
@@ -7369,98 +7760,164 @@ if('serviceWorker' in navigator){
   </div>
   <div id="gps-diag-body">
 
-    <!-- Sky Plot -->
-    <div class="gps-card">
-      <div class="gps-card-title">Sky Plot — Azimuth / Elevation</div>
-      <canvas id="gps-sky-canvas" width="260" height="260"></canvas>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;font-size:10px;font-family:monospace">
-        <span style="color:#27ae60">● GPS</span>
-        <span style="color:#e53935">● GLONASS</span>
-        <span style="color:#4da6ff">● Galileo</span>
-        <span style="color:#f9a825">● BeiDou</span>
-        <span style="color:#3a5a6a">● Not used</span>
+    <!-- SECTION 1: Position & Accuracy (always open) -->
+    <div class="gps-section" id="gps-sec-position">
+      <div class="gps-section-hdr" onclick="toggleGPSSection('gps-sec-position')">
+        <span>Position &amp; Accuracy</span>
+        <span class="gs-toggle">▼</span>
+      </div>
+      <div class="gps-section-body">
+        <div class="gps-inner-grid">
+          <!-- Sky Plot -->
+          <div class="gps-card">
+            <div class="gps-card-title">Sky Plot — Azimuth / Elevation</div>
+            <canvas id="gps-sky-canvas" width="240" height="240"></canvas>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;font-size:10px;font-family:monospace">
+              <span style="color:#27ae60">● GPS</span>
+              <span style="color:#e53935">● GLONASS</span>
+              <span style="color:#4da6ff">● Galileo</span>
+              <span style="color:#f9a825">● BeiDou</span>
+              <span style="color:#3a5a6a">● Not used</span>
+            </div>
+          </div>
+          <!-- Fix Status + Accuracy -->
+          <div class="gps-card">
+            <div class="gps-card-title">Fix Status</div>
+            <div id="gps-fix-banner">RTK FIXED</div>
+            <div class="gps-card-title" style="margin-top:12px">Accuracy RMS</div>
+            <div class="gps-acc-row">
+              <div class="gps-acc-cell">
+                <div class="gps-acc-val" id="gps-hacc">—</div>
+                <div class="gps-acc-lbl">H mm</div>
+              </div>
+              <div class="gps-acc-cell">
+                <div class="gps-acc-val" id="gps-vacc">—</div>
+                <div class="gps-acc-lbl">V mm</div>
+              </div>
+              <div class="gps-acc-cell">
+                <div class="gps-acc-val" id="gps-3dacc">—</div>
+                <div class="gps-acc-lbl">3D mm</div>
+              </div>
+            </div>
+            <div style="margin-top:14px;padding-top:10px;border-top:1px solid #1e4a7a">
+              <div class="gps-card-title">GNSS Details</div>
+              <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:11px;font-family:monospace">
+                <span style="color:#4a7aa0">Sats Used</span><span id="gps-sats-used" style="color:#dce8f5;font-weight:700">—</span>
+                <span style="color:#4a7aa0">Sats Visible</span><span id="gps-sats-vis" style="color:#dce8f5;font-weight:700">—</span>
+                <span style="color:#4a7aa0">HDOP</span><span id="gps-hdop" style="color:#dce8f5;font-weight:700">—</span>
+                <span style="color:#4a7aa0">PDOP</span><span id="gps-pdop" style="color:#dce8f5;font-weight:700">—</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Satellite Table -->
+        <div class="gps-card" style="margin-top:8px" id="gps-sat-table-wrap">
+          <div class="gps-card-title">Satellite Channels</div>
+          <table id="gps-sat-table">
+            <thead><tr>
+              <th>PRN</th><th>Constellation</th><th>Elev°</th><th>Az°</th><th>SNR dB</th><th>Used</th>
+            </tr></thead>
+            <tbody id="gps-sat-tbody"></tbody>
+          </table>
+        </div>
+        <!-- NMEA Stream -->
+        <div class="gps-card" style="margin-top:8px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <div class="gps-card-title" style="margin-bottom:0">NMEA Raw Stream</div>
+            <button id="gps-nmea-toggle" onclick="toggleNMEAStream()">Show</button>
+          </div>
+          <div style="font-size:10px;color:#2a4a6a;margin-bottom:4px">GGA · RMC · GSA · GSV sentences — last 20</div>
+          <div id="gps-nmea-stream"></div>
+        </div>
       </div>
     </div>
 
-    <!-- Fix Status + Accuracy -->
-    <div class="gps-card">
-      <div class="gps-card-title">Fix Status</div>
-      <div id="gps-fix-banner">RTK FIXED</div>
-      <div class="gps-card-title" style="margin-top:12px">Accuracy RMS</div>
-      <div class="gps-acc-row">
-        <div class="gps-acc-cell">
-          <div class="gps-acc-val" id="gps-hacc">—</div>
-          <div class="gps-acc-lbl">H mm</div>
-        </div>
-        <div class="gps-acc-cell">
-          <div class="gps-acc-val" id="gps-vacc">—</div>
-          <div class="gps-acc-lbl">V mm</div>
-        </div>
-        <div class="gps-acc-cell">
-          <div class="gps-acc-val" id="gps-3dacc">—</div>
-          <div class="gps-acc-lbl">3D mm</div>
-        </div>
+    <!-- SECTION 2: RTK Corrections (collapsed by default) -->
+    <div class="gps-section collapsed" id="gps-sec-ntrip">
+      <div class="gps-section-hdr" onclick="toggleGPSSection('gps-sec-ntrip')">
+        <span>RTK Corrections <span id="ntrip-hdr-badge" style="font-size:9px;color:#4a7aa0;font-weight:400;text-transform:none;letter-spacing:0;margin-left:6px"></span></span>
+        <span class="gs-toggle">▼</span>
       </div>
-      <div style="margin-top:14px;padding-top:10px;border-top:1px solid #1e4a7a">
-        <div class="gps-card-title">GNSS Details</div>
-        <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:11px;font-family:monospace">
-          <span style="color:#4a7aa0">Sats Used</span><span id="gps-sats-used" style="color:#dce8f5;font-weight:700">—</span>
-          <span style="color:#4a7aa0">Sats Visible</span><span id="gps-sats-vis" style="color:#dce8f5;font-weight:700">—</span>
-          <span style="color:#4a7aa0">HDOP</span><span id="gps-hdop" style="color:#dce8f5;font-weight:700">—</span>
-          <span style="color:#4a7aa0">PDOP</span><span id="gps-pdop" style="color:#dce8f5;font-weight:700">—</span>
+      <div class="gps-section-body">
+        <div class="nconn-row">
+          <label>Caster Host</label>
+          <input id="ntrip-host" type="text" value="ntrip.data.gnss.ga.gov.au" style="flex:3">
+          <label style="min-width:28px">Port</label>
+          <input id="ntrip-port" type="number" value="2101" style="flex:0 0 58px;min-width:58px">
+        </div>
+        <div class="nconn-row">
+          <label>Mountpoint</label>
+          <input id="ntrip-mount" type="text" value="MOBS0" style="flex:2">
+          <button class="nb" onclick="ntripClient.browseSourceTable()" title="Browse available mountpoints">▼ Browse</button>
+        </div>
+        <div id="ntrip-mount-wrap">
+          <table id="ntrip-mount-table">
+            <thead><tr><th>Name</th><th>Format</th><th>Nav</th><th>Country</th></tr></thead>
+            <tbody id="ntrip-mount-tbody"></tbody>
+          </table>
+        </div>
+        <div class="nconn-row">
+          <label>Username</label>
+          <input id="ntrip-user" type="text" placeholder="(blank for GA CORS)">
+        </div>
+        <div class="nconn-row">
+          <label>Password</label>
+          <input id="ntrip-pass" type="password" placeholder="(blank for GA CORS)">
+        </div>
+        <div class="nconn-btns">
+          <button class="nb grn" onclick="ntripClient.connect()">🔗 Connect</button>
+          <button class="nb red" onclick="ntripClient.disconnect()">Disconnect</button>
+          <button class="nb" id="ntrip-copy-proxy" onclick="ntripClient.copyProxyScript()" title="Copy Node.js WebSocket proxy script to clipboard">📋 Copy proxy script</button>
+        </div>
+        <div class="nstat-bar">
+          <div class="ndot" id="ntrip-status-dot"></div>
+          <span class="nstat-k">Status:</span>
+          <span class="nstat-v" id="ntrip-status-txt">Disconnected</span>
+        </div>
+        <div class="nstat-grid">
+          <span class="nstat-k">Corrections</span><span class="nstat-v" id="ntrip-corr-age">—</span>
+          <span class="nstat-k">Age</span><span class="nstat-v" id="ntrip-age-val">—</span>
+          <span class="nstat-k">RTCM msgs</span><span class="nstat-v" id="ntrip-rtcm-count">0</span>
+          <span class="nstat-k">Last</span><span class="nstat-v" id="ntrip-last-msg">—</span>
+          <span class="nstat-k" style="grid-column:1/-1;color:#2a4a6a;padding-top:3px">Msg types:</span>
+          <span class="nstat-v" id="ntrip-rtcm-types" style="grid-column:1/-1;color:#4da6ff;word-break:break-all">—</span>
+        </div>
+        <div style="margin-top:8px;font-size:9px;color:#2a4a6a;line-height:1.6">
+          GA CORS (free, no auth) · Nearest to Melbourne: MOBS0 · Perth: PERT0 · Sydney: SYDN0 · Brisbane: BRSB0<br>
+          Proxy required for browser TCP access — copy script above, run: <code style="color:#4da6ff">npm install ws &amp;&amp; node ntrip-proxy.js</code>
         </div>
       </div>
     </div>
 
-    <!-- Satellite Table — full width -->
-    <div class="gps-card" id="gps-sat-table-wrap">
-      <div class="gps-card-title">Satellite Channels</div>
-      <table id="gps-sat-table">
-        <thead><tr>
-          <th>PRN</th><th>Constellation</th><th>Elev°</th><th>Az°</th><th>SNR dB</th><th>Used</th>
-        </tr></thead>
-        <tbody id="gps-sat-tbody"></tbody>
-      </table>
-    </div>
-
-    <!-- NTRIP / Starlink Panel -->
-    <div class="gps-card">
-      <div class="gps-card-title">Corrections / NTRIP / Starlink</div>
-      <div class="ntrip-row">
-        <span class="ntrip-label">NTRIP Status</span>
-        <span class="ntrip-val" id="gps-ntrip-status">—</span>
+    <!-- SECTION 3: External Receiver (collapsed by default) -->
+    <div class="gps-section collapsed" id="gps-sec-ext">
+      <div class="gps-section-hdr" onclick="toggleGPSSection('gps-sec-ext')">
+        <span>External Receiver (NMEA) <span id="ext-rcvr-hdr-badge" style="font-size:9px;color:#4a7aa0;font-weight:400;text-transform:none;letter-spacing:0;margin-left:6px"></span></span>
+        <span class="gs-toggle">▼</span>
       </div>
-      <div class="ntrip-row">
-        <span class="ntrip-label">Corrections Age</span>
-        <span class="ntrip-val" id="gps-corr-age">—</span>
-      </div>
-      <div class="ntrip-row">
-        <span class="ntrip-label">Latency</span>
-        <span class="ntrip-val" id="gps-latency">—</span>
-      </div>
-      <div class="ntrip-row">
-        <span class="ntrip-label">Starlink Signal</span>
-        <div class="sig-bars" id="gps-sig-bars">
-          <div class="sig-bar" style="height:4px"></div>
-          <div class="sig-bar" style="height:7px"></div>
-          <div class="sig-bar" style="height:10px"></div>
-          <div class="sig-bar" style="height:14px"></div>
+      <div class="gps-section-body">
+        <div style="font-size:10px;color:#4a7aa0;margin-bottom:8px;line-height:1.6">
+          Connect a u-blox F9P (or any GNSS receiver) streaming NMEA over WebSocket.<br>
+          Position, fix quality, satellites, and HDOP will override the iPad GPS.
+        </div>
+        <div class="nconn-row">
+          <label>WebSocket URL</label>
+          <input id="ext-rcvr-url" type="text" value="ws://192.168.1.100:9000" placeholder="ws://192.168.x.x:9000">
+        </div>
+        <div class="nconn-btns">
+          <button class="nb grn" onclick="extReceiver.connect()">🔗 Connect Receiver</button>
+          <button class="nb red" onclick="extReceiver.disconnect()">Disconnect</button>
+        </div>
+        <div class="nstat-bar">
+          <div class="ndot" id="ext-rcvr-dot"></div>
+          <span class="nstat-k">Status:</span>
+          <span class="nstat-v" id="ext-rcvr-status-txt">Disconnected</span>
+        </div>
+        <div style="margin-top:8px;font-size:9px;color:#2a4a6a;line-height:1.5">
+          Priority: <span style="color:#4da6ff">EXT RCVR</span> &gt; <span style="color:#27ae60">Live iPad GPS</span> &gt; Simulator<br>
+          Parses GGA · RMC · GSA · GSV (GP/GL/GA/GB prefixes)
         </div>
       </div>
-      <div class="ntrip-row">
-        <span class="ntrip-label">Mount Point</span>
-        <span class="ntrip-val" style="color:#4a7aa0;font-size:10px">AUSCORS-RTCM3</span>
-      </div>
-    </div>
-
-    <!-- NMEA Stream -->
-    <div class="gps-card">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-        <div class="gps-card-title" style="margin-bottom:0">NMEA Raw Stream</div>
-        <button id="gps-nmea-toggle" onclick="toggleNMEAStream()">Show</button>
-      </div>
-      <div style="font-size:10px;color:#2a4a6a;margin-bottom:4px">GGA · RMC · GSA · GSV sentences — last 20</div>
-      <div id="gps-nmea-stream"></div>
     </div>
 
   </div>
