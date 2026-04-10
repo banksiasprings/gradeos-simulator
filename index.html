@@ -58,12 +58,12 @@ body{background:#0a1520;color:#dce8f5;font-family:'Segoe UI',Arial,sans-serif;ov
 #viewport{flex:1;position:relative;overflow:hidden}
 #viewport canvas.three-canvas{display:block;width:100%!important;height:100%!important}
 #ledbar{position:absolute;top:0;left:0;right:0;height:20px;pointer-events:none;z-index:5}
-#voff-box{position:absolute;top:24px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:2px;z-index:10;background:rgba(7,21,37,.9);border:1px solid #1e4a7a;border-radius:3px;padding:2px 6px}
+#voff-box{position:absolute;top:24px;left:50%;transform:translateX(-50%);display:none;align-items:center;gap:2px;z-index:10;background:rgba(7,21,37,.9);border:1px solid #1e4a7a;border-radius:3px;padding:2px 6px}
 #voff-box .vob-btn{background:#0d2040;border:1px solid #1e4a7a;color:#7aabcc;width:22px;height:22px;border-radius:2px;cursor:pointer;font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:center}
 #voff-box .vob-btn:hover{background:#e8a020;color:#0a1520;border-color:#e8a020}
 #voff-val{font-size:13px;font-weight:700;font-family:monospace;color:#e8a020;min-width:70px;text-align:center}
 #voff-label{font-size:9px;color:#4a7aa0;text-transform:uppercase;letter-spacing:1px}
-#cam-btns{position:absolute;top:24px;right:6px;display:flex;flex-direction:column;gap:3px;z-index:10}
+#cam-btns{position:absolute;top:24px;right:6px;display:none;flex-direction:column;gap:3px;z-index:10}
 #cam-btns .tb{font-size:10px;padding:3px 6px}
 #xsec-box{position:absolute;bottom:60px;left:6px;background:rgba(2,8,16,.92);border:1px solid #1a3a5c;border-radius:4px;overflow:hidden;z-index:8;display:none}
 #xsec-box canvas{display:block}
@@ -79,11 +79,11 @@ body{background:#0a1520;color:#dce8f5;font-family:'Segoe UI',Arial,sans-serif;ov
 .tr-num{font-size:28px;font-weight:900;font-family:'Courier New',monospace;line-height:1;color:#2a5a7a}
 .tr-lbl{font-size:9px;color:#2a5a7a;text-transform:uppercase;letter-spacing:1px;margin-top:2px}
 .tr-arrow{font-size:14px;margin-right:3px}
-#legend{position:absolute;top:46px;left:6px;background:rgba(7,21,37,.9);border:1px solid #1a3a5c;border-radius:4px;padding:6px 8px;font-size:10px;pointer-events:none;z-index:6}
+#legend{position:absolute;top:46px;left:6px;background:rgba(7,21,37,.9);border:1px solid #1a3a5c;border-radius:4px;padding:6px 8px;font-size:10px;pointer-events:none;z-index:6;display:none}
 #legend h4{color:#e8a020;font-size:9px;margin-bottom:4px;text-transform:uppercase;letter-spacing:1px}
 .li{display:flex;align-items:center;gap:5px;margin-bottom:2px}
 .ls{width:10px;height:10px;border-radius:2px;flex-shrink:0}
-#coords{position:absolute;top:46px;right:100px;background:rgba(7,21,37,.85);border:1px solid #1a3a5c;border-radius:4px;padding:4px 8px;font-size:10px;font-family:monospace;pointer-events:none;color:#7aabcc;z-index:6}
+#coords{position:absolute;top:46px;right:100px;background:rgba(7,21,37,.85);border:1px solid #1a3a5c;border-radius:4px;padding:4px 8px;font-size:10px;font-family:monospace;pointer-events:none;color:#7aabcc;z-index:6;display:none}
 #tooltip{position:absolute;display:none;background:rgba(7,21,37,.95);border:1px solid #e8a020;border-radius:3px;padding:4px 7px;font-size:11px;pointer-events:none;color:#e8a020;white-space:nowrap;z-index:15}
 #sidebar{width:265px;background:#0d1f35;border-left:1px solid #1a3a5c;display:flex;flex-direction:column;overflow:hidden;flex-shrink:0}
 .spanel{border-bottom:1px solid #152535;overflow:hidden}
@@ -731,7 +731,7 @@ body.field-mode #field-rtk{display:flex}
   </div>
   <div class="drawer-content">
     <!-- Design Section -->
-    <div class="drawer-section">
+    <div class="drawer-section collapsed">
       <div class="drawer-section-hdr" onclick="toggleDrawerSection(this)">
         🧭 Design <span class="toggle">▶</span>
       </div>
@@ -750,7 +750,7 @@ body.field-mode #field-rtk{display:flex}
     </div>
 
     <!-- Terrain Section -->
-    <div class="drawer-section">
+    <div class="drawer-section collapsed">
       <div class="drawer-section-hdr" onclick="toggleDrawerSection(this)">
         🏔 Terrain <span class="toggle">▶</span>
       </div>
@@ -769,7 +769,7 @@ body.field-mode #field-rtk{display:flex}
     </div>
 
     <!-- View/Display Section -->
-    <div class="drawer-section">
+    <div class="drawer-section collapsed">
       <div class="drawer-section-hdr" onclick="toggleDrawerSection(this)">
         🎨 View <span class="toggle">▶</span>
       </div>
@@ -794,7 +794,7 @@ body.field-mode #field-rtk{display:flex}
     </div>
 
     <!-- Tools Section -->
-    <div class="drawer-section">
+    <div class="drawer-section collapsed">
       <div class="drawer-section-hdr" onclick="toggleDrawerSection(this)">
         🔧 Tools <span class="toggle">▶</span>
       </div>
@@ -817,7 +817,7 @@ body.field-mode #field-rtk{display:flex}
     </div>
 
     <!-- Machine/Features Section -->
-    <div class="drawer-section">
+    <div class="drawer-section collapsed">
       <div class="drawer-section-hdr" onclick="toggleDrawerSection(this)">
         🚜 Machine <span class="toggle">▶</span>
       </div>
@@ -830,7 +830,7 @@ body.field-mode #field-rtk{display:flex}
     </div>
 
     <!-- Features Section -->
-    <div class="drawer-section">
+    <div class="drawer-section collapsed">
       <div class="drawer-section-hdr" onclick="toggleDrawerSection(this)">
         ⭐ Features <span class="toggle">▶</span>
       </div>
@@ -848,7 +848,7 @@ body.field-mode #field-rtk{display:flex}
 
     <!-- Settings Section -->
     <div id="drawer-settings">
-      <div class="drawer-section">
+      <div class="drawer-section collapsed">
         <div class="drawer-section-hdr" onclick="toggleDrawerSection(this)">
           ⚙ Settings <span class="toggle">▶</span>
         </div>
