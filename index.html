@@ -856,10 +856,10 @@ body.field-mode #field-rtk{display:flex}
         🚜 Machine <span class="toggle">▶</span>
       </div>
       <div class="drawer-section-body">
-        <button class="drawer-btn" onclick="toggleMachine()">Power On</button>
-        <button class="drawer-btn" onclick="toggleMachineType()">Dozer</button>
-        <button class="drawer-btn" onclick="toggleFleet()">Fleet</button>
-        <button class="drawer-btn" onclick="toggleAutoSteer()">Auto</button>
+        <button class="drawer-btn" id="drawer-power-btn" onclick="toggleMachine()">⚡ Power On</button>
+        <button class="drawer-btn" id="drawer-mtype-btn" onclick="toggleMachineType()">🚜 Dozer</button>
+        <button class="drawer-btn" id="drawer-fleet-btn" onclick="toggleFleet()">🚛 Fleet</button>
+        <button class="drawer-btn" id="drawer-autosteer-btn" onclick="toggleAutoSteer()">🎯 Auto-Steer</button>
       </div>
     </div>
 
@@ -2103,6 +2103,8 @@ function genTerrain(type){
   document.getElementById('st-terrain').textContent={flat:'Flat Paddock',hilly:'Hilly Farm',valley:'Valley',
     dam_site:'Dam Site',embankment:'Embankment',cut_hill:'Cut Hill',irrig_bay:'Irrigation Bay',drone:'Drone DEM',
     road_cut:'Road Construction',house_pad:'House Pad Development'}[type]||type;
+  // Close drawer after terrain selection
+  document.getElementById('side-drawer').classList.remove('open');
 }
 genTerrain('hilly');
 
@@ -2762,6 +2764,11 @@ function toggleMachine(){
   excavGrp.visible=machineOn&&machineType==='excavator';
   document.getElementById('b-mach').classList.toggle('act',machineOn);
   document.getElementById('st-mach').textContent=machineOn?'ON — WASD/Arrows'+(machineType==='excavator'?' · SPACE=Dig':''):'OFF';
+  // Sync drawer power button
+  const dpb=document.getElementById('drawer-power-btn');
+  if(dpb){dpb.textContent=machineOn?'⚡ Power Off':'⚡ Power On';dpb.classList.toggle('act',machineOn);}
+  // Close drawer when powering on
+  if(machineOn)document.getElementById('side-drawer').classList.remove('open');
   // Show/hide blade guidance ribbon with machine power
   document.getElementById('text-ribbon').style.display=machineOn?'flex':'none';
   const xb=document.getElementById('xsec-box');
@@ -2779,6 +2786,9 @@ function toggleMachineType(){
   const btn=document.getElementById('b-mtype');
   btn.textContent=machineType==='dozer'?'🚜 Dozer':'🦾 Excavator';
   btn.classList.toggle('act',machineType==='excavator');
+  // Sync drawer machine type button
+  const dmb=document.getElementById('drawer-mtype-btn');
+  if(dmb){dmb.textContent=machineType==='dozer'?'🚜 Dozer':'🦾 Excavator';dmb.classList.toggle('act',machineType==='excavator');}
   // Swap visible model if machine is on
   if(machineOn){
     machGrp.visible=machineType==='dozer';
@@ -3170,6 +3180,10 @@ function calcVol(){
   }
   const pp=document.getElementById('vc-progpct');if(pp)pp.textContent=pct+'%';
   const pt=document.getElementById('vc-proginTol');if(pt)pt.textContent=inTol.toLocaleString()+' / '+total.toLocaleString()+' cells ±25mm';
+  // Auto-sync drawer volume display
+  const dc=document.getElementById('dvc-cut');if(dc)dc.textContent=cut.toFixed(1)+' m³';
+  const df=document.getElementById('dvc-fill');if(df)df.textContent=fill.toFixed(1)+' m³';
+  const dn=document.getElementById('dvc-net');if(dn)dn.textContent=(net>=0?'+':'')+net.toFixed(1)+' m³';
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -3962,6 +3976,8 @@ document.addEventListener('click',e=>{
 // ═══════════════════════════════════════════════════════════════════
 function setCamMode(mode){
   camMode=mode;
+  // Close drawer when changing camera mode
+  document.getElementById('side-drawer').classList.remove('open');
   // Sync all camera buttons (both hidden cam-btns and drawer buttons)
   document.querySelectorAll('[data-cam]').forEach(btn=>{
     btn.classList.toggle('act',btn.dataset.cam===mode);
@@ -4602,6 +4618,9 @@ const TOOL_HTML={
   waypoint:`<p style="font-size:11px;color:#7aabcc;line-height:1.7;margin-bottom:4px"><strong style="color:#e8a020">📌 GPS Waypoints</strong><br>Click terrain to mark reference points.</p>
             <div id="wp-list" style="font-size:10px;max-height:100px;overflow-y:auto;color:#4a7aa0;margin-top:3px">No waypoints yet.</div>
             <button class="btn red" style="margin-top:4px" onclick="clearWaypoints()">Clear All</button>`,
+  measure:`<p style="font-size:11px;color:#7aabcc;line-height:1.7;margin-bottom:4px"><strong style="color:#e8a020">📏 Measure Distance</strong><br><strong>Click 1:</strong> start point &nbsp; <strong>Click 2:</strong> end point</p>
+           <div id="meas-result" style="background:#040c18;border:1px solid #1a3a5c;border-radius:3px;padding:6px 8px;font-size:11px;color:#4a7aa0;line-height:1.8;margin-top:3px">Click two points on the terrain to measure.</div>
+           <p style="font-size:10px;color:#4a7aa0;margin-top:3px">Shows horizontal distance, slope %, height difference, bearing and 3D distance.</p>`,
 };
 
 const TOOL_BTNS=['nav','flat','slope','crown','align','dam','bestfit','batter','irrig','section','smooth','raise','lower','waypoint','measure','bank','channel','waterway','pivot','boundary','treeline'];
@@ -4620,7 +4639,8 @@ function setTool(name){
     smooth:'Terrain Smooth',raise:'Terrain Raise',lower:'Terrain Lower',
     waypoint:'GPS Waypoint',
     bank:'Bank / Levee',channel:'Channel / Drain',waterway:'Natural Waterway',
-    pivot:'Centre Pivot',boundary:'Paddock Boundary',treeline:'Tree Line'
+    pivot:'Centre Pivot',boundary:'Paddock Boundary',treeline:'Tree Line',
+    measure:'Measure Distance'
   }[name]||name;
   const toolHtml=TOOL_HTML[name]||'';
   // Inject into hidden sidebar (keeps element IDs accessible for design functions)
@@ -4668,7 +4688,8 @@ function setTool(name){
     waterway:'Click to place waterway points · Double-click to finish',
     pivot:'Click centre then radius edge to place pivot circle',
     boundary:'Click to place boundary corners · Double-click to close',
-    treeline:'Click to place tree line points · Double-click to finish'
+    treeline:'Click to place tree line points · Double-click to finish',
+    measure:'Click start point, then end point — measures distance, slope % and height difference'
   }[name]||'';
 }
 function setTP(html){document.getElementById('tp-body').innerHTML+='<div style="margin-top:5px">'+html+'</div>';}
@@ -4937,6 +4958,8 @@ function runScenario(type){
   calcVol();
   setTimeout(()=>{autoBalanceVOffset();},50); // slight delay to let calcVol settle
   document.getElementById('st-hint').textContent=desc;
+  // Return to navigate mode so the scene is clean after scenario loads
+  setTool('nav');
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -4968,8 +4991,10 @@ function handleMeasure(p){
     toolState.p1={x:p.x,z:p.z};
     const sp=new THREE.Mesh(new THREE.SphereGeometry(0.5,8,8),new THREE.MeshBasicMaterial({color:0xffa500}));
     sp.position.set(p.x,gElev(p.x,p.z)+0.5,p.z);scene.add(sp);toolState.sp=sp;
-    document.getElementById('st-hint').textContent=
-      `📏 Start: E${p.x.toFixed(1)}m N${p.z.toFixed(1)}m @ ${gElev(p.x,p.z).toFixed(3)}m — click end point`;
+    const startMsg=`📏 Start: E${p.x.toFixed(1)}m N${p.z.toFixed(1)}m @ ${gElev(p.x,p.z).toFixed(3)}m — click end point`;
+    document.getElementById('st-hint').textContent=startMsg;
+    const mr=document.getElementById('meas-result')||document.getElementById('ts-meas-result');
+    if(mr)mr.innerHTML=`<span style="color:#e8a020">Point 1 set</span><br>E${p.x.toFixed(1)}m · N${p.z.toFixed(1)}m · RL ${gElev(p.x,p.z).toFixed(3)}m<br><span style="color:#4a7aa0">Click end point…</span>`;
   }else{
     const p1=toolState.p1;
     const dx=p.x-p1.x,dz=p.z-p1.z;
@@ -4985,8 +5010,11 @@ function handleMeasure(p){
     scene.add(measureLineMesh);
     if(toolState.sp){scene.remove(toolState.sp);toolState.sp=null;}
     toolState.p1=null;
-    document.getElementById('st-hint').textContent=
-      `📏 Horiz: ${hDist.toFixed(1)}m · Slope: ${slopePct.toFixed(2)}% · dH: ${(dh>=0?'+':'')}${(dh*1000).toFixed(0)}mm · Bearing: ${bearing}° · 3D: ${slope3D.toFixed(1)}m`;
+    const resultMsg=`📏 Horiz: ${hDist.toFixed(1)}m · Slope: ${slopePct.toFixed(2)}% · dH: ${(dh>=0?'+':'')}${(dh*1000).toFixed(0)}mm · Bearing: ${bearing}° · 3D: ${slope3D.toFixed(1)}m`;
+    document.getElementById('st-hint').textContent=resultMsg;
+    // Update tool sheet result div
+    const mr=document.getElementById('meas-result')||document.getElementById('ts-meas-result');
+    if(mr)mr.innerHTML=`<span style="color:#66bb6a">📏 Measurement</span><br><b style="color:#e8a020">${hDist.toFixed(2)}m</b> horizontal &nbsp; <b style="color:#e8a020">${slopePct.toFixed(2)}%</b> slope<br>dH: <b>${(dh>=0?'+':'')}${(dh*1000).toFixed(0)}mm</b> &nbsp; Bearing: <b>${bearing}°</b><br>3D: <b>${slope3D.toFixed(2)}m</b>`;
   }
 }
 
@@ -5871,9 +5899,9 @@ function parseRTCM3Stream(buf){
 // ═══════════════════════════════════════════════════════════════════
 // NEW GUIDANCE SCREEN (3-PANEL + LIGHT BARS)
 // ═══════════════════════════════════════════════════════════════════
-let guidanceScreenActive = false;
-let guidanceRefPoint = 'center';  // 'center', 'left', 'right'
-let guidanceTolerance = 0.05;  // ±50mm default
+var guidanceScreenActive = false;
+var guidanceRefPoint = 'center';  // 'center', 'left', 'right'
+var guidanceTolerance = 0.05;  // ±50mm default
 
 function toggleGuidanceScreen(){
   guidanceScreenActive = !guidanceScreenActive;
