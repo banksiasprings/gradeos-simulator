@@ -111,6 +111,22 @@ body{background:#0a1520;color:#dce8f5;font-family:'Segoe UI',Arial,sans-serif;ov
 .vc{color:#4da6ff}.vf{color:#ff7043}.vn{color:#66bb6a}
 #stbar{background:#071525;border-top:1px solid #0d2040;padding:3px 10px;font-size:10px;color:#4a7aa0;display:none;gap:12px;flex-shrink:0;flex-wrap:wrap}
 #stbar span{color:#7aabcc;font-weight:600}
+/* ── Floating Tool Sheet ─────────────────────────────────────────── */
+#tool-sheet{position:fixed;bottom:0;left:0;right:0;max-height:50vh;background:rgba(10,22,40,0.97);border-top:2px solid #e8a020;z-index:60;display:none;flex-direction:column;box-shadow:0 -4px 20px rgba(0,0,0,0.6)}
+#tool-sheet.show{display:flex}
+#tool-sheet-hdr{background:#132843;padding:8px 12px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #1e4a7a;flex-shrink:0}
+#tool-sheet-title{font-size:11px;font-weight:700;color:#e8a020;text-transform:uppercase;letter-spacing:2px}
+#tool-sheet-close{background:none;border:none;color:#7aabcc;font-size:18px;cursor:pointer;padding:0;width:28px;height:28px;display:flex;align-items:center;justify-content:center}
+#tool-sheet-close:hover{color:#e8a020}
+#tool-sheet-body{padding:10px 14px;overflow-y:auto;flex:1}
+#tool-sheet-body .field label{display:block;font-size:10px;color:#7aabcc;margin-bottom:2px;font-weight:600}
+#tool-sheet-body .field input,#tool-sheet-body .field select{width:100%;background:#071525;border:1px solid #1e4a7a;color:#dce8f5;padding:4px 8px;border-radius:3px;font-size:13px}
+#tool-sheet-body .row2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+#tool-sheet-body .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px}
+#tool-sheet-body .btn{width:100%;background:#132843;border:1px solid #1e4a7a;color:#dce8f5;padding:7px;border-radius:3px;cursor:pointer;font-size:12px;font-weight:600;margin-top:4px;transition:all .15s}
+#tool-sheet-body .btn:hover{background:#e8a020;border-color:#e8a020;color:#0a1520}
+#tool-sheet-body .btn.grn{border-color:#27ae60}.btn.grn:hover{background:#27ae60}
+#tool-sheet-body p{font-size:11px;color:#4a7aa0;line-height:1.7;margin-top:3px}
 #pf-modal,#rpt-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:200;align-items:center;justify-content:center}
 #pf-modal.show,#rpt-modal.show{display:flex}
 #pf-box{background:#0d1f35;border:1px solid #e8a020;border-radius:6px;width:740px;max-width:96vw}
@@ -736,16 +752,22 @@ body.field-mode #field-rtk{display:flex}
         🧭 Design <span class="toggle">▶</span>
       </div>
       <div class="drawer-section-body">
-        <button class="drawer-btn act" onclick="setTool('nav')">Nav</button>
-        <button class="drawer-btn" onclick="setTool('flat')">Flat Pad</button>
-        <button class="drawer-btn" onclick="setTool('slope')">Slope</button>
-        <button class="drawer-btn" onclick="setTool('crown')">Crown</button>
-        <button class="drawer-btn" onclick="setTool('align')">Align+Profile</button>
-        <button class="drawer-btn" onclick="setTool('dam')">Dam</button>
-        <button class="drawer-btn" onclick="setTool('bestfit')">Best-Fit</button>
-        <button class="drawer-btn" onclick="setTool('batter')">Batter</button>
-        <button class="drawer-btn" onclick="setTool('irrig')">Irrig Bay</button>
-        <button class="drawer-btn" onclick="setTool('section')">Profile</button>
+        <div style="font-size:9px;color:#4a7aa0;text-transform:uppercase;letter-spacing:1px;padding:2px 4px 4px">Tools</div>
+        <button class="drawer-btn act" id="d-b-nav" onclick="setTool('nav')">🧭 Navigate</button>
+        <button class="drawer-btn" onclick="setTool('flat')">⬛ Flat Pad</button>
+        <button class="drawer-btn" onclick="setTool('slope')">◥ Slope</button>
+        <button class="drawer-btn" onclick="setTool('crown')">🛤 Crown</button>
+        <button class="drawer-btn" onclick="setTool('align')">〰 Align+Profile</button>
+        <button class="drawer-btn" onclick="setTool('dam')">🌊 Dam</button>
+        <button class="drawer-btn" onclick="setTool('bestfit')">📐 Best-Fit</button>
+        <button class="drawer-btn" onclick="setTool('batter')">⛰ Batter</button>
+        <button class="drawer-btn" onclick="setTool('irrig')">💧 Irrig Bay</button>
+        <button class="drawer-btn" onclick="setTool('section')">✂ Profile</button>
+        <div style="font-size:9px;color:#4a7aa0;text-transform:uppercase;letter-spacing:1px;padding:8px 4px 4px">Quick Scenarios</div>
+        <button class="drawer-btn grn" onclick="runScenario('irrig');document.getElementById('side-drawer').classList.remove('open')">🌾 Irrigation Bay</button>
+        <button class="drawer-btn grn" onclick="runScenario('housepad');document.getElementById('side-drawer').classList.remove('open')">🏠 House Pad</button>
+        <button class="drawer-btn grn" onclick="runScenario('road');document.getElementById('side-drawer').classList.remove('open')">🛣 Road Cut</button>
+        <button class="drawer-btn grn" onclick="runScenario('dam');document.getElementById('side-drawer').classList.remove('open')">🌊 Dam</button>
       </div>
     </div>
 
@@ -806,20 +828,25 @@ body.field-mode #field-rtk{display:flex}
         🔧 Tools <span class="toggle">▶</span>
       </div>
       <div class="drawer-section-body">
-        <button class="drawer-btn" onclick="doUndo()">Undo</button>
-        <button class="drawer-btn" onclick="doRedo()">Redo</button>
-        <button class="drawer-btn grn" onclick="saveDesign()">Save</button>
-        <button class="drawer-btn grn" onclick="loadDesign()">Load</button>
-        <button class="drawer-btn" onclick="document.getElementById('gps-import').click()">Import GPS</button>
-        <button class="drawer-btn" onclick="toggleGuidanceScreen()">Guidance</button>
-        <button class="drawer-btn" onclick="toggleFieldMode()">Field</button>
-        <button class="drawer-btn" onclick="togglePitchCard()">Pitch</button>
-        <button class="drawer-btn" onclick="toggleKeyHelp()">Keys</button>
-        <button class="drawer-btn" onclick="captureScreenshot()">Screenshot</button>
-        <button class="drawer-btn grn" onclick="toggleTabletDemo()">Tablet</button>
-        <button class="drawer-btn red" onclick="clearAll()">Clear</button>
-        <button class="drawer-btn grn" onclick="exportCSV()">CSV</button>
-        <button class="drawer-btn grn" onclick="exportAsBuilt()">As-Built</button>
+        <div style="font-size:9px;color:#4a7aa0;text-transform:uppercase;letter-spacing:1px;padding:2px 4px 4px">Volume</div>
+        <div style="background:#040c18;border:1px solid #1a3a5c;border-radius:3px;padding:6px 8px;font-size:11px;margin-bottom:6px;font-family:monospace">
+          <div style="display:flex;justify-content:space-between"><span style="color:#4a7aa0">Cut</span><span id="dvc-cut" style="color:#4da6ff;font-weight:700">0.0 m³</span></div>
+          <div style="display:flex;justify-content:space-between"><span style="color:#4a7aa0">Fill</span><span id="dvc-fill" style="color:#ff7043;font-weight:700">0.0 m³</span></div>
+          <div style="display:flex;justify-content:space-between"><span style="color:#4a7aa0">Net</span><span id="dvc-net" style="color:#66bb6a;font-weight:700">0.0 m³</span></div>
+        </div>
+        <button class="drawer-btn" onclick="calcVol();document.getElementById('dvc-cut').textContent=document.getElementById('vc-cut').textContent;document.getElementById('dvc-fill').textContent=document.getElementById('vc-fill').textContent;document.getElementById('dvc-net').textContent=document.getElementById('vc-net').textContent;">Recalculate Volumes</button>
+        <div style="font-size:9px;color:#4a7aa0;text-transform:uppercase;letter-spacing:1px;padding:8px 4px 4px">Actions</div>
+        <button class="drawer-btn" onclick="doUndo()">↩ Undo</button>
+        <button class="drawer-btn" onclick="doRedo()">↪ Redo</button>
+        <button class="drawer-btn grn" onclick="saveDesign()">💾 Save</button>
+        <button class="drawer-btn grn" onclick="loadDesign()">📂 Load</button>
+        <button class="drawer-btn" onclick="document.getElementById('gps-import').click()">📡 Import GPS</button>
+        <button class="drawer-btn" onclick="captureScreenshot()">📷 Screenshot</button>
+        <button class="drawer-btn grn" onclick="exportCSV()">📥 CSV</button>
+        <button class="drawer-btn grn" onclick="exportAsBuilt()">📤 As-Built</button>
+        <button class="drawer-btn" onclick="toggleGuidanceScreen()">📐 Guidance Screen</button>
+        <button class="drawer-btn" onclick="toggleFieldMode()">🖥 Field Mode</button>
+        <button class="drawer-btn red" onclick="clearAll()">🗑 Clear All</button>
       </div>
     </div>
 
@@ -865,6 +892,15 @@ body.field-mode #field-rtk{display:flex}
       </div>
     </div>
   </div>
+</div>
+
+<!-- Floating Tool Sheet -->
+<div id="tool-sheet">
+  <div id="tool-sheet-hdr">
+    <span id="tool-sheet-title">Navigate</span>
+    <button id="tool-sheet-close" onclick="setTool('nav')" title="Back to navigate">✕</button>
+  </div>
+  <div id="tool-sheet-body"></div>
 </div>
 
 <!-- Update Toast Notification -->
@@ -4586,7 +4622,31 @@ function setTool(name){
     bank:'Bank / Levee',channel:'Channel / Drain',waterway:'Natural Waterway',
     pivot:'Centre Pivot',boundary:'Paddock Boundary',treeline:'Tree Line'
   }[name]||name;
-  document.getElementById('tp-body').innerHTML=TOOL_HTML[name]||'';
+  const toolHtml=TOOL_HTML[name]||'';
+  // Inject into hidden sidebar (keeps element IDs accessible for design functions)
+  document.getElementById('tp-body').innerHTML=toolHtml;
+  // ── Drive floating tool sheet (visual mirror, prefixed IDs to avoid conflicts) ──
+  const ts=document.getElementById('tool-sheet');
+  const tsTitle=document.getElementById('tool-sheet-title');
+  const tsBody=document.getElementById('tool-sheet-body');
+  if(ts&&tsTitle&&tsBody){
+    tsTitle.textContent=document.getElementById('tool-title').textContent;
+    // Use prefixed IDs in visible sheet to avoid duplicate ID issues
+    // Replace id="xyz" with id="ts-xyz" and link inputs back to sidebar via oninput
+    const mirrorHtml=toolHtml.replace(/\bid="([^"]+)"/g,(m,id)=>`id="ts-${id}" oninput="var s=document.getElementById('${id}');if(s)s.value=this.value;"`);
+    tsBody.innerHTML=mirrorHtml;
+    // Sync initial values from sidebar to mirror
+    tsBody.querySelectorAll('[id^="ts-"]').forEach(el=>{
+      const orig=document.getElementById(el.id.slice(3));
+      if(orig)el.value=orig.value;
+    });
+    if(name==='nav'){ts.classList.remove('show');}
+    else{
+      ts.classList.add('show');
+      // Auto-close drawer so canvas is visible
+      document.getElementById('side-drawer').classList.remove('open');
+    }
+  }
   document.getElementById('st-tool').textContent=name;
   document.getElementById('st-hint').textContent={
     nav:'Scroll=zoom · Right-drag=orbit · Dbl-click=read elevation',
