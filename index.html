@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GradeOS Simulator v0.6</title>
+<title>GradeOS Simulator v0.7</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -6174,5 +6174,15 @@ setInterval(() => {
   <button id="guidance-exit" onclick="toggleGuidanceScreen()">✕ Exit Guidance</button>
 </div>
 
+<script>
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('./sw.js').then(r=>{
+    r.onupdatefound=()=>{
+      const w=r.installing;
+      w.onstatechange=()=>{if(w.state==='installed'&&navigator.serviceWorker.controller){window.location.reload();}}
+    };
+  });
+}
+</script>
 </body>
 </html>
