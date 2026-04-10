@@ -4157,10 +4157,25 @@ function applyImportedPoints(pts,fname,colHint){
 
 // ── Flat Pad ──────────────────────────────────────────────────────────
 function openFPModal(){
+  // Calculate terrain stats
+  let gSum=0,gMin=Infinity,gMax=-Infinity,gCnt=0;
+  for(let i=0;i<N*N;i++){const v=ground[i];if(isFinite(v)&&v!==0){gSum+=v;gMin=Math.min(gMin,v);gMax=Math.max(gMax,v);gCnt++;}}
+  const gAvg=gCnt>0?gSum/gCnt:0;
+  // Pre-fill: ground under machine, or terrain average if machine is at origin with no data
   const gp=w2g(machinePos.x,machinePos.z);
   const ge=ground[gi(gp.gx,gp.gz)];
+  const suggestedElev=(isFinite(ge)&&ge!==0)?ge:gAvg;
   const inp=document.getElementById('fpElev');
-  inp.value=(isFinite(ge)&&ge!==0)?ge.toFixed(3):'';
+  inp.value=suggestedElev.toFixed(3);
+  // Update terrain info in modal
+  const info=document.getElementById('fpTerrainInfo');
+  if(info&&gCnt>0){
+    info.textContent=`Terrain: ${gMin.toFixed(1)}\u2013${gMax.toFixed(1)}m (avg ${gAvg.toFixed(1)}m)`;
+    info.style.display='block';
+  }
+  // Warn if machine is off
+  const warn=document.getElementById('fpMachWarn');
+  if(warn)warn.style.display=machineOn?'none':'block';
   document.getElementById('fpModal').style.display='flex';
   setTimeout(()=>{inp.focus();inp.select();},50);
 }
@@ -6771,6 +6786,8 @@ if('serviceWorker' in navigator){
       <button onclick="fpUseGPS()" title="Set from ground elevation under machine"
         style="background:#0d2040;border:1px solid #1e4a7a;color:#7aabcc;padding:7px 12px;border-radius:3px;cursor:pointer;font-size:12px;white-space:nowrap">📡 Use GPS</button>
     </div>
+    <div id="fpTerrainInfo" style="display:none;font-size:10px;color:#2a9a6a;margin-bottom:6px;font-weight:600"></div>
+    <div id="fpMachWarn" style="display:none;font-size:10px;color:#e8a020;margin-bottom:6px;padding:4px 6px;background:rgba(232,160,32,.1);border:1px solid rgba(232,160,32,.3);border-radius:3px">⚠️ Press <strong>🚜 Power On</strong> first — guidance views need the machine running.</div>
     <div style="font-size:10px;color:#4a7aa0;margin-bottom:14px;line-height:1.5">Set base RL here, then use the <strong style="color:#7aabcc">V-Offset panel</strong> for cut depth (sub-base, topsoil strip, compaction, etc).</div>
     <div style="display:flex;gap:8px">
       <button onclick="confirmFlatPad()" style="flex:1;background:#1a5a28;border:1px solid #2a8a3a;color:#8adfaa;padding:9px;border-radius:3px;cursor:pointer;font-weight:700;font-size:13px">✓ Apply</button>
