@@ -190,108 +190,400 @@ body.field-mode #field-rtk{display:flex}
 #tablet-hud .thud-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px}
 #tablet-hud .thud-cell span:first-child{font-size:9px;color:#4a7aa0;display:block;text-transform:uppercase;letter-spacing:.5px}
 #tablet-hud .thud-val{color:#dce8f5;font-weight:700;font-size:13px}
+
+/* ── DRAWER MENU STYLES (Trimble-style) ──────────────────── */
+#drawer-hamburger {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 401;
+  background: rgba(4, 11, 22, 0.85);
+  border: 1px solid #1e4a7a;
+  border-radius: 4px;
+  width: 40px;
+  height: 40px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #7aabcc;
+  font-size: 24px;
+  transition: all 0.2s;
+  padding: 0;
+}
+#drawer-hamburger:hover {
+  background: rgba(13, 28, 53, 0.95);
+  border-color: #e8a020;
+  color: #e8a020;
+}
+#drawer-hamburger.open {
+  background: rgba(13, 28, 53, 0.95);
+  border-color: #e8a020;
+  color: #e8a020;
+}
+
+#drawer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0);
+  z-index: 399;
+  display: none;
+  transition: background 0.3s;
+}
+#drawer-overlay.show {
+  display: block;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+#drawer-panel {
+  position: fixed;
+  left: -320px;
+  top: 0;
+  width: 320px;
+  height: 100vh;
+  background: #0d1f35;
+  border-right: 2px solid #1a3a5c;
+  z-index: 400;
+  display: flex;
+  flex-direction: column;
+  transition: left 0.3s ease;
+  overflow-y: auto;
+  box-shadow: 2px 0 10px rgba(0, 0, 0, 0.5);
+}
+#drawer-panel.open {
+  left: 0;
+}
+
+#drawer-header {
+  padding: 16px;
+  background: #0a1520;
+  border-bottom: 2px solid #1a3a5c;
+  color: #e8a020;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+#drawer-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.drawer-section {
+  border-bottom: 1px solid #1a3a5c;
+}
+
+.drawer-section-header {
+  padding: 12px 16px;
+  background: #132843;
+  color: #e8a020;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  user-select: none;
+  transition: background 0.2s;
+  border-left: 3px solid transparent;
+}
+.drawer-section-header:hover {
+  background: #1a3a5c;
+  border-left-color: #e8a020;
+}
+.drawer-section-header .caret {
+  font-size: 12px;
+  transition: transform 0.2s;
+}
+.drawer-section-header.collapsed .caret {
+  transform: rotate(-90deg);
+}
+
+.drawer-section-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 8px;
+  max-height: 1000px;
+  transition: max-height 0.2s ease-out;
+}
+.drawer-section-body.collapsed {
+  max-height: 0;
+  overflow: hidden;
+  padding: 0 8px;
+}
+
+.drawer-btn {
+  padding: 8px 12px;
+  background: #071525;
+  border: 1px solid #1e4a7a;
+  border-radius: 3px;
+  color: #7aabcc;
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.drawer-btn:hover {
+  background: #132843;
+  border-color: #e8a020;
+  color: #dce8f5;
+}
+.drawer-btn.active {
+  background: #e8a020;
+  border-color: #e8a020;
+  color: #0a1520;
+  font-weight: 700;
+}
+
+/* GPS status dot (top-right) */
+#gps-status-dot {
+  position: fixed;
+  top: 14px;
+  right: 12px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #4a7aa0;
+  border: 1px solid #7aabcc;
+  z-index: 101;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+#gps-status-dot.rtk {
+  background: #27ae60;
+  border-color: #66bb6a;
+  box-shadow: 0 0 6px rgba(39, 174, 96, 0.6);
+}
+#gps-status-dot.dgps {
+  background: #e8a020;
+  border-color: #ffc107;
+  box-shadow: 0 0 6px rgba(232, 160, 32, 0.4);
+}
+#gps-status-dot.nofx {
+  background: #ef5350;
+  border-color: #e53935;
+}
+
+/* Fullscreen button (top-right) */
+#fullscreen-btn {
+  position: fixed;
+  top: 12px;
+  right: 30px;
+  width: 40px;
+  height: 40px;
+  background: rgba(4, 11, 22, 0.85);
+  border: 1px solid #1e4a7a;
+  border-radius: 4px;
+  color: #7aabcc;
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 101;
+  transition: all 0.2s;
+  padding: 0;
+}
+#fullscreen-btn:hover {
+  background: rgba(13, 28, 53, 0.95);
+  border-color: #e8a020;
+  color: #e8a020;
+}
+
+/* Hide the old topbar structure */
+#topbar {
+  display: none;
+}
+
+/* Adjust main viewport for new UI */
+body:not(.field-mode) #viewport {
+  margin-left: 0;
+  margin-top: 0;
+}
+
 </style>
 </head>
 <body>
 
-<div id="topbar">
-  <div id="logo">GRADE<span>OS</span> <span style="font-size:10px;color:#4a7aa0;font-weight:400">v0.7</span>
-    <span style="font-size:9px;color:#2a5a7a;margin-left:8px;font-weight:400;letter-spacing:0">RTK GPS Machine Control · 10× cheaper than Trimble</span>
-  </div>
+<!-- ═══ NEW TRIMBLE-STYLE UI ═══ -->
+<!-- Hamburger menu button -->
+<button id="drawer-hamburger" onclick="toggleDrawer()" title="Menu (M)">☰</button>
 
-  <div class="tg">
-    <span class="tg-label">Machine</span>
-    <button class="tb" id="b-mach" onclick="toggleMachine()">🚜 Power On</button>
-    <button class="tb" id="b-mtype" onclick="toggleMachineType()" title="Switch between Dozer and Excavator">🚜 Dozer</button>
-    <button class="tb" id="b-fleet" onclick="toggleFleet()" title="Deploy a second autonomous machine to grade parallel strips">🤖 Fleet</button>
-    <button class="tb" id="b-autosteer" onclick="toggleAutoSteer()" title="Auto-steer: machine drives parallel N-S grade strips automatically">⚙ Auto</button>
-  </div>
+<!-- Side drawer menu -->
+<div id="drawer-overlay" onclick="closeDrawer()"></div>
+<div id="drawer-panel">
+  <div id="drawer-header">GRADEOS</div>
+  <div id="drawer-content">
+    
+    <!-- DESIGN SECTION -->
+    <div class="drawer-section">
+      <div class="drawer-section-header" onclick="toggleSection(this)">
+        <span>Design</span>
+        <span class="caret">▼</span>
+      </div>
+      <div class="drawer-section-body">
+        <button class="drawer-btn" onclick="genTerrain('flat')">Paddock</button>
+        <button class="drawer-btn" onclick="genTerrain('hilly')">Hilly</button>
+        <button class="drawer-btn" onclick="genTerrain('valley')">Valley</button>
+        <button class="drawer-btn" onclick="genTerrain('dam_site')">Dam Site</button>
+        <button class="drawer-btn" onclick="genTerrain('embankment')">Embankment</button>
+        <button class="drawer-btn" onclick="genTerrain('cut_hill')">Cut Hill</button>
+        <button class="drawer-btn" onclick="genTerrain('irrig_bay')">Irrig Bay</button>
+        <button class="drawer-btn" onclick="genTerrain('drone')">🚁 Drone DEM</button>
+        <button class="drawer-btn" onclick="genTerrain('road_cut')">🛣 Road Cut</button>
+        <button class="drawer-btn" onclick="genTerrain('house_pad')">🏠 House Pad</button>
+        <button class="drawer-btn grn" onclick="loadDesign()" title="Load design from browser">📂 Load Design</button>
+        <button class="drawer-btn blu" onclick="document.getElementById('gps-import').click()">📡 Import GPS</button>
+      </div>
+    </div>
 
-  <div class="tg">
-    <span class="tg-label">Design</span>
-    <button class="tb act" id="b-nav" onclick="setTool('nav')" title="Back to navigate / orbit mode">🧭 Nav</button>
-    <button class="tb" id="b-flat" onclick="setTool('flat')">⬛ Flat Pad</button>
-    <button class="tb" id="b-slope" onclick="setTool('slope')">◥ Slope</button>
-    <button class="tb" id="b-crown" onclick="setTool('crown')">🛤 Crown</button>
-    <button class="tb" id="b-align" onclick="setTool('align')">〰 Align+Profile</button>
-    <button class="tb" id="b-dam" onclick="setTool('dam')">🌊 Dam</button>
-    <button class="tb" id="b-bestfit" onclick="setTool('bestfit')">📐 Best-Fit</button>
-    <button class="tb" id="b-batter" onclick="setTool('batter')" title="Batter slope: click crest line, auto-generate slope at H:V ratio">⛰ Batter</button>
-    <button class="tb" id="b-irrig" onclick="setTool('irrig')" title="Irrigation bay: auto-balance cut/fill on a drained grade">💧 Irrig Bay</button>
-    <button class="tb" id="b-section" onclick="setTool('section')" title="Cross-section profile: click two points to see ground vs design elevation">✂ Profile</button>
-  </div>
+    <!-- MACHINE SECTION -->
+    <div class="drawer-section">
+      <div class="drawer-section-header" onclick="toggleSection(this)">
+        <span>Machine</span>
+        <span class="caret">▼</span>
+      </div>
+      <div class="drawer-section-body">
+        <button class="drawer-btn" id="drawer-mach" onclick="toggleMachine()">🚜 Power On</button>
+        <button class="drawer-btn" id="drawer-mtype" onclick="toggleMachineType()">🚜 Dozer / Excavator</button>
+        <button class="drawer-btn" id="drawer-fleet" onclick="toggleFleet()">🤖 Fleet Mode</button>
+        <button class="drawer-btn" id="drawer-autosteer" onclick="toggleAutoSteer()">⚙ Auto-Steer</button>
+      </div>
+    </div>
 
-  <div class="tg">
-    <span class="tg-label">Terrain</span>
-    <button class="tb" onclick="genTerrain('flat')">Paddock</button>
-    <button class="tb" onclick="genTerrain('hilly')">Hilly</button>
-    <button class="tb" onclick="genTerrain('valley')">Valley</button>
-    <button class="tb" onclick="genTerrain('dam_site')">Dam Site</button>
-    <button class="tb" onclick="genTerrain('embankment')">Embankment</button>
-    <button class="tb" onclick="genTerrain('cut_hill')">Cut Hill</button>
-    <button class="tb" onclick="genTerrain('irrig_bay')">Irrig Bay</button>
-    <button class="tb" onclick="genTerrain('drone')">🚁 Drone DEM</button>
-    <button class="tb" onclick="genTerrain('road_cut')" title="Road construction: undulating terrain with cut/fill corridor">🛣 Road Cut</button>
-    <button class="tb" onclick="genTerrain('house_pad')" title="Residential development: hillside with gully — multiple house pads needed">🏠 House Pad</button>
-  </div>
+    <!-- GRADING TOOLS SECTION -->
+    <div class="drawer-section">
+      <div class="drawer-section-header collapsed" onclick="toggleSection(this)">
+        <span>Grading Tools</span>
+        <span class="caret">▼</span>
+      </div>
+      <div class="drawer-section-body collapsed">
+        <button class="drawer-btn" onclick="setTool('nav')">🧭 Navigate</button>
+        <button class="drawer-btn" onclick="setTool('flat')">⬛ Flat Pad</button>
+        <button class="drawer-btn" onclick="setTool('slope')">◥ Slope</button>
+        <button class="drawer-btn" onclick="setTool('crown')">🛤 Crown</button>
+        <button class="drawer-btn" onclick="setTool('align')">〰 Align+Profile</button>
+        <button class="drawer-btn" onclick="setTool('dam')">🌊 Dam</button>
+        <button class="drawer-btn" onclick="setTool('bestfit')">📐 Best-Fit</button>
+        <button class="drawer-btn" onclick="setTool('batter')">⛰ Batter</button>
+        <button class="drawer-btn" onclick="setTool('irrig')">💧 Irrig Bay</button>
+        <button class="drawer-btn" onclick="setTool('section')">✂ Profile</button>
+        <button class="drawer-btn" onclick="setTool('smooth')">〰 Smooth</button>
+        <button class="drawer-btn" onclick="setTool('raise')">🔼 Raise</button>
+        <button class="drawer-btn" onclick="setTool('lower')">🔽 Lower</button>
+        <button class="drawer-btn" onclick="setTool('waypoint')">📌 Waypoint</button>
+        <button class="drawer-btn" onclick="setTool('measure')">📏 Measure</button>
+        <button class="drawer-btn" onclick="setTool('bank')">⌒ Bank</button>
+        <button class="drawer-btn" onclick="setTool('channel')">≋ Channel</button>
+        <button class="drawer-btn" onclick="setTool('waterway')">〜 Waterway</button>
+        <button class="drawer-btn" onclick="setTool('pivot')">◎ Pivot</button>
+        <button class="drawer-btn" onclick="setTool('boundary')">⬡ Boundary</button>
+        <button class="drawer-btn" onclick="setTool('treeline')">🌲 Trees</button>
+      </div>
+    </div>
 
-  <div class="tg">
-    <span class="tg-label">Terrain Mod</span>
-    <button class="tb" id="b-smooth" onclick="setTool('smooth')" title="Smooth terrain: reduces roughness in selected area">〰 Smooth</button>
-    <button class="tb" id="b-raise" onclick="setTool('raise')" title="Raise terrain: add bulk fill to selected area">🔼 Raise</button>
-    <button class="tb" id="b-lower" onclick="setTool('lower')" title="Lower terrain: bulk cut in selected area">🔽 Lower</button>
-  </div>
+    <!-- VIEW SECTION -->
+    <div class="drawer-section">
+      <div class="drawer-section-header" onclick="toggleSection(this)">
+        <span>View</span>
+        <span class="caret">▼</span>
+      </div>
+      <div class="drawer-section-body">
+        <button class="drawer-btn" id="drawer-cutfill" onclick="toggleCutFill()">🎨 Cut/Fill</button>
+        <button class="drawer-btn" id="drawer-ctr" onclick="toggleContours()">〰 Contours</button>
+        <button class="drawer-btn" onclick="toggleCutSim()">🔪 Cut Sim</button>
+        <button class="drawer-btn" onclick="toggleFlow()">💧 Flow</button>
+        <button class="drawer-btn" onclick="toggleSlopeWarn()">⚠ Steep Slopes</button>
+        <button class="drawer-btn" onclick="toggleTol()">✓ Tolerance</button>
+        <button class="drawer-btn" onclick="toggleStakes()">📍 Stakes</button>
+        <button class="drawer-btn" onclick="toggleGradeArrows()">↗ Grade Arrows</button>
+        <button class="drawer-btn" onclick="toggleContourLabels()">🏷 Labels</button>
+        <button class="drawer-btn" onclick="toggleDaylight()">📍 Daylight</button>
+        <button class="drawer-btn" onclick="togglePassCount()">🔥 Passes</button>
+        <button class="drawer-btn" onclick="toggleStripPlan()">📋 Strips</button>
+        <button class="drawer-btn" onclick="toggleReplay()">⏪ Replay</button>
+        <button class="drawer-btn" onclick="toggleGhost()">👻 Ghost</button>
+        <button class="drawer-btn" onclick="toggleSurvey()">📡 Survey</button>
+        <button class="drawer-btn" onclick="toggleSplit()">⧉ Split View</button>
+      </div>
+    </div>
 
-  <div class="tg">
-    <span class="tg-label">Features</span>
-    <button class="tb" id="b-waypoint" onclick="setTool('waypoint')" title="GPS Waypoint: click terrain to mark a reference point with elevation">📌 Waypoint</button>
-    <button class="tb" id="b-measure" onclick="setTool('measure')" title="Measure: click two points to get horizontal distance, slope %, and height difference">📏 Measure</button>
-    <button class="tb" id="b-bank" onclick="setTool('bank')" title="Bank / Levee">⌒ Bank</button>
-    <button class="tb" id="b-channel" onclick="setTool('channel')" title="Channel / Drain">≋ Channel</button>
-    <button class="tb" id="b-waterway" onclick="setTool('waterway')" title="Natural waterway">〜 Waterway</button>
-    <button class="tb" id="b-pivot" onclick="setTool('pivot')" title="Centre pivot irrigator">◎ Pivot</button>
-    <button class="tb" id="b-boundary" onclick="setTool('boundary')" title="Paddock boundary">⬡ Boundary</button>
-    <button class="tb" id="b-treeline" onclick="setTool('treeline')" title="Tree / shelter belt">🌲 Trees</button>
-  </div>
+    <!-- CAMERA SECTION -->
+    <div class="drawer-section">
+      <div class="drawer-section-header collapsed" onclick="toggleSection(this)">
+        <span>Camera</span>
+        <span class="caret">▼</span>
+      </div>
+      <div class="drawer-section-body collapsed">
+        <button class="drawer-btn" onclick="setCamMode('3d')">3D View</button>
+        <button class="drawer-btn" onclick="setCamMode('plan')">Plan</button>
+        <button class="drawer-btn" onclick="setCamMode('follow')">Follow</button>
+        <button class="drawer-btn" onclick="setCamMode('cab')">Cab View</button>
+        <button class="drawer-btn" onclick="toggleXsec()">X-Section</button>
+      </div>
+    </div>
 
-  <div class="tg">
-    <span class="tg-label">Display</span>
-    <button class="tb act" id="b-cf" onclick="toggleCutFill()">🎨 Cut/Fill</button>
-    <button class="tb act" id="b-ctr" onclick="toggleContours()">〰 Contours</button>
-    <button class="tb" id="b-survey" onclick="toggleSurvey()" title="Show survey coverage">📡 Survey</button>
-    <button class="tb" id="b-split" onclick="toggleSplit()" title="Split screen blade view">⧉ Split</button>
-    <button class="tb act" id="b-cutsim" onclick="toggleCutSim()" title="Live blade cuts terrain as you drive">🔪 Cut Sim</button>
-    <button class="tb" id="b-flow" onclick="toggleFlow()" title="Show stormwater drainage flow paths (D8 algorithm)">💧 Flow</button>
-    <button class="tb" id="b-slope-warn" onclick="toggleSlopeWarn()" title="Highlight steep slopes (>30°) — potential instability risk">⚠ Steep</button>
-    <button class="tb" id="b-tol" onclick="toggleTol()" title="Grade tolerance overlay — green=on grade, yellow/orange/red=off grade">✓ Tol</button>
-    <button class="tb" id="b-stakes" onclick="toggleStakes()" title="Grade stakes — blue=cut, orange=fill, height shows depth">📍 Stakes</button>
-    <button class="tb" id="b-garrows" onclick="toggleGradeArrows()" title="Grade arrows — show design surface slope direction and grade %">↗ Grade</button>
-    <button class="tb" id="b-ctrlab" onclick="toggleContourLabels()" title="Contour elevation labels — show elevation numbers on major contours">🏷 Labels</button>
-    <button class="tb" id="b-daylight" onclick="toggleDaylight()" title="Daylight line — shows cut/fill boundary where design meets existing ground">📍 Daylight</button>
-    <button class="tb" id="b-passcount" onclick="togglePassCount()" title="Pass count overlay — heat map of machine coverage intensity">🔥 Passes</button>
-    <button class="tb" id="b-stripplan" onclick="toggleStripPlan()" title="Grade strip planner — optimal grading sequence based on design surface gradient">📋 Strips</button>
-    <button class="tb" id="b-replay" onclick="toggleReplay()" title="Time-lapse replay — animate terrain from original to current graded state">⏪ Replay</button>
-    <button class="tb" id="b-ghost" onclick="toggleGhost()" title="Ghost terrain — shows original terrain as transparent overlay to reveal what has been cut">👻 Ghost</button>
-    <button class="tb blu" onclick="openJobReport()" title="Generate earthwork job report">📊 Report</button>
-  </div>
+    <!-- GPS / RTK SECTION -->
+    <div class="drawer-section">
+      <div class="drawer-section-header collapsed" onclick="toggleSection(this)">
+        <span>GPS / RTK</span>
+        <span class="caret">▼</span>
+      </div>
+      <div class="drawer-section-body collapsed">
+        <button class="drawer-btn grn" id="drawer-tablet" onclick="toggleTabletDemo()">📱 Tablet Demo</button>
+        <button class="drawer-btn" id="drawer-emc" onclick="toggleEMACorrection()">🔄 EMA Correction</button>
+        <p style="font-size:10px;color:#4a7aa0;padding:8px 12px;margin:0">GPS simulation available via tablet demo mode. In real deployment, connect RTK base station.</p>
+      </div>
+    </div>
 
-  <div class="tg" style="margin-left:auto">
-    <button class="tb" onclick="doUndo()" title="Undo last design change (Ctrl+Z)">↩ Undo</button>
-    <button class="tb" onclick="doRedo()" title="Redo (Ctrl+Y)">↪ Redo</button>
-    <button class="tb grn" onclick="saveDesign()" title="Save design to browser storage">💾 Save</button>
-    <button class="tb grn" onclick="loadDesign()" title="Load design from browser storage">📂 Load</button>
-    <button class="tb blu" onclick="document.getElementById('gps-import').click()" title="Import GPS/survey CSV">📡 Import GPS</button>
-    <input type="file" id="gps-import" accept=".csv,.gpx,.txt" style="display:none" onchange="handleImportFile(event)">
-    <button class="tb" id="b-field" onclick="toggleFieldMode()" title="Field / Operator Mode — clean full-screen view with 3 profile windows (F key)">🖥 Field</button>
-    <button class="tb" id="b-pitch" onclick="togglePitchCard()" title="Pitch / Site Status Card — live stats summary for demos (P key)">📊 Pitch</button>
-    <button class="tb" onclick="toggleKeyHelp()" title="Keyboard shortcuts (H)">⌨ Keys</button>
-    <button class="tb" onclick="captureScreenshot()" title="Save screenshot of 3D view as PNG">📷 Screenshot</button>
-    <button class="tb grn" id="b-tablet-demo" onclick="toggleTabletDemo()" title="📱 Tablet Demo — use this tablet's GPS, compass and IMU as the machine blade">📱 Tablet</button>
-    <button class="tb red" onclick="clearAll()">🗑 Clear</button>
-    <button class="tb grn" onclick="exportCSV()" title="Export design vs existing to CSV">📥 CSV</button>
-    <button class="tb grn" onclick="exportAsBuilt()" title="Export as-built survey after grading">📤 As-Built</button>
+    <!-- FILE OPERATIONS SECTION -->
+    <div class="drawer-section">
+      <div class="drawer-section-header collapsed" onclick="toggleSection(this)">
+        <span>Files</span>
+        <span class="caret">▼</span>
+      </div>
+      <div class="drawer-section-body collapsed">
+        <button class="drawer-btn grn" onclick="saveDesign()">💾 Save Design</button>
+        <button class="drawer-btn grn" onclick="exportCSV()">📥 Export CSV</button>
+        <button class="drawer-btn grn" onclick="exportAsBuilt()">📤 As-Built</button>
+        <button class="drawer-btn blu" onclick="openJobReport()">📊 Job Report</button>
+        <button class="drawer-btn" onclick="doUndo()">↩ Undo</button>
+        <button class="drawer-btn" onclick="doRedo()">↪ Redo</button>
+        <button class="drawer-btn" onclick="captureScreenshot()">📷 Screenshot</button>
+      </div>
+    </div>
+
+    <!-- FIELD MODE SECTION -->
+    <div class="drawer-section">
+      <div class="drawer-section-header collapsed" onclick="toggleSection(this)">
+        <span>Demo & Settings</span>
+        <span class="caret">▼</span>
+      </div>
+      <div class="drawer-section-body collapsed">
+        <button class="drawer-btn" id="drawer-field" onclick="toggleFieldMode()">🖥 Field Mode</button>
+        <button class="drawer-btn" id="drawer-pitch" onclick="togglePitchCard()">📊 Pitch Card</button>
+        <button class="drawer-btn" onclick="toggleKeyHelp()">⌨ Help</button>
+        <button class="drawer-btn red" onclick="clearAll()">🗑 Clear All</button>
+      </div>
+    </div>
+
   </div>
 </div>
+
+<!-- GPS status indicator (top-right) -->
+<div id="gps-status-dot" title="GPS Status"></div>
+
+<!-- Fullscreen button (top-right, next to hamburger on opposite side) -->
+<button id="fullscreen-btn" onclick="toggleFullscreen()" title="Fullscreen (F)">⛶</button>
 
 <div id="main">
   <div id="viewport">
@@ -851,6 +1143,91 @@ body.field-mode #field-rtk{display:flex}
 </div>
 
 <script>
+
+// ═══ DRAWER MENU FUNCTIONS (Trimble-style) ═══
+function toggleDrawer() {
+  const panel = document.getElementById('drawer-panel');
+  const overlay = document.getElementById('drawer-overlay');
+  const hamburger = document.getElementById('drawer-hamburger');
+  panel.classList.toggle('open');
+  overlay.classList.toggle('show');
+  hamburger.classList.toggle('open');
+}
+
+function closeDrawer() {
+  const panel = document.getElementById('drawer-panel');
+  const overlay = document.getElementById('drawer-overlay');
+  const hamburger = document.getElementById('drawer-hamburger');
+  panel.classList.remove('open');
+  overlay.classList.remove('show');
+  hamburger.classList.remove('open');
+}
+
+function toggleSection(header) {
+  const body = header.nextElementSibling;
+  header.classList.toggle('collapsed');
+  body.classList.toggle('collapsed');
+}
+
+function toggleFullscreen() {
+  const btn = document.getElementById('fullscreen-btn');
+  if (!document.fullscreenElement) {
+    // Try to enter fullscreen
+    const elem = document.documentElement;
+    if (elem.requestFullscreen) {
+      elem.requestFullscreen().then(() => {
+        btn.textContent = '⛶';
+      }).catch(err => {
+        // Fallback for iOS - just hide UI elements
+        document.body.style.overflow = 'hidden';
+        document.body.classList.add('fullscreen-fallback');
+      });
+    } else if (elem.webkitRequestFullscreen) {
+      elem.webkitRequestFullscreen();
+    }
+  } else {
+    // Exit fullscreen
+    if (document.fullscreenElement) {
+      document.exitFullscreen().then(() => {
+        btn.textContent = '⛶';
+      });
+    }
+  }
+}
+
+// Listen for fullscreen changes
+document.addEventListener('fullscreenchange', () => {
+  const btn = document.getElementById('fullscreen-btn');
+  if (document.fullscreenElement) {
+    btn.textContent = '⊗';
+  } else {
+    btn.textContent = '⛶';
+  }
+});
+
+// Close drawer on Escape
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    closeDrawer();
+  }
+  // M key to toggle drawer
+  if (e.key.toLowerCase() === 'm' && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+    const focusEl = document.activeElement;
+    if (focusEl.tagName !== 'INPUT' && focusEl.tagName !== 'TEXTAREA') {
+      toggleDrawer();
+    }
+  }
+});
+
+// Update GPS status dot
+function updateGPSStatus(status) {
+  const dot = document.getElementById('gps-status-dot');
+  dot.className = 'gps-status-dot ' + status;
+}
+
+// Initialize GPS status
+updateGPSStatus('nofx');
+
 'use strict';
 // ═══════════════════════════════════════════════════════════════════
 // CONFIG
