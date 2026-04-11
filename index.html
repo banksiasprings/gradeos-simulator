@@ -1130,6 +1130,7 @@ body.field-mode #field-rtk{display:flex}
             </div>
           </div>
           <button class="update-btn" onclick="checkForUpdate()">Check for Update</button>
+          <button class="update-btn" onclick="forceRefresh()" style="margin-top:6px;background:#1a3a5c;border:1px solid #e8a020;color:#e8a020">⚡ Force Refresh</button>
         </div>
       </div>
     </div>
@@ -7989,7 +7990,7 @@ async function checkForUpdate(){
         if(verLatestEl){ verLatestEl.style.color='#42a5f5'; verLatestEl.textContent='Installing…'; }
         showUpdateToast('Checking for updates…');
       }else{
-        if(verLatestEl){ verLatestEl.style.color='#66bb6a'; verLatestEl.textContent='v0.8 · SW v27 ✓ Up to date'; }
+        if(verLatestEl){ verLatestEl.style.color='#66bb6a'; verLatestEl.textContent='v0.8 · SW v29 ✓ Up to date'; }
         showUpdateToast('Already up to date ✓', 3000);
       }
     }catch(err){
@@ -7997,6 +7998,26 @@ async function checkForUpdate(){
       if(verLatestEl){ verLatestEl.style.color='#ef5350'; verLatestEl.textContent='Check failed'; }
       showUpdateToast('Update check failed', 3000);
     }
+  }
+}
+
+async function forceRefresh(){
+  const verLatestEl=document.getElementById('ver-latest');
+  if(verLatestEl){verLatestEl.style.color='#42a5f5';verLatestEl.textContent='Clearing cache…';}
+  try{
+    // Unregister all service workers
+    if('serviceWorker' in navigator){
+      const regs=await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r=>r.unregister()));
+    }
+    // Delete all caches
+    const keys=await caches.keys();
+    await Promise.all(keys.map(k=>caches.delete(k)));
+    // Hard reload — bypasses browser cache
+    location.reload(true);
+  }catch(err){
+    console.error('Force refresh failed:',err);
+    if(verLatestEl){verLatestEl.style.color='#ef5350';verLatestEl.textContent='Refresh failed';}
   }
 }
 
