@@ -915,6 +915,7 @@ body.field-mode #field-rtk{display:flex}
 
   <div class="toolbar-group tg">
     <span class="tg-label">Display</span>
+    <button class="tb act" id="b-terrain" onclick="toggleTerrain()" title="Show/hide terrain surface — turn off to see only your active design">🏔 Terrain</button>
     <button class="tb act" id="b-cf" onclick="toggleCutFill()">🎨 Cut/Fill</button>
     <button class="tb act" id="b-ctr" onclick="toggleContours()">〰 Contours</button>
     <button class="tb" id="b-survey" onclick="toggleSurvey()" title="Show survey coverage">📡 Survey</button>
@@ -1744,6 +1745,7 @@ let camMode='3d';
 let showXsec=false;
 let showContours=true;
 let showCutFill=true;
+let showTerrain=true;
 let bladeFocus='center'; // 'center', 'tipA' (left), 'tipB' (right)
 let bladeTargetY=0.45;   // for smooth blade animation
 let showSurvey=false;
@@ -1944,7 +1946,7 @@ function buildTerrGeoColored(){
   return geo;
 }
 let terrMesh=new THREE.Mesh(buildTerrGeoColored(),terrMat);
-terrMesh.rotation.x=-Math.PI/2;scene.add(terrMesh);
+terrMesh.rotation.x=-Math.PI/2;terrMesh.visible=showTerrain;scene.add(terrMesh);
 
 // ── Design mesh ───────────────────────────────────────────────────
 const desMat=new THREE.MeshBasicMaterial({side:THREE.DoubleSide,transparent:true,opacity:0.80,vertexColors:true});
@@ -2202,7 +2204,7 @@ function setDesign(gx,gz,elev){const i=gi(gx,gz);if(!hasD[i])designCount++;desig
 function rebuildTerrMesh(){
   scene.remove(terrMesh);terrMesh.geometry.dispose();
   terrMesh=new THREE.Mesh(buildTerrGeoColored(),terrMat);
-  terrMesh.rotation.x=-Math.PI/2;scene.add(terrMesh);
+  terrMesh.rotation.x=-Math.PI/2;terrMesh.visible=showTerrain;scene.add(terrMesh);
   if(showGhost)buildGhostMesh();
 }
 
@@ -4250,6 +4252,11 @@ function setBladeFocus(focus){
   });
   document.getElementById('st-hint').textContent=`Blade focus: ${focus==='center'?'Centre':focus==='tipA'?'Tip A (Left)':'Tip B (Right)'} — guidance follows this point`;
 }
+function toggleTerrain(){
+  showTerrain=!showTerrain;
+  terrMesh.visible=showTerrain;
+  document.getElementById('b-terrain').classList.toggle('act',showTerrain);
+}
 function toggleContours(){
   showContours=!showContours;
   document.getElementById('b-ctr').classList.toggle('act',showContours);
@@ -5404,7 +5411,18 @@ async function loadDesignLibrary(){
     });
     if(!entries||!entries.length){renderDesignPanel();return;}
     designLibrary=entries.map(e=>({...e,refMeshes:null}));
-    // Rebuild ref meshes for reference entries (active design already set by restoreSession)
+    // ALWAYS restore active design from library — library is authoritative source of truth.
+    // restoreSession() loads from a separate 'state' store which can fall out of sync
+    // (e.g. autosave fires before a design is applied). Library wins.
+    const _activeLib=designLibrary.find(e=>e.state==='active');
+    if(_activeLib&&_activeLib.designCount>0){
+      design.set(_activeLib.design);
+      hasD.set(_activeLib.hasD);
+      designCount=_activeLib.designCount;
+      rebuildDesMesh();genContours();buildFlowLines();buildSlopeWarn();
+      buildTolMesh();buildStakes();buildGradeArrows();buildDaylightMesh();buildStripPlan();calcVol();
+    }
+    // Rebuild ref meshes for reference entries
     designLibrary.filter(e=>e.state==='reference').forEach(e=>buildRefMeshes(e));
     renderDesignPanel();
   }catch(e){console.warn('GradeOS design library load failed:',e);}
@@ -7151,6 +7169,11 @@ function drawPlanViewGuidance(pos, lx, lz, rx, rz){
       ctx.fillStyle=`rgba(${Math.round(20+_t*30)},${Math.round(55+_t*70)},${Math.round(90+_t*55)},0.45)`;
       ctx.fillRect(centerX+(_gx*CS-80)*scale, centerY+(_gz*CS-80)*scale, _cellPx, _cellPx);
     }
+    // Label clearly: no design loaded
+    ctx.fillStyle='rgba(232,160,32,0.85)';
+    ctx.font='bold 11px Arial';
+    ctx.textAlign='center';
+    ctx.fillText('⚠ No active design — set one in Design tab',w/2,h-10);
   }
   
   // Draw machine footprint (rectangle)
