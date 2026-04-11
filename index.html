@@ -7986,12 +7986,10 @@ async function checkForUpdate(){
     // Helper: watch a SW worker and reload once it activates
     function _waitAndReload(worker){
       if(!worker) return;
-      if(worker.state==='activated'){location.reload(true);return;}
-      worker.addEventListener('statechange',function(){
-        if(this.state==='activated') location.reload(true);
-      });
-      // Fallback: if still stuck after 4s, reload anyway
-      setTimeout(()=>location.reload(true), 4000);
+      const _reload=()=>{const b=location.origin+location.pathname;window.location.replace(b+'?t='+Date.now());};
+      if(worker.state==='activated'){_reload();return;}
+      worker.addEventListener('statechange',function(){if(this.state==='activated')_reload();});
+      setTimeout(_reload, 4000);
     }
 
     if(registration.waiting){
@@ -8025,8 +8023,10 @@ async function forceRefresh(){
     // Delete all caches
     const keys=await caches.keys();
     await Promise.all(keys.map(k=>caches.delete(k)));
-    // Hard reload — bypasses browser cache
-    location.reload(true);
+    // Navigate to cache-busting URL — forces Android Chrome to fetch fresh from network
+    // location.reload(true) is deprecated and ignored on Android; ?t= param bypasses disk cache
+    const base=location.origin+location.pathname;
+    window.location.replace(base+'?t='+Date.now());
   }catch(err){
     console.error('Force refresh failed:',err);
     if(verLatestEl){verLatestEl.style.color='#ef5350';verLatestEl.textContent='Refresh failed';}
