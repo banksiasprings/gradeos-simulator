@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GradeOS Simulator v0.7</title>
+<title>GradeOS Simulator v0.8</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
@@ -852,7 +852,7 @@ body.field-mode #field-rtk{display:flex}
 
 <div id="topbar">
   <button id="hamburger-btn" onclick="toggleDrawer()" title="Menu">☰</button>
-  <div id="logo">GRADE<span>OS</span> <span style="font-size:10px;color:#4a7aa0;font-weight:400">v0.7</span></div>
+  <div id="logo">GRADE<span>OS</span> <span style="font-size:10px;color:#4a7aa0;font-weight:400">v0.8</span><br><span style="font-size:8px;color:#4a7aa0;font-weight:400;letter-spacing:.5px;text-transform:uppercase;line-height:1">Built by operators, for operators</span></div>
   <div id="topbar-spacer"></div>
   <div class="topbar-right-btns">
     <div id="gps-status-dot" style="width:10px;height:10px;border-radius:50%;background:#27ae60;flex-shrink:0;margin-right:6px"></div>
@@ -1118,6 +1118,16 @@ body.field-mode #field-rtk{display:flex}
           ⚙ Settings <span class="toggle">▶</span>
         </div>
         <div class="drawer-section-body">
+          <div id="ver-info" style="font-size:10px;color:#7aabcc;background:#071525;border:1px solid #1e4a7a;border-radius:4px;padding:8px 10px;margin-bottom:8px;line-height:1.8">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+              <span style="color:#4a7aa0;text-transform:uppercase;letter-spacing:.5px;font-size:9px">Your version</span>
+              <span id="ver-current" style="color:#e8a020;font-weight:700;font-family:monospace">v0.8 · SW&nbsp;v27</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <span style="color:#4a7aa0;text-transform:uppercase;letter-spacing:.5px;font-size:9px">Latest</span>
+              <span id="ver-latest" style="color:#66bb6a;font-weight:700;font-size:10px">— tap Check —</span>
+            </div>
+          </div>
           <button class="update-btn" onclick="checkForUpdate()">Check for Update</button>
         </div>
       </div>
@@ -1558,7 +1568,7 @@ body.field-mode #field-rtk{display:flex}
     display:flex;justify-content:space-between;align-items:center">
     <div>
       <span style="font-size:16px;font-weight:900;letter-spacing:2px;color:#fff">GRADE<span style="color:#e8a020">OS</span></span>
-      <span style="font-size:10px;color:#4a7aa0;margin-left:8px">v0.7 — RTK GPS Machine Control</span>
+      <span style="font-size:10px;color:#4a7aa0;margin-left:8px">v0.8 — Built by operators, for operators</span>
     </div>
     <button onclick="togglePitchCard()" style="background:none;border:1px solid #1e4a6a;color:#4a7aa0;cursor:pointer;padding:2px 8px;border-radius:4px;font-size:11px">✕ P</button>
   </div>
@@ -7942,24 +7952,26 @@ function syncDrawerMirrors(){
 // UPDATE CHECK FUNCTION
 // ─────────────────────────────────────────────────────────────────
 async function checkForUpdate(){
+  const verLatestEl=document.getElementById('ver-latest');
+  if(verLatestEl) verLatestEl.textContent='Checking…';
   if('serviceWorker' in navigator){
     try{
       const registration=await navigator.serviceWorker.ready;
-      const updateResult=await registration.update();
+      await registration.update();
 
-      // Check if a new service worker is waiting
       if(registration.waiting){
-        // New SW is installed and waiting
+        if(verLatestEl){ verLatestEl.style.color='#e8a020'; verLatestEl.textContent='Update ready — tap to reload'; }
         showUpdateToast('New version available — tap to reload');
       }else if(registration.installing){
-        // SW is currently installing
-        showUpdateToast('Checking for updates...');
+        if(verLatestEl){ verLatestEl.style.color='#42a5f5'; verLatestEl.textContent='Installing…'; }
+        showUpdateToast('Checking for updates…');
       }else{
-        // Already up to date
+        if(verLatestEl){ verLatestEl.style.color='#66bb6a'; verLatestEl.textContent='v0.8 · SW v27 ✓ Up to date'; }
         showUpdateToast('Already up to date ✓', 3000);
       }
     }catch(err){
       console.error('Update check failed:',err);
+      if(verLatestEl){ verLatestEl.style.color='#ef5350'; verLatestEl.textContent='Check failed'; }
       showUpdateToast('Update check failed', 3000);
     }
   }
