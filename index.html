@@ -915,7 +915,7 @@ body.field-mode #field-rtk{display:flex}
 
   <div class="toolbar-group tg">
     <span class="tg-label">Display</span>
-    <button class="tb act" id="b-terrain" onclick="toggleTerrain()" title="Show/hide terrain surface — turn off to see only your active design">🏔 Terrain</button>
+    <button class="tb" id="b-terrain" onclick="toggleTerrain()" title="Show/hide terrain surface — turn off to see only your active design">🏔 Terrain</button>
     <button class="tb act" id="b-cf" onclick="toggleCutFill()">🎨 Cut/Fill</button>
     <button class="tb act" id="b-ctr" onclick="toggleContours()">〰 Contours</button>
     <button class="tb" id="b-survey" onclick="toggleSurvey()" title="Show survey coverage">📡 Survey</button>
@@ -1745,7 +1745,7 @@ let camMode='3d';
 let showXsec=false;
 let showContours=true;
 let showCutFill=true;
-let showTerrain=true;
+let showTerrain=false;
 let bladeFocus='center'; // 'center', 'tipA' (left), 'tipB' (right)
 let bladeTargetY=0.45;   // for smooth blade animation
 let showSurvey=false;
