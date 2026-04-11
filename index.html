@@ -17,6 +17,7 @@ function openDesignPanel(tab){
   document.getElementById('design-panel').style.display='flex';
   switchDesignTab(tab||'tools');
   syncDrawerMirrors();
+  updateTopoLed();
 }
 function closeDesignPanel(){
   document.getElementById('design-panel').style.display='none';
@@ -39,7 +40,7 @@ function switchDesignTab(tab){
     const div=document.createElement('div');
     div.id='dtab-tools-content';
     div.style.cssText='padding:16px;overflow-y:auto;flex:1';
-    div.innerHTML=`<button class='drawer-btn' id='dp-topo-tools-btn' data-mirror='b-terrain' onclick='toggleTerrain();syncDrawerMirrors()' style='width:100%;margin-bottom:16px;font-size:13px;padding:10px'>🏔 Topo — tap to show / hide terrain</button><div style='font-size:10px;color:#4a7aa0;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px'>Quick Design Tools</div><div style='display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:18px'><button class='dtools-btn' onclick='setTool("flat");closeDesignPanel()'>⬛ Flat Pad<span>Level area</span></button><button class='dtools-btn' onclick='setTool("slope");closeDesignPanel()'>◥ Single Slope<span>Grade in one direction</span></button><button class='dtools-btn' onclick='setTool("batter");closeDesignPanel()'>⛰ Batter<span>Slope from crest line</span></button><button class='dtools-btn' onclick='setTool("irrig");closeDesignPanel()'>💧 Irrig Bay<span>Auto-balance cut/fill</span></button><button class='dtools-btn' onclick='setTool("bestfit");closeDesignPanel()'>📐 Min Earthworks<span>Fit flattest grade</span></button><button class='dtools-btn' onclick='setTool("section");closeDesignPanel()'>✂ Cross-Section<span>Profile cut view</span></button></div><div style='font-size:10px;color:#4a7aa0;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px'>Tin Line Design</div><div style='display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:18px'><button class='dtools-btn' onclick='switchDesignTab("profile")'>📐 Profile Designer<span>Cross-section template</span></button><button class='dtools-btn' onclick='switchDesignTab("align")'>🛣 Alignment Designer<span>Spline + vertical grade</span></button></div><div style='font-size:10px;color:#4a7aa0;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px'>Quick Scenarios</div><div style='display:grid;grid-template-columns:1fr 1fr;gap:8px'><button class='dtools-btn dtools-grn' onclick='runScenario("irrig");closeDesignPanel()'>🌾 Irrigation Bay<span>Auto-graded flood bay</span></button><button class='dtools-btn dtools-grn' onclick='runScenario("housepad");closeDesignPanel()'>🏠 House Pad<span>3 lots on hillside</span></button><button class='dtools-btn dtools-grn' onclick='runScenario("road");closeDesignPanel()'>🛣 Road Cut<span>3% grade corridor</span></button><button class='dtools-btn dtools-grn' onclick='runScenario("dam");closeDesignPanel()'>🌊 Dam<span>Pond + batter slopes</span></button></div>`;
+    div.innerHTML=`<button class='drawer-btn' id='dp-topo-tools-btn' onclick='toggleTerrain()' style='width:100%;margin-bottom:16px;font-size:13px;padding:12px;display:flex;align-items:center;gap:10px' title='Tap to cycle: Off → Active → Reference'><span id='dp-topo-tools-led' style='display:inline-block;width:11px;height:11px;border-radius:50%;background:#cc3333;box-shadow:0 0 6px rgba(204,51,51,0.6);flex-shrink:0'></span><span style='flex:1'>🏔 Topo</span><span id='dp-topo-tools-label' style='font-size:11px;font-weight:700;color:#cc3333'>OFF</span></button><div style='font-size:10px;color:#4a7aa0;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px'>Quick Design Tools</div><div style='display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:18px'><button class='dtools-btn' onclick='setTool("flat");closeDesignPanel()'>⬛ Flat Pad<span>Level area</span></button><button class='dtools-btn' onclick='setTool("slope");closeDesignPanel()'>◥ Single Slope<span>Grade in one direction</span></button><button class='dtools-btn' onclick='setTool("batter");closeDesignPanel()'>⛰ Batter<span>Slope from crest line</span></button><button class='dtools-btn' onclick='setTool("irrig");closeDesignPanel()'>💧 Irrig Bay<span>Auto-balance cut/fill</span></button><button class='dtools-btn' onclick='setTool("bestfit");closeDesignPanel()'>📐 Min Earthworks<span>Fit flattest grade</span></button><button class='dtools-btn' onclick='setTool("section");closeDesignPanel()'>✂ Cross-Section<span>Profile cut view</span></button></div><div style='font-size:10px;color:#4a7aa0;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px'>Tin Line Design</div><div style='display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:18px'><button class='dtools-btn' onclick='switchDesignTab("profile")'>📐 Profile Designer<span>Cross-section template</span></button><button class='dtools-btn' onclick='switchDesignTab("align")'>🛣 Alignment Designer<span>Spline + vertical grade</span></button></div><div style='font-size:10px;color:#4a7aa0;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px'>Quick Scenarios</div><div style='display:grid;grid-template-columns:1fr 1fr;gap:8px'><button class='dtools-btn dtools-grn' onclick='runScenario("irrig");closeDesignPanel()'>🌾 Irrigation Bay<span>Auto-graded flood bay</span></button><button class='dtools-btn dtools-grn' onclick='runScenario("housepad");closeDesignPanel()'>🏠 House Pad<span>3 lots on hillside</span></button><button class='dtools-btn dtools-grn' onclick='runScenario("road");closeDesignPanel()'>🛣 Road Cut<span>3% grade corridor</span></button><button class='dtools-btn dtools-grn' onclick='runScenario("dam");closeDesignPanel()'>🌊 Dam<span>Pond + batter slopes</span></button></div>`;
     content.appendChild(div);
   } else {
     const el=document.getElementById(map[tab]);
@@ -1747,7 +1748,7 @@ let camMode='3d';
 let showXsec=false;
 let showContours=true;
 let showCutFill=true;
-let showTerrain=false;
+let showTerrain=0; // 0=off, 1=active (green), 2=reference (blue)
 let bladeFocus='center'; // 'center', 'tipA' (left), 'tipB' (right)
 let bladeTargetY=0.45;   // for smooth blade animation
 let showSurvey=false;
@@ -1897,7 +1898,7 @@ function buildTerrGeo(elev){
 }
 // MeshBasicMaterial ignores scene lighting — vertex colors show exactly as specified
 // We encode terrain shading (height + slope) directly into the vertex colors
-const terrMat=new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.DoubleSide});
+const terrMat=new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.DoubleSide,transparent:true,opacity:1});
 function terrVertexColor(i){
   const h=ground[i];
   const orig=originalGround[i];
@@ -1948,7 +1949,7 @@ function buildTerrGeoColored(){
   return geo;
 }
 let terrMesh=new THREE.Mesh(buildTerrGeoColored(),terrMat);
-terrMesh.rotation.x=-Math.PI/2;terrMesh.visible=showTerrain;scene.add(terrMesh);
+terrMesh.rotation.x=-Math.PI/2;terrMesh.visible=showTerrain>0;terrMat.opacity=showTerrain===2?0.35:1;scene.add(terrMesh);
 
 // ── Design mesh ───────────────────────────────────────────────────
 const desMat=new THREE.MeshBasicMaterial({side:THREE.DoubleSide,transparent:true,opacity:0.80,vertexColors:true});
@@ -2206,7 +2207,7 @@ function setDesign(gx,gz,elev){const i=gi(gx,gz);if(!hasD[i])designCount++;desig
 function rebuildTerrMesh(){
   scene.remove(terrMesh);terrMesh.geometry.dispose();
   terrMesh=new THREE.Mesh(buildTerrGeoColored(),terrMat);
-  terrMesh.rotation.x=-Math.PI/2;terrMesh.visible=showTerrain;scene.add(terrMesh);
+  terrMesh.rotation.x=-Math.PI/2;terrMesh.visible=showTerrain>0;terrMat.opacity=showTerrain===2?0.35:1;scene.add(terrMesh);
   if(showGhost)buildGhostMesh();
 }
 
@@ -4255,10 +4256,28 @@ function setBladeFocus(focus){
   document.getElementById('st-hint').textContent=`Blade focus: ${focus==='center'?'Centre':focus==='tipA'?'Tip A (Left)':'Tip B (Right)'} — guidance follows this point`;
 }
 function toggleTerrain(){
-  showTerrain=!showTerrain;
-  terrMesh.visible=showTerrain;
-  document.getElementById('b-terrain').classList.toggle('act',showTerrain);
+  showTerrain=(showTerrain+1)%3; // 0=off → 1=active → 2=reference → 0
+  terrMesh.visible=showTerrain>0;
+  terrMat.opacity=showTerrain===2?0.35:1;
+  document.getElementById('b-terrain').classList.toggle('act',showTerrain>0);
   syncDrawerMirrors();
+  updateTopoLed();
+}
+function updateTopoLed(){
+  const STATES=[
+    {color:'#cc3333',glow:'rgba(204,51,51,0.6)',label:'OFF'},
+    {color:'#22cc44',glow:'rgba(34,204,68,0.6)',label:'ACTIVE'},
+    {color:'#2299ee',glow:'rgba(34,153,238,0.6)',label:'REF'}
+  ];
+  const s=STATES[showTerrain];
+  ['dp-topo-led','dp-topo-tools-led'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el){el.style.background=s.color;el.style.boxShadow='0 0 5px '+s.glow;}
+  });
+  ['dp-topo-label','dp-topo-tools-label'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el){el.textContent=s.label;el.style.color=s.color;}
+  });
 }
 function toggleContours(){
   showContours=!showContours;
@@ -9593,7 +9612,7 @@ function alignBuildDesign(){
     <button class="dtab" id="dtab-designs" onclick="switchDesignTab('designs')">📋 Designs</button>
     <button class="dtab" id="dtab-profile" onclick="switchDesignTab('profile')">📐 Profile</button>
     <button class="dtab" id="dtab-align" onclick="switchDesignTab('align')">🛣 Align</button>
-    <button id="dp-topo-btn" data-mirror="b-terrain" onclick="toggleTerrain();syncDrawerMirrors()" style="padding:10px 14px;background:none;border:none;border-left:1px solid #1e4a7a;color:#7aabcc;font-size:12px;cursor:pointer;line-height:1;white-space:nowrap;flex-shrink:0;transition:all .15s" title="Show/hide terrain surface">🏔 Topo</button>
+    <button id="dp-topo-btn" onclick="toggleTerrain()" style="padding:10px 14px;background:none;border:none;border-left:1px solid #1e4a7a;color:#7aabcc;font-size:12px;cursor:pointer;line-height:1;white-space:nowrap;flex-shrink:0;display:flex;align-items:center;gap:6px;transition:all .15s" title="Tap to cycle: Off → Active → Reference"><span id="dp-topo-led" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#cc3333;box-shadow:0 0 5px rgba(204,51,51,0.6);flex-shrink:0"></span>🏔 Topo <span id="dp-topo-label" style="font-size:10px;font-weight:700;color:#cc3333">OFF</span></button>
     <button onclick="closeDesignPanel()" style="margin-left:auto;padding:10px 18px;background:none;border:none;color:#aaa;font-size:20px;cursor:pointer;line-height:1;flex-shrink:0">✕</button>
   </div>
   <div id="dtab-content" style="flex:1;overflow:auto;position:relative;display:flex;flex-direction:column"></div>
