@@ -1122,7 +1122,7 @@ body.field-mode #field-rtk{display:flex}
           <div id="ver-info" style="font-size:10px;color:#7aabcc;background:#071525;border:1px solid #1e4a7a;border-radius:4px;padding:8px 10px;margin-bottom:8px;line-height:1.8">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
               <span style="color:#4a7aa0;text-transform:uppercase;letter-spacing:.5px;font-size:9px">Your version</span>
-              <span id="ver-current" style="color:#e8a020;font-weight:700;font-family:monospace">v0.8 · SW&nbsp;v27</span>
+              <span id="ver-current" style="color:#e8a020;font-weight:700;font-family:monospace">v0.8 · SW&nbsp;v32</span>
             </div>
             <div style="display:flex;justify-content:space-between;align-items:center">
               <span style="color:#4a7aa0;text-transform:uppercase;letter-spacing:.5px;font-size:9px">Latest</span>
@@ -8001,7 +8001,7 @@ async function checkForUpdate(){
       showUpdateToast('Installing update…');
       _waitAndReload(registration.installing);
     }else{
-      if(verLatestEl){ verLatestEl.style.color='#66bb6a'; verLatestEl.textContent='v0.8 · SW v30 ✓ Up to date'; }
+      if(verLatestEl){ const cur=document.getElementById('ver-current')?.textContent||'v0.8'; verLatestEl.style.color='#66bb6a'; verLatestEl.textContent=cur+' \u2713 Up to date'; }
       showUpdateToast('Already up to date ✓', 3000);
     }
   }catch(err){
@@ -8659,11 +8659,19 @@ if('serviceWorker' in navigator){
       const w=r.installing;
       w.onstatechange=()=>{
         if(w.state==='installed'&&navigator.serviceWorker.controller){
-          // New version available, show toast
           showUpdateToast('New version available — tap to reload');
         }
       };
     };
+    // Dynamically update ver-current from the actual running SW cache name
+    caches.keys().then(keys=>{
+      const swKey=keys.find(k=>k.startsWith('gradeos-v'));
+      if(swKey){
+        const swVer=swKey.replace('gradeos-',''); // e.g. "v32"
+        const el=document.getElementById('ver-current');
+        if(el) el.textContent='v0.8 \u00b7 SW\u00a0'+swVer;
+      }
+    });
   });
 }
 
