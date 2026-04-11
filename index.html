@@ -7978,26 +7978,38 @@ function syncDrawerMirrors(){
 async function checkForUpdate(){
   const verLatestEl=document.getElementById('ver-latest');
   if(verLatestEl) verLatestEl.textContent='Checking…';
-  if('serviceWorker' in navigator){
-    try{
-      const registration=await navigator.serviceWorker.ready;
-      await registration.update();
+  if(!('serviceWorker' in navigator)){return;}
+  try{
+    const registration=await navigator.serviceWorker.ready;
+    await registration.update();
 
-      if(registration.waiting){
-        if(verLatestEl){ verLatestEl.style.color='#e8a020'; verLatestEl.textContent='Update ready — tap to reload'; }
-        showUpdateToast('New version available — tap to reload');
-      }else if(registration.installing){
-        if(verLatestEl){ verLatestEl.style.color='#42a5f5'; verLatestEl.textContent='Installing…'; }
-        showUpdateToast('Checking for updates…');
-      }else{
-        if(verLatestEl){ verLatestEl.style.color='#66bb6a'; verLatestEl.textContent='v0.8 · SW v29 ✓ Up to date'; }
-        showUpdateToast('Already up to date ✓', 3000);
-      }
-    }catch(err){
-      console.error('Update check failed:',err);
-      if(verLatestEl){ verLatestEl.style.color='#ef5350'; verLatestEl.textContent='Check failed'; }
-      showUpdateToast('Update check failed', 3000);
+    // Helper: watch a SW worker and reload once it activates
+    function _waitAndReload(worker){
+      if(!worker) return;
+      if(worker.state==='activated'){location.reload(true);return;}
+      worker.addEventListener('statechange',function(){
+        if(this.state==='activated') location.reload(true);
+      });
+      // Fallback: if still stuck after 4s, reload anyway
+      setTimeout(()=>location.reload(true), 4000);
     }
+
+    if(registration.waiting){
+      if(verLatestEl){ verLatestEl.style.color='#e8a020'; verLatestEl.textContent='Reloading…'; }
+      showUpdateToast('Update found — reloading…');
+      _waitAndReload(registration.waiting);
+    }else if(registration.installing){
+      if(verLatestEl){ verLatestEl.style.color='#42a5f5'; verLatestEl.textContent='Installing…'; }
+      showUpdateToast('Installing update…');
+      _waitAndReload(registration.installing);
+    }else{
+      if(verLatestEl){ verLatestEl.style.color='#66bb6a'; verLatestEl.textContent='v0.8 · SW v30 ✓ Up to date'; }
+      showUpdateToast('Already up to date ✓', 3000);
+    }
+  }catch(err){
+    console.error('Update check failed:',err);
+    if(verLatestEl){ verLatestEl.style.color='#ef5350'; verLatestEl.textContent='Check failed'; }
+    showUpdateToast('Update check failed', 3000);
   }
 }
 
