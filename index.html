@@ -3024,8 +3024,8 @@ function updateTextRibbon(lmm,cmm,rmm,grade,elev,xslope){
   ln.textContent=L.num;ln.style.color=L.col;ll.textContent=L.lbl;ll.style.color=L.col;la.textContent=L.arr;la.style.color=L.col;
   cn.textContent=C.num;cn.style.color=C.col;cl.textContent=C.lbl;cl.style.color=C.col;
   rn.textContent=R.num;rn.style.color=R.col;rl.textContent=R.lbl;rl.style.color=R.col;ra.textContent=R.arr;ra.style.color=R.col;
-  if(grade!==null)document.getElementById('tr-grade').textContent=(grade>=0?'+':'')+grade.toFixed(1)+'%';
-  if(xslope!==undefined&&xslope!==null)document.getElementById('tr-xslope').textContent=(xslope>=0?'+':'')+xslope.toFixed(1)+'%';
+  if(grade!==null)document.getElementById('tr-grade').textContent=(grade>=0?'+':'')+(Math.abs(grade)<1?grade.toFixed(2):grade.toFixed(1))+'%';
+  if(xslope!==undefined&&xslope!==null)document.getElementById('tr-xslope').textContent=(xslope>=0?'+':'')+(Math.abs(xslope)<1?xslope.toFixed(2):xslope.toFixed(1))+'%';
   if(elev!==null)document.getElementById('tr-elev').textContent=elev.toFixed(3)+'m';
 }
 
@@ -5079,8 +5079,8 @@ function updateBladePanel(lmm,cmm,rmm,grade,elev,xslope){
   fmt(lmm,'bv-lmm','bv-llbl','bv-lfill','bv-ltrack');
   fmt(cmm,'bv-cmm','bv-clbl','bv-cfill','bv-ctrack');
   fmt(rmm,'bv-rmm','bv-rlbl','bv-rfill','bv-rtrack');
-  if(grade!==null)document.getElementById('bv-grade').textContent=(grade>=0?'+':'')+grade.toFixed(1)+'%';
-  if(xslope!==null&&xslope!==undefined)document.getElementById('bv-xslope').textContent=(xslope>=0?'+':'')+xslope.toFixed(1)+'%';
+  if(grade!==null)document.getElementById('bv-grade').textContent=(grade>=0?'+':'')+(Math.abs(grade)<1?grade.toFixed(2):grade.toFixed(1))+'%';
+  if(xslope!==null&&xslope!==undefined)document.getElementById('bv-xslope').textContent=(xslope>=0?'+':'')+(Math.abs(xslope)<1?xslope.toFixed(2):xslope.toFixed(1))+'%';
   if(elev!==null)document.getElementById('bv-elev').textContent=elev.toFixed(3)+'m';
   // RTK accuracy warning in blade panel
   const accNote=document.getElementById('bv-acc-note');
@@ -7454,7 +7454,8 @@ function drawPlanViewGuidance(pos, lx, lz, rx, rz){
   const rSideE=gElev(pos.x+perpX_g*BH_grade,pos.z+perpZ_g*BH_grade);
   const crossGrade=((rSideE-gElev(pos.x,pos.z))/BH_grade)*100;
   ctx.fillStyle='#7aabcc'; ctx.font='9px monospace'; ctx.textAlign='left';
-  ctx.fillText(`LONG: ${longGrade>=0?'+':''}${longGrade.toFixed(1)}%  CROSS: ${crossGrade>=0?'+':''}${crossGrade.toFixed(1)}%`,lgX,lgY-12);
+  const _fmtG=(g)=>(g>=0?'+':'')+(Math.abs(g)<1?g.toFixed(2):g.toFixed(1))+'%';
+  ctx.fillText(`LONG: ${_fmtG(longGrade)}  CROSS: ${_fmtG(crossGrade)}`,lgX,lgY-12);
   } catch(e) {
     // Fallback rendering if error occurs
     ctx.fillStyle='#7aabcc'; ctx.font='9px monospace'; ctx.textAlign='center';
@@ -7822,7 +7823,7 @@ function drawSideProfileGuidance(hdg){
   const gradeLabel=(_spFwdDes!==null&&_spCurrDes!==null)?'DES GRADE':'GRADE';
   const gradeCol=Math.abs(grade)<5?'#27ae60':Math.abs(grade)<15?'#e8a020':'#e05040';
   ctx.fillStyle=gradeCol; ctx.font='bold 10px monospace'; ctx.textAlign='left';
-  ctx.fillText(gradeLabel+' '+(grade>=0?'+':'')+grade.toFixed(1)+'%',marginL+4,marginT+13);
+  ctx.fillText(gradeLabel+' '+(grade>=0?'+':'')+(Math.abs(grade)<1?grade.toFixed(2):grade.toFixed(1))+'%',marginL+4,marginT+13);
 
   ctx.fillStyle='#4a7aa0'; ctx.font='8px monospace'; ctx.textAlign='center';
   const designName = getActiveDesignName();
