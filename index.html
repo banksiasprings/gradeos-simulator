@@ -7264,6 +7264,7 @@ function updateVerticalCutFillBar(cutFillMeters){
 }
 
 function drawPlanViewGuidance(pos, lx, lz, rx, rz){
+  if(!pos) return;
   const canvas = document.getElementById('plan-canvas');
   if(!canvas || !canvas.parentElement) return;
   const ctx = canvas.getContext('2d');
