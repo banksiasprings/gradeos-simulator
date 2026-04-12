@@ -4236,8 +4236,8 @@ function setVOffset(val,btn){
 function updateVOffDisplay(){
   const mm=Math.round(vOffset*1000);
   const el=document.getElementById('voff-val');
-  el.textContent=(mm>=0?'+':'')+mm+' mm';
-  el.style.color=mm===0?'#e8a020':mm>0?'#66bb6a':'#ff7043';
+  el.textContent=mm===0?'ON GRADE':(mm>=0?'+':'')+mm+' mm';
+  el.style.color=mm===0?'#66bb6a':mm>0?'#66bb6a':'#ff7043';
   // Also update status bar display (only show when vOffset !== 0)
   const stEl=document.getElementById('st-voff');
   if(stEl){
