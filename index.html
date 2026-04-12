@@ -7689,6 +7689,11 @@ function drawBladeSection(leftMM, centerMM, rightMM){
   ctx.fillStyle=slopeCol; ctx.font='bold 9px monospace'; ctx.textAlign='right';
   const arrow=(crossSlope>0.5?'→':crossSlope<-0.5?'←':'·');
   ctx.fillText('XSLOPE '+(crossSlope>=0?'+':'')+crossSlope.toFixed(1)+'% '+arrow,mL+drawW-2,mT+24);
+  // Blade tilt in degrees — derived from cross-slope (positive crossSlope = right side high = blade tilts Left)
+  const tiltDeg=Math.abs(Math.atan(crossSlope/100))*180/Math.PI;
+  const tiltDir=crossSlope>0.1?'L':crossSlope<-0.1?'R':'';
+  ctx.fillStyle=slopeCol; ctx.font='9px monospace'; ctx.textAlign='right';
+  ctx.fillText('TILT '+(tiltDeg<0.05?'0.0':tiltDeg.toFixed(1))+'\u00b0'+tiltDir,mL+drawW-2,mT+35);
 
   // Distance axis
   ctx.strokeStyle='#1e4060'; ctx.lineWidth=0.5;
