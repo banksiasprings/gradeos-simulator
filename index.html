@@ -8220,12 +8220,12 @@ function buildProfileDesignSurface(){
   closeProfileDesigner();
 }
 
-// Call updateGuidanceScreens in the main loop
+// Call updateGuidanceScreens in the main loop (10Hz = 100ms; 20Hz is too fast for guidance-only updates)
 setInterval(() => {
   if(guidanceScreenActive){
     updateGuidanceScreens();
   }
-}, 50);
+}, 100);
 
 </script>
 
