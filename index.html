@@ -7506,7 +7506,7 @@ function drawBladeSection(leftMM, centerMM, rightMM){
   // Design tolerance band
   const tol=typeof guidanceTolerance!=='undefined'?guidanceTolerance:0.05;
   const tolPx=(tol/totalRange)*drawH;
-  ctx.fillStyle='rgba(39,174,96,0.1)';
+  ctx.fillStyle='rgba(39,174,96,0.15)';
   ctx.fillRect(mL,elev2y(cDesign)-tolPx,drawW,tolPx*2);
 
   // Design surface (dashed blue)
