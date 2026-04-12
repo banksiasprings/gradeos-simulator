@@ -3047,7 +3047,7 @@ document.addEventListener('keydown',e=>{
   if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key))e.preventDefault();
   if(e.ctrlKey&&e.key==='z'){e.preventDefault();doUndo();}
   if(e.ctrlKey&&(e.key==='y'||e.key==='Y')){e.preventDefault();doRedo();}
-  if((e.key==='g'||e.key==='G')&&!e.ctrlKey&&!e.altKey&&!e.metaKey){e.preventDefault();toggleGuidanceScreen();}
+  if((e.key==='g'||e.key==='G')&&!e.ctrlKey&&!e.altKey&&!e.metaKey){e.preventDefault();toggleGuidanceScreen();}  if((e.key==='f'||e.key==='F')&&!e.ctrlKey&&!e.altKey&&!e.metaKey){e.preventDefault();camFollow=!camFollow;}
 });
 document.addEventListener('keyup',e=>{keys[e.key]=false;});
 
@@ -3079,7 +3079,7 @@ function toggleMachineType(){
   }
 }
 
-let _smoothedSpd=0;
+let _smoothedSpd=0;let camFollow=true;
 const _TRAIL=[];let _trailMesh=null,_trailT=0;function _updateTrail(x,z,y){const now=performance.now();if(now-_trailT<300)return;_trailT=now;_TRAIL.push({x,y:y+0.3,z});if(_TRAIL.length>15)_TRAIL.shift();if(_trailMesh){scene.remove(_trailMesh);_trailMesh.geometry.dispose();_trailMesh=null;}if(_TRAIL.length<2)return;const pos=[],col=[];const n=_TRAIL.length;for(let i=0;i<n;i++){const p=_TRAIL[i];const t=(i+1)/n;pos.push(p.x,p.y,p.z);col.push(0.9*t,0.55*t,0.05*t);}const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));geo.setAttribute('color',new THREE.Float32BufferAttribute(col,3));_trailMesh=new THREE.Points(geo,new THREE.PointsMaterial({size:0.7,vertexColors:true,sizeAttenuation:true,depthWrite:false}));scene.add(_trailMesh);}
 function updateMachine(dt){
   if(!machineOn)return;
@@ -3341,7 +3341,7 @@ function updateMachine(dt){
       cutEl.style.color=isCutting?'#ef5350':'#42a5f5';
     } else { excavDigT=0; }
   }
-  // Follow cam
+  if(camFollow&&camMode==='3d'){orb.cx=machinePos.x;orb.cz=machinePos.z;updateCam();}  // Follow cam
   if(camMode==='follow'){
     const behX=machinePos.x-Math.sin(machinePos.hdg)*22;
     const behZ=machinePos.z-Math.cos(machinePos.hdg)*22;
