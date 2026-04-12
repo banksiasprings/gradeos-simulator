@@ -3215,11 +3215,8 @@ function updateMachine(dt){
   // GPS machine control: blade tip elevation from machine geometry (roll + GPS centre height)
   // A real GPS dozer knows blade position from GPS receivers on the blade frame.
   // It does NOT sample terrain under the blade tips — that surface is unknown until surveyed.
-  const _perpRx=machinePos.x+Math.cos(machinePos.hdg)*BH,_perpRz=machinePos.z-Math.sin(machinePos.hdg)*BH;
-  const _rSideElev=gElev(_perpRx,_perpRz);
-  const _machRoll=Math.atan2(mel-_rSideElev,BH);
-  const lBladeElev=mel-Math.sin(_machRoll)*BH;
-  const rBladeElev=mel+Math.sin(_machRoll)*BH;
+  const lBladeElev=mel;
+  const rBladeElev=mel;
   const lDes=dElev(lx,lz),rDes=dElev(rx,rz),cDes=dElev(machinePos.x,machinePos.z);
   // For excavator: compute bucket tip depth at the dig point (4m ahead)
   let lMM,rMM,cMM;
@@ -7153,10 +7150,8 @@ function updateGuidanceScreens(){
   const mel = gElev(machinePos.x, machinePos.z);
   // GPS guidance: blade tip elevation from machine geometry (roll + GPS centre height)
   // Real GPS dozers know blade position from receivers on the blade frame — they do NOT sample terrain under tips
-  const _rSideGS=gElev(machinePos.x+Math.cos(machinePos.hdg)*BLADE_HW,machinePos.z-Math.sin(machinePos.hdg)*BLADE_HW);
-  const _rollGS=Math.atan2(mel-_rSideGS,BLADE_HW);
-  const lGround=mel-Math.sin(_rollGS)*BLADE_HW;
-  const rGround=mel+Math.sin(_rollGS)*BLADE_HW;
+  const lGround=mel;
+  const rGround=mel;
   const cGround=mel;
   
   const _lDes = dElev(lx, lz);
@@ -7875,10 +7870,11 @@ function drawSideProfileGuidance(hdg){
   const groundY = elev2y(showTerrain > 0 ? gElvM : (dElvM !== null ? dElvM + vOffset : gElvM));
   const machineX = marginL + drawW / 2;
   // Pre-compute grade for image tilt angle
-  const _sgFwd = dElev(machinePos.x+Math.sin(hdg)*3, machinePos.z+Math.cos(hdg)*3);
-  const _sgFG  = gElev(machinePos.x+Math.sin(hdg)*3, machinePos.z+Math.cos(hdg)*3);
-  const _sgRise = (dElvM !== null && _sgFwd !== null) ? (_sgFwd - dElvM)/3 : (_sgFG - gElvM)/3;
-  const _tilt = Math.max(-0.22, Math.min(0.22, Math.atan(_sgRise)));
+  // Tilt from terrain slope: sample gElev 3m ahead and 3m behind for 6m span
+  const _fwdElev = gElev(machinePos.x + Math.sin(hdg)*3, machinePos.z + Math.cos(hdg)*3);
+  const _bkElev  = gElev(machinePos.x - Math.sin(hdg)*3, machinePos.z - Math.cos(hdg)*3);
+  const _rise = (_fwdElev - _bkElev) / 6;
+  const _tilt = Math.max(-0.35, Math.min(0.35, Math.atan(_rise)));
   // Draw side photo flipped so blade faces right (= forward direction in profile)
   const _sH = Math.max(55, drawH * 0.40);
   const _sW = _sH * (653 / 284);
@@ -7888,7 +7884,7 @@ function drawSideProfileGuidance(hdg){
     ctx.rotate(_tilt);
     ctx.globalAlpha = 0.90;
     ctx.scale(-1, 1);
-    ctx.drawImage(_imgDozerSide, -_sW * 0.51, -_sH * 0.88, _sW, _sH);
+    ctx.drawImage(_imgDozerSide, -_sW * 0.51, -_sH * 0.95, _sW, _sH);
     ctx.restore();
     ctx.globalAlpha = 1.0;
   }
