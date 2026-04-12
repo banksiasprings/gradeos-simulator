@@ -3192,10 +3192,11 @@ function updateMachine(dt){
     rMM=rDes!==null?(rDes+vOffset-rGnd)*1000:null;
     cMM=cDes!==null?(cDes+vOffset-mel)*1000:null;
   }
-  // Longitudinal grade (forward direction)
-  const grade=((fwd-mel)/2)*100;
-  // Cross slope (side-to-side, positive = right side higher)
-  const xslope=((rGnd-lGnd)/(BH*2))*100;
+  // Longitudinal grade — use design grade when design is active (shows target, not terrain)
+  const _gFwdDes=dElev(machinePos.x+Math.sin(machinePos.hdg)*2,machinePos.z+Math.cos(machinePos.hdg)*2);
+  const grade=(_gFwdDes!==null&&cDes!==null)?((_gFwdDes-cDes)/2)*100:((fwd-mel)/2)*100;
+  // Cross slope — use design crossfall when design is active
+  const xslope=(lDes!==null&&rDes!==null)?((rDes-lDes)/(BH*2))*100:((rGnd-lGnd)/(BH*2))*100;
   // Blade focus point determines guidance reference
   const focusMM=bladeFocus==='tipA'?lMM:bladeFocus==='tipB'?rMM:cMM;
   updateTextRibbon(lMM,cMM,rMM,grade,mel,xslope);
@@ -7765,13 +7766,16 @@ function drawSideProfileGuidance(hdg){
     ctx.beginPath(); ctx.moveTo(marginL-2,y); ctx.lineTo(marginL,y); ctx.stroke();
   }
 
-  // Grade
-  const fwd=gElev(machinePos.x+Math.sin(hdg)*3,machinePos.z+Math.cos(hdg)*3);
-  const curr=gElev(machinePos.x,machinePos.z);
-  const grade=((fwd-curr)/3)*100;
+  // Grade — use design grade if available (shows target), else terrain grade
+  const _spCurrDes=dElev(machinePos.x,machinePos.z);
+  const _spFwdDes=dElev(machinePos.x+Math.sin(hdg)*3,machinePos.z+Math.cos(hdg)*3);
+  const _spFwdGnd=gElev(machinePos.x+Math.sin(hdg)*3,machinePos.z+Math.cos(hdg)*3);
+  const _spCurrGnd=gElev(machinePos.x,machinePos.z);
+  const grade=(_spFwdDes!==null&&_spCurrDes!==null)?((_spFwdDes-_spCurrDes)/3)*100:((_spFwdGnd-_spCurrGnd)/3)*100;
+  const gradeLabel=(_spFwdDes!==null&&_spCurrDes!==null)?'DES GRADE':'GRADE';
   const gradeCol=Math.abs(grade)<5?'#27ae60':Math.abs(grade)<15?'#e8a020':'#e05040';
   ctx.fillStyle=gradeCol; ctx.font='bold 10px monospace'; ctx.textAlign='left';
-  ctx.fillText('GRADE '+(grade>=0?'+':'')+grade.toFixed(1)+'%',marginL+4,marginT+13);
+  ctx.fillText(gradeLabel+' '+(grade>=0?'+':'')+grade.toFixed(1)+'%',marginL+4,marginT+13);
 
   ctx.fillStyle='#4a7aa0'; ctx.font='8px monospace'; ctx.textAlign='center';
   ctx.fillText('◄ 25m  SIDE PROFILE  25m ►',w/2,h-4);
