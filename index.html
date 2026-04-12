@@ -4262,6 +4262,7 @@ function toggleTerrain(){
   document.getElementById('b-terrain').classList.toggle('act',showTerrain>0);
   syncDrawerMirrors();
   updateTopoLed();
+  if(guidanceScreenActive) updateGuidanceScreens();
 }
 function applyTerrainVisibility(){
   // 3D terrain mesh
@@ -7353,12 +7354,26 @@ function drawBladeSection(leftMM, centerMM, rightMM){
     ctx.stroke(); ctx.setLineDash([]);
   }
 
-  // Terrain cross-section fill + line
+  // Terrain cross-section + cut/fill shading — only when terrain is visible
   if(showTerrain>0){
+    // Terrain fill polygon
     ctx.beginPath(); ctx.moveTo(mL,mT+drawH);
     for(let i=0;i<nS;i++) ctx.lineTo(mL+(i/(nS-1))*drawW,clampY(elev2y(gPts[i])));
     ctx.lineTo(mL+drawW,mT+drawH); ctx.closePath();
-    ctx.fillStyle=showTerrain===2?'rgba(110,65,25,0.08)':'rgba(110,65,25,0.16)'; ctx.fill();
+    ctx.fillStyle=showTerrain===2?'rgba(110,65,25,0.06)':'rgba(110,65,25,0.14)'; ctx.fill();
+    // Cut/fill shading between terrain and design
+    if(validD.length>0){
+      const cfAlpha=showTerrain===2?0.10:0.18;
+      for(let i=0;i<nS-1;i++){
+        if(dPts[i]===null||dPts[i+1]===null) continue;
+        const x0=mL+(i/(nS-1))*drawW, x1=mL+((i+1)/(nS-1))*drawW;
+        const gy0=clampY(elev2y(gPts[i])), gy1=clampY(elev2y(gPts[i+1]));
+        const dy0=clampY(elev2y(dPts[i])), dy1=clampY(elev2y(dPts[i+1]));
+        ctx.beginPath(); ctx.moveTo(x0,gy0); ctx.lineTo(x1,gy1); ctx.lineTo(x1,dy1); ctx.lineTo(x0,dy0); ctx.closePath();
+        ctx.fillStyle=gPts[i]>dPts[i]?`rgba(239,83,80,${cfAlpha})`:`rgba(66,165,245,${cfAlpha})`; ctx.fill();
+      }
+    }
+    // Terrain line
     ctx.strokeStyle=showTerrain===2?'rgba(160,82,45,0.45)':'#c87830'; ctx.lineWidth=1.5;
     ctx.beginPath();
     for(let i=0;i<nS;i++){
@@ -7366,18 +7381,10 @@ function drawBladeSection(leftMM, centerMM, rightMM){
       i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
     }
     ctx.stroke();
-  }
-
-  // Cut/fill shading
-  if(validD.length>0){
-    for(let i=0;i<nS-1;i++){
-      if(dPts[i]===null||dPts[i+1]===null) continue;
-      const x0=mL+(i/(nS-1))*drawW, x1=mL+((i+1)/(nS-1))*drawW;
-      const gy0=clampY(elev2y(gPts[i])), gy1=clampY(elev2y(gPts[i+1]));
-      const dy0=clampY(elev2y(dPts[i])), dy1=clampY(elev2y(dPts[i+1]));
-      ctx.beginPath(); ctx.moveTo(x0,gy0); ctx.lineTo(x1,gy1); ctx.lineTo(x1,dy1); ctx.lineTo(x0,dy0); ctx.closePath();
-      ctx.fillStyle=gPts[i]>dPts[i]?'rgba(239,83,80,0.18)':'rgba(66,165,245,0.18)'; ctx.fill();
-    }
+  } else {
+    // Topo OFF — label only
+    ctx.fillStyle='rgba(204,51,51,0.75)'; ctx.font='9px monospace'; ctx.textAlign='right';
+    ctx.fillText('TOPO OFF',mL+drawW-2,mT+10);
   }
 
   // === DOZER FRONT VIEW (fixed position) ===
@@ -7533,21 +7540,21 @@ function drawSideProfileGuidance(hdg){
     ctx.fillText((d>=0?'+':'')+d+'m',x,marginT+drawH+16);
   }
 
-  // Cut/fill shading
-  if(validD.length>0){
-    for(let i=0;i<samples-1;i++){
-      if(desns[i]===null||desns[i+1]===null) continue;
-      const x0=dist2x(i), x1=dist2x(i+1);
-      const gy0=elev2y(elevs[i]), gy1=elev2y(elevs[i+1]);
-      const dy0=elev2y(desns[i]), dy1=elev2y(desns[i+1]);
-      const isCut=(elevs[i]+elevs[i+1])/2>(desns[i]+desns[i+1])/2;
-      ctx.beginPath(); ctx.moveTo(x0,gy0); ctx.lineTo(x1,gy1); ctx.lineTo(x1,dy1); ctx.lineTo(x0,dy0); ctx.closePath();
-      ctx.fillStyle=isCut?'rgba(239,83,80,0.18)':'rgba(66,165,245,0.18)'; ctx.fill();
-    }
-  }
-
-  // Terrain fill + line
+  // Terrain fill + line AND cut/fill shading — only when terrain is visible
   if(showTerrain>0){
+    // Cut/fill shading between terrain and design
+    if(validD.length>0){
+      const cfAlpha=showTerrain===2?0.10:0.18;
+      for(let i=0;i<samples-1;i++){
+        if(desns[i]===null||desns[i+1]===null) continue;
+        const x0=dist2x(i), x1=dist2x(i+1);
+        const gy0=elev2y(elevs[i]), gy1=elev2y(elevs[i+1]);
+        const dy0=elev2y(desns[i]), dy1=elev2y(desns[i+1]);
+        const isCut=(elevs[i]+elevs[i+1])/2>(desns[i]+desns[i+1])/2;
+        ctx.beginPath(); ctx.moveTo(x0,gy0); ctx.lineTo(x1,gy1); ctx.lineTo(x1,dy1); ctx.lineTo(x0,dy0); ctx.closePath();
+        ctx.fillStyle=isCut?`rgba(239,83,80,${cfAlpha})`:`rgba(66,165,245,${cfAlpha})`; ctx.fill();
+      }
+    }
     ctx.beginPath(); ctx.moveTo(marginL,marginT+drawH);
     for(let i=0;i<samples;i++) ctx.lineTo(dist2x(i),elev2y(elevs[i]));
     ctx.lineTo(marginL+drawW,marginT+drawH); ctx.closePath();
