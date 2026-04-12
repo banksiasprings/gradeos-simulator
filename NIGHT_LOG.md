@@ -84,3 +84,24 @@
 - **bv-des-act visibility**: DES/ACT readout only meaningful in split-screen with design loaded. Round D could add display:none when cmm is null and fade in gracefully.
 - **Trail colour convention**: In blade panel, mm>0 labels as CUT. Trail uses same convention: cmm>0 = red (CUT), cmm<0 = blue (FILL). Matches blade panel label convention.
 - **SW version range this round**: v91 -> v97 (6 SW bumps, 6 commits).
+
+## Round D -- Cleanup and Deferred -- 2026-04-13
+### Completed
+- chore: Deleted patch_t1.py, patch_t2.py, patch_t4.py through patch_t8.py and patch_t8_check.py from repo root -- verified (git: 8 files deleted)
+- v98: bv-des-act null hide -- updateBladePanel now sets display:none on the DES/ACT row when cmm is null (no design loaded) and display:'' when active. Prevents a meaningless empty row in the blade panel. -- verified (source grep: style.display='none')
+- v99: Tolerance band y-clamp -- drawBladeSection now guards the +/-Xmm label position with Math.max(mT+8, elev2y(cDesign)-tolPx-2) so the label cannot clip above the top margin when design elevation is near the top of the canvas. -- verified (source grep: _tolLY=Math.max)
+- v100: camFollow plan mode -- when camFollow=true and camMode==='plan', planPanX/Z are snapped to machinePos.x/z each frame and the plan camera repositioned, matching the existing 3D follow behaviour. -- verified (source grep: Plan follow cam)
+- v101: Trail BufferGeometry reuse -- _updateTrail now pre-allocates Float32Array buffers at max size (15 pts x 3) on first call, then updates position/color in-place with needsUpdate=true and setDrawRange(0,n). Eliminates 300ms GC allocations from the old dispose/recreate pattern. -- verified (source grep: needsUpdate=true, setDrawRange)
+- v102: Grade trend buf clear -- toggleGuidanceScreen now resets _gradeTrendBuf=[] when the guidance screen opens, preventing stale samples from prior sessions causing a false initial trend arrow. -- verified (source grep: _gradeTrendBuf=[] inside toggleGuidanceScreen)
+- v103: Keyboard help F description corrected from Field operator mode to Camera follow toggle (aligning with Round B F-key intent). SW version added to page title tag: GradeOS Simulator v0.8 - SW v103 -- easy to verify from browser tab. -- verified (source grep: Camera follow toggle, SW v103)
+
+### Deferred (carry forward)
+- F-key conflict: Pressing F fires two separate keydown listeners -- one toggles camFollow, one calls toggleFieldMode(). Both fire simultaneously. Resolution requires either re-keying field mode or merging the handlers. Deferred as too disruptive for a cleanup round.
+- dp-topo-elev sub-span: Topo LED min/max elevation is currently appended inline to the state label text. A dedicated dp-topo-elev sub-span would allow independent styling. Flagged Round C, still carry forward.
+
+---
+## Session Summary -- Rounds A-D
+SW range: v77 to v103
+Total commits: 27 code commits + 1 chore commit (patch file cleanup)
+Key improvements: Rounds A-D systematically improved the GradeOS Simulator guidance UX, 3D view, machine simulation, info panels, and robustness. Highlights include tolerance band and blade tilt readouts on the guidance screen (A), 3D trail with grade-state colouring and camera follow (B), dynamic cut/fill volume labels and blade DES/ACT readout (C), and geometry GC elimination, plan-mode camera follow, and null-guard cleanup (D).
+Carry-forward for next session: F-key conflict (camFollow vs fieldMode both on F), dp-topo-elev sub-span for cleaner topo LED styling, and any future UX polish items from live field testing.
