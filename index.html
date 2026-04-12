@@ -7564,14 +7564,14 @@ function drawBladeSection(leftMM, centerMM, rightMM){
   }
 
   // Cross-slope — calculate from blade geometry (machine roll), not terrain sampling
-  const realBH=1.7; // actual blade half-width in metres
-  const perpRx=machinePos.x+Math.cos(machinePos.hdg)*realBH,perpRz=machinePos.z-Math.sin(machinePos.hdg)*realBH;
-  const rSideElev=gElev(perpRx,perpRz);
-  const mel=machinePos.y;
-  const machRoll=Math.atan2(mel-rSideElev,realBH);
-  const lBladeE=mel-Math.sin(machRoll)*realBH;
-  const rBladeE=mel+Math.sin(machRoll)*realBH;
-  const crossSlope=(rBladeE-lBladeE)/(realBH*2)*100;
+  const xslopeBH=1.7; // actual blade half-width in metres
+  const xslopePerpRx=machinePos.x+Math.cos(machinePos.hdg)*xslopeBH,xslopePerpRz=machinePos.z-Math.sin(machinePos.hdg)*xslopeBH;
+  const xslopeRSideElev=gElev(xslopePerpRx,xslopePerpRz);
+  const xslopeMel=machinePos.y;
+  const xslopeMachRoll=Math.atan2(xslopeMel-xslopeRSideElev,xslopeBH);
+  const xslopeLBladeE=xslopeMel-Math.sin(xslopeMachRoll)*xslopeBH;
+  const xslopeRBladeE=xslopeMel+Math.sin(xslopeMachRoll)*xslopeBH;
+  const crossSlope=(xslopeRBladeE-xslopeLBladeE)/(xslopeBH*2)*100;
   const slopeCol=Math.abs(crossSlope)<3?'#27ae60':'#e8a020';
   ctx.fillStyle=slopeCol; ctx.font='bold 9px monospace'; ctx.textAlign='right';
   ctx.fillText('XSLOPE '+(crossSlope>=0?'+':'')+crossSlope.toFixed(1)+'%',mL+drawW-2,mT+24);
