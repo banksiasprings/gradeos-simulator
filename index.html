@@ -2204,7 +2204,7 @@ threeCanvas.addEventListener('contextmenu',e=>e.preventDefault());
 function w2g(wx,wz){return{gx:Math.max(0,Math.min(GR,Math.round((wx+SZ/2)/CS))),gz:Math.max(0,Math.min(GR,Math.round((wz+SZ/2)/CS)))};}
 function g2w(gx,gz){return{x:gx*CS-SZ/2,z:gz*CS-SZ/2};}
 function gi(gx,gz){return gz*N+gx;}
-function gElev(wx,wz){const{gx,gz}=w2g(wx,wz);return ground[gi(gx,gz)];}
+function gElev(wx,wz){const{gx,gz}=w2g(wx,wz);const result=ground[gi(gx,gz)];return isFinite(result)?result:0;}
 function dElev(wx,wz){const{gx,gz}=w2g(wx,wz);const i=gi(gx,gz);return hasD[i]?design[i]:null;}
 function setDesign(gx,gz,elev){const i=gi(gx,gz);if(!hasD[i])designCount++;design[i]=elev;hasD[i]=1;}
 
