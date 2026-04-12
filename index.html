@@ -1124,7 +1124,7 @@ body.field-mode #field-rtk{display:flex}
           <div id="ver-info" style="font-size:10px;color:#7aabcc;background:#071525;border:1px solid #1e4a7a;border-radius:4px;padding:8px 10px;margin-bottom:8px;line-height:1.8">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
               <span style="color:#4a7aa0;text-transform:uppercase;letter-spacing:.5px;font-size:9px">Your version</span>
-              <span id="ver-current" style="color:#e8a020;font-weight:700;font-family:monospace">v0.8 · SW&nbsp;v42</span>
+              <span id="ver-current" style="color:#e8a020;font-weight:700;font-family:monospace">v0.8 · SW&nbsp;v43</span>
             </div>
             <div style="display:flex;justify-content:space-between;align-items:center">
               <span style="color:#4a7aa0;text-transform:uppercase;letter-spacing:.5px;font-size:9px">Latest</span>
@@ -7151,28 +7151,28 @@ function drawPlanViewGuidance(pos, lx, lz, rx, rz){
   const canvas = document.getElementById('plan-canvas');
   if(!canvas || !canvas.parentElement) return;
   const ctx = canvas.getContext('2d');
-  
   const w = canvas.width, h = canvas.height;
-  const scale = Math.min(w, h) / 160;  // 160m site
+  const scale = Math.min(w, h) / 160;
   const centerX = w / 2, centerY = h / 2;
-  
+
   ctx.fillStyle = '#020810';
   ctx.fillRect(0, 0, w, h);
-  
-  // Draw grid — dimmer when terrain is off
+
+  // Grid — dimmer when terrain is off
   ctx.strokeStyle = showTerrain > 0 ? '#1a3a5c' : '#0d1e30';
   ctx.lineWidth = 0.5;
   for(let i = -80; i <= 80; i += 20){
-    const px = centerX + i * scale;
-    const pz = centerY + i * scale;
-    ctx.beginPath();ctx.moveTo(px, 0);ctx.lineTo(px, h);ctx.stroke();
-    ctx.beginPath();ctx.moveTo(0, pz);ctx.lineTo(w, pz);ctx.stroke();
+    const px = centerX + i * scale, pz = centerY + i * scale;
+    ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, h); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, pz); ctx.lineTo(w, pz); ctx.stroke();
   }
-  
-  // Draw design cut/fill map (always when design loaded) OR terrain height map (follows showTerrain)
+  ctx.fillStyle = '#1a3a5c'; ctx.font = '8px monospace'; ctx.textAlign = 'center';
+  for(let i = -80; i <= 80; i += 40)
+    ctx.fillText(i + 'm', centerX + i * scale, h - 4);
+
+  // Cut/fill map or terrain height map
   const _cellPx = CS * scale + 0.5;
   if(designCount > 0){
-    // Design IS loaded — always show cut/fill regardless of terrain toggle
     for(let _gz = 0; _gz < N; _gz++){
       for(let _gx = 0; _gx < N; _gx++){
         const _idx = gi(_gx, _gz);
@@ -7187,8 +7187,7 @@ function drawPlanViewGuidance(pos, lx, lz, rx, rz){
       }
     }
   } else {
-    // No design — show terrain height map only when terrain is ON
-    if(showTerrain>0){
+    if(showTerrain > 0){
       let _gMin=Infinity,_gMax=-Infinity;
       for(let i=0;i<N*N;i++){if(ground[i]<_gMin)_gMin=ground[i];if(ground[i]>_gMax)_gMax=ground[i];}
       const _gRng=_gMax-_gMin||1;
@@ -7199,196 +7198,446 @@ function drawPlanViewGuidance(pos, lx, lz, rx, rz){
         ctx.fillRect(centerX+(_gx*CS-80)*scale, centerY+(_gz*CS-80)*scale, _cellPx, _cellPx);
       }
     }
-    // Label: no design
-    ctx.fillStyle='rgba(232,160,32,0.85)';
-    ctx.font='bold 11px Arial';
-    ctx.textAlign='center';
-    ctx.fillText('⚠ No active design — set one in Design tab',w/2,h-10);
+    ctx.fillStyle='rgba(232,160,32,0.85)'; ctx.font='bold 11px Arial'; ctx.textAlign='center';
+    ctx.fillText('⚠ No active design — set one in Design tab', w/2, h-10);
   }
-  
-  // Draw machine footprint (rectangle)
-  ctx.fillStyle = '#e8a020';
-  ctx.globalAlpha = 0.3;
+
+  // === TOP-VIEW DOZER ICON ===
   const mx = centerX + pos.x * scale;
   const mz = centerY + pos.z * scale;
-  const bw = 16 * scale, bh = 12 * scale;
+  const trkLen=28, trkWid=5, trkSep=10, bodyLen=24, bladeLen=32, bladeWid=5;
+
   ctx.save();
   ctx.translate(mx, mz);
-  ctx.rotate(pos.hdg);
-  ctx.fillRect(-bw/2, -bh/2, bw, bh);
+  ctx.rotate(-pos.hdg);
+
+  // Blade (front)
+  const bladeOff = trkLen/2 + 4;
+  ctx.fillStyle='#7a8a9a'; ctx.strokeStyle='#aabbcc'; ctx.lineWidth=1;
+  ctx.fillRect(-bladeLen/2, -bladeOff-bladeWid, bladeLen, bladeWid);
+  ctx.strokeRect(-bladeLen/2, -bladeOff-bladeWid, bladeLen, bladeWid);
+
+  // Push arms
+  ctx.strokeStyle='#506070'; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.moveTo(-bladeLen/2, -bladeOff); ctx.lineTo(-trkSep/2-trkWid/2, trkLen/2-6); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(bladeLen/2, -bladeOff); ctx.lineTo(trkSep/2+trkWid/2, trkLen/2-6); ctx.stroke();
+
+  // Left track
+  ctx.fillStyle='#1e1e1e'; ctx.strokeStyle='#3a3a3a'; ctx.lineWidth=0.5;
+  ctx.fillRect(-trkSep/2-trkWid, -trkLen/2, trkWid, trkLen);
+  ctx.strokeRect(-trkSep/2-trkWid, -trkLen/2, trkWid, trkLen);
+  // Right track
+  ctx.fillRect(trkSep/2, -trkLen/2, trkWid, trkLen);
+  ctx.strokeRect(trkSep/2, -trkLen/2, trkWid, trkLen);
+
+  // Body
+  ctx.fillStyle='#c4a020'; ctx.strokeStyle='#e0b828'; ctx.lineWidth=0.5;
+  ctx.fillRect(-trkSep/2+0.5, -bodyLen/2, trkSep-1, bodyLen);
+  ctx.strokeRect(-trkSep/2+0.5, -bodyLen/2, trkSep-1, bodyLen);
+
+  // Cab
+  ctx.fillStyle='#0d1e30'; ctx.strokeStyle='#1e4a6a'; ctx.lineWidth=0.5;
+  ctx.fillRect(-3+1, 2, 7, 7); ctx.strokeRect(-3+1, 2, 7, 7);
+
+  // GPS dot
+  ctx.fillStyle='#e8a020';
+  ctx.beginPath(); ctx.arc(1,5,2,0,Math.PI*2); ctx.fill();
+
+  // Forward arrow above blade
+  ctx.fillStyle='rgba(232,160,32,0.8)';
+  ctx.beginPath(); ctx.moveTo(0,-bladeOff-bladeWid-8); ctx.lineTo(-4,-bladeOff-bladeWid-3); ctx.lineTo(4,-bladeOff-bladeWid-3); ctx.closePath(); ctx.fill();
+
   ctx.restore();
-  ctx.globalAlpha = 1;
-  
-  // Draw direction arrow
-  ctx.strokeStyle = '#e8a020';
-  ctx.lineWidth = 2;
-  const arrowLen = 15;
-  const fx = mx + Math.sin(pos.hdg) * arrowLen;
-  const fz = mz + Math.cos(pos.hdg) * arrowLen;
-  ctx.beginPath();
-  ctx.moveTo(mx, mz);
-  ctx.lineTo(fx, fz);
-  ctx.stroke();
-  
-  // Arrow head
-  const asize = 4;
-  ctx.beginPath();
-  ctx.moveTo(fx - Math.sin(pos.hdg - 0.4) * asize, fz - Math.cos(pos.hdg - 0.4) * asize);
-  ctx.lineTo(fx, fz);
-  ctx.lineTo(fx - Math.sin(pos.hdg + 0.4) * asize, fz - Math.cos(pos.hdg + 0.4) * asize);
-  ctx.stroke();
-  
-  // Draw blade tips
-  ctx.fillStyle = '#42a5f5';
-  const ltipX = centerX + lx * scale, ltipZ = centerY + lz * scale;
-  const rtipX = centerX + rx * scale, rtipZ = centerY + rz * scale;
-  ctx.fillRect(ltipX - 3, ltipZ - 3, 6, 6);
-  ctx.fillRect(rtipX - 3, rtipZ - 3, 6, 6);
-  ctx.font = '9px Arial';
-  ctx.fillStyle = '#42a5f5';
-  ctx.fillText('L', ltipX - 12, ltipZ);
-  ctx.fillText('R', rtipX + 8, rtipZ);
+
+  // Blade tip markers
+  const ltipX=centerX+lx*scale, ltipZ=centerY+lz*scale;
+  const rtipX=centerX+rx*scale, rtipZ=centerY+rz*scale;
+  ctx.fillStyle='#42a5f5'; ctx.strokeStyle='#1a3a5c'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.arc(ltipX,ltipZ,4,0,Math.PI*2); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.arc(rtipX,rtipZ,4,0,Math.PI*2); ctx.fill(); ctx.stroke();
+  ctx.font='bold 9px monospace'; ctx.fillStyle='#42a5f5';
+  ctx.textAlign='right'; ctx.fillText('L',ltipX-6,ltipZ+3);
+  ctx.textAlign='left'; ctx.fillText('R',rtipX+6,rtipZ+3);
+  ctx.strokeStyle='rgba(66,165,245,0.5)'; ctx.lineWidth=1.5; ctx.setLineDash([3,3]);
+  ctx.beginPath(); ctx.moveTo(ltipX,ltipZ); ctx.lineTo(rtipX,rtipZ); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Legend
+  const lgX=8, lgY=h-62;
+  ctx.fillStyle='rgba(2,8,16,0.82)'; ctx.fillRect(lgX-2,lgY-4,88,58);
+  ctx.strokeStyle='#1a3a5c'; ctx.lineWidth=0.5; ctx.strokeRect(lgX-2,lgY-4,88,58);
+  [['rgba(239,83,80,0.65)','CUT'],['rgba(66,165,245,0.65)','FILL'],['rgba(102,187,106,0.6)','ON GRADE']].forEach(([col,lbl],i)=>{
+    ctx.fillStyle=col; ctx.fillRect(lgX,lgY+i*16,12,10);
+    ctx.fillStyle='#7aabcc'; ctx.font='8px monospace'; ctx.textAlign='left';
+    ctx.fillText(lbl,lgX+16,lgY+i*16+9);
+  });
+
+  // Scale bar
+  const sbLen=20*scale;
+  ctx.strokeStyle='#4a7aa0'; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.moveTo(8,14); ctx.lineTo(8+sbLen,14); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(8,10); ctx.lineTo(8,18); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(8+sbLen,10); ctx.lineTo(8+sbLen,18); ctx.stroke();
+  ctx.fillStyle='#4a7aa0'; ctx.font='8px monospace'; ctx.textAlign='center';
+  ctx.fillText('20m',8+sbLen/2,8);
+
+  // North arrow
+  const naX=w-20, naY=22;
+  ctx.fillStyle='#e8a020'; ctx.font='bold 9px monospace'; ctx.textAlign='center';
+  ctx.fillText('N',naX,naY-12);
+  ctx.strokeStyle='#e8a020'; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.moveTo(naX,naY-8); ctx.lineTo(naX,naY+8); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(naX-3,naY-3); ctx.lineTo(naX,naY-8); ctx.lineTo(naX+3,naY-3); ctx.stroke();
 }
 
 function drawBladeSection(leftMM, centerMM, rightMM){
   const canvas = document.getElementById('blade-section-canvas');
   if(!canvas || !canvas.parentElement) return;
   const ctx = canvas.getContext('2d');
-  
   const w = canvas.width, h = canvas.height;
+
   ctx.fillStyle = '#020810';
   ctx.fillRect(0, 0, w, h);
-  
-  const margin = 20, ctrX = w / 2, midlineY = h * 0.6;
-  const scale = (w - margin * 2) / 16;  // 16m blade width
-  
-  // Draw design surface line (dashed)
-  ctx.strokeStyle = '#4a7aa0';
-  ctx.lineWidth = 1;
-  ctx.setLineDash([4, 4]);
-  // Draw tolerance band (±tolerance around design)
-  const _tolPx = typeof guidanceTolerance!=='undefined' ? guidanceTolerance*1000/100*scale : 0;
-  ctx.fillStyle = 'rgba(102,187,106,0.12)';
-  ctx.fillRect(margin, midlineY - _tolPx, w - margin * 2, _tolPx * 2);
-  // Design surface: flat at midlineY (values are already relative to design)
-  ctx.beginPath();
-  ctx.moveTo(margin, midlineY);
-  ctx.lineTo(w - margin, midlineY);
-  ctx.stroke();
-  ctx.setLineDash([]);
-  
-  // Draw blade line (consistent sign: positive mm = above design = above midlineY)
-  ctx.strokeStyle = '#e8a020';
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.moveTo(margin, midlineY - leftMM / 100 * scale);
-  ctx.lineTo(w - margin, midlineY - rightMM / 100 * scale);
-  ctx.stroke();
-  
-  // Cut zone (above design) and fill zone (below design)
-  ctx.fillStyle = 'rgba(239,83,80,0.08)';
-  ctx.fillRect(margin, 0, w - margin * 2, midlineY);
-  ctx.fillStyle = 'rgba(66,165,245,0.08)';
-  ctx.fillRect(margin, midlineY, w - margin * 2, h - midlineY);
-  ctx.globalAlpha = 1;
-  
-  // Draw blade tips
-  ctx.fillStyle = '#42a5f5';
-  ctx.font = 'bold 11px Arial';
-  ctx.fillText('L', margin - 10, midlineY + 15);
-  ctx.fillText('R', w - margin + 6, midlineY + 15);
-  
-  // Draw measurements
-  ctx.font = '10px monospace';
-  ctx.fillStyle = '#dce8f5';
-  ctx.textAlign = 'center';
-  ctx.fillText(leftMM.toFixed(0) + 'mm', margin, midlineY - 40);
-  ctx.fillText(centerMM.toFixed(0) + 'mm', ctrX, midlineY - 40);
-  ctx.fillText(rightMM.toFixed(0) + 'mm', w - margin, midlineY - 40);
+
+  const BH = 8; // blade half-width (m)
+  const mL=44, mR=14, mT=40, mB=46;
+  const drawW=w-mL-mR, drawH=h-mT-mB;
+  const ctrX=mL+drawW/2;
+
+  // Sample ground + design across blade width (21 points)
+  const perpX=Math.cos(machinePos.hdg), perpZ=-Math.sin(machinePos.hdg);
+  const nS=21;
+  const gPts=[], dPts=[];
+  for(let i=0;i<nS;i++){
+    const t=(i/(nS-1)-0.5)*BH*2;
+    const sx=machinePos.x+perpX*t, sz=machinePos.z+perpZ*t;
+    gPts.push(gElev(sx,sz));
+    const rd=dElev(sx,sz);
+    dPts.push(rd!==null?rd+vOffset:null);
+  }
+
+  // Tight ±1.8m window around center design/ground
+  const cGround=gPts[Math.floor(nS/2)];
+  const validD=dPts.filter(d=>d!==null);
+  const cDesign=validD.length>0?(dPts[Math.floor(nS/2)]??validD[0]):cGround;
+  const windowCenter=cDesign??cGround;
+  const windowHalf=1.8;
+  const minE=windowCenter-windowHalf, maxE=windowCenter+windowHalf;
+  const totalRange=maxE-minE;
+  const elev2y=(e)=>mT+drawH-((e-minE)/totalRange)*drawH;
+  const clampY=(y)=>Math.max(mT-2,Math.min(mT+drawH+2,y));
+
+  // Grid
+  ctx.strokeStyle='#0e2030'; ctx.lineWidth=0.5;
+  for(let i=0;i<=4;i++){
+    const y=mT+(i/4)*drawH;
+    ctx.beginPath(); ctx.moveTo(mL,y); ctx.lineTo(mL+drawW,y); ctx.stroke();
+  }
+
+  // Design tolerance band
+  const tol=typeof guidanceTolerance!=='undefined'?guidanceTolerance:0.05;
+  const tolPx=(tol/totalRange)*drawH;
+  ctx.fillStyle='rgba(39,174,96,0.1)';
+  ctx.fillRect(mL,elev2y(cDesign)-tolPx,drawW,tolPx*2);
+
+  // Design surface (dashed blue)
+  if(validD.length>0){
+    ctx.strokeStyle='#4ab4e0'; ctx.lineWidth=1.5; ctx.setLineDash([5,4]);
+    ctx.beginPath();
+    let pen=false;
+    for(let i=0;i<nS;i++){
+      if(dPts[i]===null){pen=false;continue;}
+      const x=mL+(i/(nS-1))*drawW, y=clampY(elev2y(dPts[i]));
+      pen?ctx.lineTo(x,y):ctx.moveTo(x,y); pen=true;
+    }
+    ctx.stroke(); ctx.setLineDash([]);
+  }
+
+  // Terrain cross-section fill + line
+  if(showTerrain>0){
+    ctx.beginPath(); ctx.moveTo(mL,mT+drawH);
+    for(let i=0;i<nS;i++) ctx.lineTo(mL+(i/(nS-1))*drawW,clampY(elev2y(gPts[i])));
+    ctx.lineTo(mL+drawW,mT+drawH); ctx.closePath();
+    ctx.fillStyle=showTerrain===2?'rgba(110,65,25,0.08)':'rgba(110,65,25,0.16)'; ctx.fill();
+    ctx.strokeStyle=showTerrain===2?'rgba(160,82,45,0.45)':'#c87830'; ctx.lineWidth=1.5;
+    ctx.beginPath();
+    for(let i=0;i<nS;i++){
+      const x=mL+(i/(nS-1))*drawW, y=clampY(elev2y(gPts[i]));
+      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+  }
+
+  // Cut/fill shading
+  if(validD.length>0){
+    for(let i=0;i<nS-1;i++){
+      if(dPts[i]===null||dPts[i+1]===null) continue;
+      const x0=mL+(i/(nS-1))*drawW, x1=mL+((i+1)/(nS-1))*drawW;
+      const gy0=clampY(elev2y(gPts[i])), gy1=clampY(elev2y(gPts[i+1]));
+      const dy0=clampY(elev2y(dPts[i])), dy1=clampY(elev2y(dPts[i+1]));
+      ctx.beginPath(); ctx.moveTo(x0,gy0); ctx.lineTo(x1,gy1); ctx.lineTo(x1,dy1); ctx.lineTo(x0,dy0); ctx.closePath();
+      ctx.fillStyle=gPts[i]>dPts[i]?'rgba(239,83,80,0.18)':'rgba(66,165,245,0.18)'; ctx.fill();
+    }
+  }
+
+  // === DOZER FRONT VIEW (fixed position) ===
+  const bodyBaseY=mT+drawH*0.32;
+  const bodyH2=36, bodyW2=84, trackW2=20, trackH2=13, cabW2=50, cabH2=22;
+
+  // Tracks
+  ctx.fillStyle='#181818'; ctx.strokeStyle='#363636'; ctx.lineWidth=1;
+  ctx.fillRect(ctrX-bodyW2/2-trackW2,bodyBaseY-trackH2,trackW2,trackH2);
+  ctx.strokeRect(ctrX-bodyW2/2-trackW2,bodyBaseY-trackH2,trackW2,trackH2);
+  ctx.fillRect(ctrX+bodyW2/2,bodyBaseY-trackH2,trackW2,trackH2);
+  ctx.strokeRect(ctrX+bodyW2/2,bodyBaseY-trackH2,trackW2,trackH2);
+  ctx.strokeStyle='#282828'; ctx.lineWidth=0.5;
+  for(let t=0;t<5;t++){
+    for(const [bx,tw] of [[ctrX-bodyW2/2-trackW2,trackW2],[ctrX+bodyW2/2,trackW2]]){
+      const tx2=bx+t*(tw/4);
+      ctx.beginPath(); ctx.moveTo(tx2,bodyBaseY-trackH2+1); ctx.lineTo(tx2,bodyBaseY-1); ctx.stroke();
+    }
+  }
+
+  // Body
+  const bodyTopY=bodyBaseY-trackH2-bodyH2;
+  ctx.fillStyle='#b89820'; ctx.strokeStyle='#d4b030'; ctx.lineWidth=1;
+  ctx.fillRect(ctrX-bodyW2/2,bodyTopY,bodyW2,bodyH2);
+  ctx.strokeRect(ctrX-bodyW2/2,bodyTopY,bodyW2,bodyH2);
+  ctx.strokeStyle='rgba(0,0,0,0.25)'; ctx.lineWidth=0.5;
+  for(let g=0;g<5;g++){
+    const gx=ctrX-bodyW2/2+5+g*5;
+    ctx.beginPath(); ctx.moveTo(gx,bodyTopY+4); ctx.lineTo(gx,bodyBaseY-trackH2-3); ctx.stroke();
+  }
+
+  // Cab
+  const cabTopY=bodyTopY-cabH2;
+  ctx.fillStyle='#0d1e30'; ctx.strokeStyle='#1e4a6a'; ctx.lineWidth=1;
+  ctx.fillRect(ctrX-cabW2/2+8,cabTopY,cabW2,cabH2);
+  ctx.strokeRect(ctrX-cabW2/2+8,cabTopY,cabW2,cabH2);
+  ctx.fillStyle='rgba(80,170,220,0.28)';
+  ctx.fillRect(ctrX-cabW2/2+10,cabTopY+2,cabW2-4,cabH2-4);
+
+  // === BLADE — straight rigid bar ===
+  const tolMM=tol*1000;
+  const lDesE=validD.length>0?(dPts[0]??cDesign):cGround;
+  const rDesE=validD.length>0?(dPts[nS-1]??cDesign):cGround;
+  const lBladeE=lDesE+leftMM/1000;
+  const rBladeE=rDesE+rightMM/1000;
+
+  const bladeLeftX=mL+4, bladeRightX=mL+drawW-4;
+  const bladeLeftY2=clampY(elev2y(lBladeE));
+  const bladeRightY2=clampY(elev2y(rBladeE));
+  const bladeColor=Math.abs(centerMM)<=tolMM?'#27ae60':centerMM>0?'#e05040':'#4a90e2';
+
+  // Push arms
+  ctx.strokeStyle='#506070'; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.moveTo(ctrX-bodyW2/2+6,bodyBaseY-trackH2-bodyH2*0.4); ctx.lineTo(bladeLeftX+8,bladeLeftY2-4); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(ctrX+bodyW2/2-6,bodyBaseY-trackH2-bodyH2*0.4); ctx.lineTo(bladeRightX-8,bladeRightY2-4); ctx.stroke();
+
+  // Blade bar
+  ctx.strokeStyle=bladeColor; ctx.lineWidth=9; ctx.lineCap='round';
+  ctx.beginPath(); ctx.moveTo(bladeLeftX,bladeLeftY2); ctx.lineTo(bladeRightX,bladeRightY2); ctx.stroke();
+  ctx.lineCap='butt';
+  ctx.fillStyle=bladeColor;
+  ctx.beginPath(); ctx.arc(bladeLeftX,bladeLeftY2,6,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(bladeRightX,bladeRightY2,6,0,Math.PI*2); ctx.fill();
+
+  // Callouts
+  const callColor=(mm)=>Math.abs(mm)<=tolMM?'#27ae60':mm>0?'#e05040':'#4a90e2';
+  const callText=(mm)=>Math.abs(mm)<10?'✓ ON GRADE':((mm>0?'▲':'▼')+Math.abs(mm).toFixed(0)+'mm '+(mm>0?'CUT':'FILL'));
+  ctx.font='bold 10px monospace';
+  ctx.fillStyle=callColor(leftMM); ctx.textAlign='left'; ctx.fillText(callText(leftMM),mL+2,mT-4);
+  ctx.fillStyle=callColor(centerMM); ctx.textAlign='center'; ctx.fillText(callText(centerMM),ctrX,mT-4);
+  ctx.fillStyle=callColor(rightMM); ctx.textAlign='right'; ctx.fillText(callText(rightMM),mL+drawW-2,mT-4);
+
+  // Labels
+  ctx.fillStyle='#4a7aa0'; ctx.font='8px monospace'; ctx.textAlign='center';
+  ctx.fillText('LEFT',mL+drawW*0.08,mT+drawH+14);
+  ctx.fillText('CENTER',ctrX,mT+drawH+14);
+  ctx.fillText('RIGHT',mL+drawW*0.92,mT+drawH+14);
+
+  // Y-axis
+  ctx.fillStyle='#3a6080'; ctx.font='8px monospace'; ctx.textAlign='right';
+  for(let i=0;i<=4;i++){
+    const e=minE+(totalRange*i/4);
+    const y=elev2y(e);
+    if(y>=mT&&y<=mT+drawH) ctx.fillText(e.toFixed(1),mL-3,y+3);
+  }
+
+  // Topo-off label
+  if(showTerrain===0){
+    ctx.fillStyle='rgba(204,51,51,0.75)'; ctx.font='9px monospace'; ctx.textAlign='right';
+    ctx.fillText('TOPO OFF',mL+drawW-2,mT+10);
+  }
+
+  // Cross-slope
+  const crossSlope=(gPts[nS-1]-gPts[0])/(BH*2)*100;
+  const slopeCol=Math.abs(crossSlope)<3?'#27ae60':'#e8a020';
+  ctx.fillStyle=slopeCol; ctx.font='bold 9px monospace'; ctx.textAlign='right';
+  ctx.fillText('XSLOPE '+(crossSlope>=0?'+':'')+crossSlope.toFixed(1)+'%',mL+drawW-2,mT+24);
+
+  // Distance axis
+  ctx.strokeStyle='#1e4060'; ctx.lineWidth=0.5;
+  ctx.fillStyle='#3a6080'; ctx.font='8px monospace'; ctx.textAlign='center';
+  for(const m of [-8,-4,0,4,8]){
+    const mx2=ctrX+(m/BH)*(drawW/2);
+    ctx.beginPath(); ctx.moveTo(mx2,mT+drawH+2); ctx.lineTo(mx2,mT+drawH+6); ctx.stroke();
+    ctx.fillText(m+'m',mx2,mT+drawH+30);
+  }
+  ctx.fillStyle='#4a7aa0'; ctx.font='8px monospace'; ctx.textAlign='center';
+  ctx.fillText('BLADE CROSS-SECTION — FRONT VIEW',w/2,h-4);
 }
 
 function drawSideProfileGuidance(hdg){
   const canvas = document.getElementById('side-profile-canvas');
   if(!canvas || !canvas.parentElement) return;
   const ctx = canvas.getContext('2d');
-  
   const w = canvas.width, h = canvas.height;
+
   ctx.fillStyle = '#020810';
   ctx.fillRect(0, 0, w, h);
-  
-  // Sample elevation along travel direction (20m ahead and behind)
-  const margin = 30;
-  const samples = 40;
-  const sampleDist = 40 / samples;  // 40m total
-  
-  const elevs = [];
-  const deigns = [];
-  for(let i = 0; i < samples; i++){
-    const dist = (i - samples/2) * sampleDist;
-    const tx = machinePos.x + Math.sin(hdg) * dist;
-    const tz = machinePos.z + Math.cos(hdg) * dist;
-    elevs.push(gElev(tx, tz));
-    const _rd = dElev(tx, tz);
-    deigns.push(_rd !== null ? _rd + vOffset : null);
+
+  const marginL=38, marginR=20, marginT=28, marginB=44;
+  const drawW=w-marginL-marginR, drawH=h-marginT-marginB;
+  const samples=60, totalDist=50;
+  const elevs=[], desns=[], dists=[];
+  for(let i=0;i<samples;i++){
+    const dist=(i/(samples-1)-0.5)*totalDist;
+    dists.push(dist);
+    const tx=machinePos.x+Math.sin(hdg)*dist, tz=machinePos.z+Math.cos(hdg)*dist;
+    elevs.push(gElev(tx,tz));
+    const rd=dElev(tx,tz);
+    desns.push(rd!==null?rd+vOffset:null);
   }
-  
-  const _desValid = deigns.filter(d => d !== null);
-  const minElev = Math.min(...elevs, ...(_desValid.length ? _desValid : elevs));
-  const maxElev = Math.max(...elevs, ...(_desValid.length ? _desValid : elevs));
-  const range = maxElev - minElev || 1;
-  const scale = (h - margin * 2) / range;
-  
-  // Draw ground surface (terrain) — only when showTerrain > 0
-  if(showTerrain > 0){
-    ctx.strokeStyle = showTerrain === 2 ? 'rgba(160,82,45,0.4)' : '#a0522d';
-    ctx.lineWidth = 2;
+
+  const validD=desns.filter(d=>d!==null);
+  const allVals=[...elevs,...(validD.length?validD:[])];
+  const minElev=Math.min(...allVals), maxElev=Math.max(...allVals);
+  const range=(maxElev-minElev)||1;
+  const padded=range*1.25;
+  const elev2y=(e)=>marginT+drawH-(e-minElev+range*0.1)/padded*drawH;
+  const dist2x=(i)=>marginL+(i/(samples-1))*drawW;
+
+  // Grid
+  ctx.strokeStyle='#0d1e30'; ctx.lineWidth=0.5;
+  for(let i=0;i<=4;i++){
+    const y=marginT+(i/4)*drawH;
+    ctx.beginPath(); ctx.moveTo(marginL,y); ctx.lineTo(marginL+drawW,y); ctx.stroke();
+  }
+  // Distance ticks
+  ctx.strokeStyle='#1a3a5c'; ctx.lineWidth=0.5;
+  for(let d=-25;d<=25;d+=10){
+    const x=marginL+((d+25)/50)*drawW;
+    ctx.beginPath(); ctx.moveTo(x,marginT+drawH); ctx.lineTo(x,marginT+drawH+6); ctx.stroke();
+    ctx.fillStyle='#3a6080'; ctx.font='9px monospace'; ctx.textAlign='center';
+    ctx.fillText((d>=0?'+':'')+d+'m',x,marginT+drawH+16);
+  }
+
+  // Cut/fill shading
+  if(validD.length>0){
+    for(let i=0;i<samples-1;i++){
+      if(desns[i]===null||desns[i+1]===null) continue;
+      const x0=dist2x(i), x1=dist2x(i+1);
+      const gy0=elev2y(elevs[i]), gy1=elev2y(elevs[i+1]);
+      const dy0=elev2y(desns[i]), dy1=elev2y(desns[i+1]);
+      const isCut=(elevs[i]+elevs[i+1])/2>(desns[i]+desns[i+1])/2;
+      ctx.beginPath(); ctx.moveTo(x0,gy0); ctx.lineTo(x1,gy1); ctx.lineTo(x1,dy1); ctx.lineTo(x0,dy0); ctx.closePath();
+      ctx.fillStyle=isCut?'rgba(239,83,80,0.18)':'rgba(66,165,245,0.18)'; ctx.fill();
+    }
+  }
+
+  // Terrain fill + line
+  if(showTerrain>0){
+    ctx.beginPath(); ctx.moveTo(marginL,marginT+drawH);
+    for(let i=0;i<samples;i++) ctx.lineTo(dist2x(i),elev2y(elevs[i]));
+    ctx.lineTo(marginL+drawW,marginT+drawH); ctx.closePath();
+    ctx.fillStyle=showTerrain===2?'rgba(110,65,25,0.07)':'rgba(110,65,25,0.12)'; ctx.fill();
+    ctx.strokeStyle=showTerrain===2?'rgba(160,82,45,0.45)':'#c87830'; ctx.lineWidth=2;
     ctx.beginPath();
-    for(let i = 0; i < samples; i++){
-      const px = margin + (i / (samples - 1)) * (w - margin * 2);
-      const py = h - margin - (elevs[i] - minElev) * scale;
-      if(i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    for(let i=0;i<samples;i++){
+      const x=dist2x(i), y=elev2y(elevs[i]);
+      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
     }
     ctx.stroke();
   } else {
-    // Terrain OFF — label so operator knows ground line is hidden
-    ctx.font = '9px monospace';
-    ctx.fillStyle = 'rgba(204,51,51,0.7)';
-    ctx.textAlign = 'right';
-    ctx.fillText('TOPO OFF', w - margin + 20, 20);
-    ctx.textAlign = 'left';
+    ctx.font='9px monospace'; ctx.fillStyle='rgba(204,51,51,0.75)'; ctx.textAlign='right';
+    ctx.fillText('TOPO OFF',w-marginR,marginT+12);
   }
 
-  // Draw design surface
-  ctx.strokeStyle = '#4a7aa0';
-  ctx.lineWidth = 1;
-  ctx.setLineDash([4, 4]);
-  ctx.beginPath();
-  let _penDown = false;
-  for(let i = 0; i < samples; i++){
-    const px = margin + (i / (samples - 1)) * (w - margin * 2);
-    if(deigns[i] === null){ _penDown = false; continue; }
-    const py = h - margin - (deigns[i] - minElev) * scale;
-    if(!_penDown){ ctx.moveTo(px, py); _penDown = true; } else ctx.lineTo(px, py);
+  // Design surface
+  if(validD.length>0){
+    ctx.strokeStyle='#4ab4e0'; ctx.lineWidth=1.5; ctx.setLineDash([5,4]);
+    ctx.beginPath();
+    let pen=false;
+    for(let i=0;i<samples;i++){
+      if(desns[i]===null){pen=false;continue;}
+      const x=dist2x(i), y=elev2y(desns[i]);
+      pen?ctx.lineTo(x,y):ctx.moveTo(x,y); pen=true;
+    }
+    ctx.stroke(); ctx.setLineDash([]);
   }
-  ctx.stroke();
-  ctx.setLineDash([]);
-  
-  // Draw machine position (at center)
-  const machineX = margin + (w - margin * 2) / 2;
-  const machineY = h - margin - (gElev(machinePos.x, machinePos.z) - minElev) * scale;
-  ctx.fillStyle = '#e8a020';
-  ctx.beginPath();
-  ctx.arc(machineX, machineY, 6, 0, Math.PI * 2);
-  ctx.fill();
-  
-  // Draw grade percentage
-  const fwd = gElev(machinePos.x + Math.sin(hdg) * 2, machinePos.z + Math.cos(hdg) * 2);
-  const curr = gElev(machinePos.x, machinePos.z);
-  const grade = ((fwd - curr) / 2) * 100;
-  ctx.font = '11px monospace';
-  ctx.fillStyle = '#dce8f5';
-  ctx.textAlign = 'left';
-  ctx.fillText('Grade: ' + grade.toFixed(1) + '%', margin + 5, 20);
+
+  // === DOZER SILHOUETTE ===
+  const groundY=elev2y(gElev(machinePos.x,machinePos.z));
+  const machineX=marginL+drawW/2;
+  const trkL=32, trkH=7;
+  ctx.fillStyle='#1e1e1e'; ctx.strokeStyle='#444'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.roundRect(machineX-trkL/2,groundY-trkH,trkL,trkH,3); ctx.fill(); ctx.stroke();
+  ctx.strokeStyle='#333'; ctx.lineWidth=0.5;
+  for(let t=-3;t<=3;t++){
+    const tx2=machineX+t*(trkL/7);
+    ctx.beginPath(); ctx.moveTo(tx2,groundY-trkH+1); ctx.lineTo(tx2,groundY-1); ctx.stroke();
+  }
+  ctx.fillStyle='#2a2a2a'; ctx.strokeStyle='#555'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.arc(machineX-trkL/2+4,groundY-trkH/2,4,0,Math.PI*2); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.arc(machineX+trkL/2-4,groundY-trkH/2,4,0,Math.PI*2); ctx.fill(); ctx.stroke();
+
+  const bodyH3=14, bodyW3=26, bodyTop=groundY-trkH-bodyH3;
+  ctx.fillStyle='#c4a020'; ctx.strokeStyle='#e0b828'; ctx.lineWidth=1;
+  ctx.fillRect(machineX-bodyW3/2,bodyTop,bodyW3,bodyH3);
+  ctx.strokeRect(machineX-bodyW3/2,bodyTop,bodyW3,bodyH3);
+
+  const cabW3=12, cabH3=11, cabLeft=machineX+2, cabTop=bodyTop-cabH3;
+  ctx.fillStyle='#0e2030'; ctx.strokeStyle='#2a5070'; ctx.lineWidth=1;
+  ctx.fillRect(cabLeft,cabTop,cabW3,cabH3);
+  ctx.strokeRect(cabLeft,cabTop,cabW3,cabH3);
+  ctx.fillStyle='rgba(80,160,210,0.35)';
+  ctx.fillRect(cabLeft+1.5,cabTop+1.5,cabW3-3,cabH3-3);
+
+  ctx.fillStyle='#404040';
+  ctx.fillRect(machineX-bodyW3/2+5,bodyTop-10,3,10);
+
+  ctx.strokeStyle='#607080'; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.moveTo(machineX-bodyW3/2+4,bodyTop+5); ctx.lineTo(machineX-trkL/2-8,groundY-trkH-6); ctx.stroke();
+
+  const bladeH4=16, bladeX2=machineX-trkL/2-10, bladeTop3=groundY-trkH-bladeH4+4;
+  ctx.fillStyle='#7a8a9a'; ctx.strokeStyle='#99aabb'; ctx.lineWidth=1.5;
+  ctx.fillRect(bladeX2,bladeTop3,5,bladeH4);
+  ctx.strokeRect(bladeX2,bladeTop3,5,bladeH4);
+
+  ctx.fillStyle='#f0c030';
+  ctx.beginPath(); ctx.arc(machineX,groundY-trkH-bodyH3/2,4,0,Math.PI*2); ctx.fill();
+
+  // Elevation axis
+  ctx.fillStyle='#3a6080'; ctx.font='9px monospace'; ctx.textAlign='right';
+  for(let i=0;i<=4;i++){
+    const e=minElev+(range*i/4);
+    const y=elev2y(e);
+    ctx.fillText(e.toFixed(1)+'m',marginL-3,y+3);
+    ctx.strokeStyle='#0d1e30'; ctx.lineWidth=0.5;
+    ctx.beginPath(); ctx.moveTo(marginL-2,y); ctx.lineTo(marginL,y); ctx.stroke();
+  }
+
+  // Grade
+  const fwd=gElev(machinePos.x+Math.sin(hdg)*3,machinePos.z+Math.cos(hdg)*3);
+  const curr=gElev(machinePos.x,machinePos.z);
+  const grade=((fwd-curr)/3)*100;
+  const gradeCol=Math.abs(grade)<5?'#27ae60':Math.abs(grade)<15?'#e8a020':'#e05040';
+  ctx.fillStyle=gradeCol; ctx.font='bold 10px monospace'; ctx.textAlign='left';
+  ctx.fillText('GRADE '+(grade>=0?'+':'')+grade.toFixed(1)+'%',marginL+4,marginT+13);
+
+  ctx.fillStyle='#4a7aa0'; ctx.font='8px monospace'; ctx.textAlign='center';
+  ctx.fillText('◄ 25m  SIDE PROFILE  25m ►',w/2,h-4);
 }
 
 // ═══════════════════════════════════════════════════════════════════
