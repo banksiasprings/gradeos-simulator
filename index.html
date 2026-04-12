@@ -2911,7 +2911,7 @@ function drawXSection(wx,wz,hdg){
     for(let i=0;i<SAMPLES;i++){
       const dp=desPts[i],gp=gndPts[i];if(dp.e===null)continue;
       const diff=dp.e-gp.e;if(Math.abs(diff)<0.01)continue;
-      ctx.fillStyle=diff>0?'rgba(30,100,200,.28)':'rgba(200,80,20,.28)';
+      ctx.fillStyle=diff>0?'rgba(30,100,200,.28)':'rgba(220,50,50,.28)';
       const x=tx(gp.t),y1=Math.min(ty(gp.e),ty(dp.e)),h=Math.abs(ty(gp.e)-ty(dp.e));
       ctx.fillRect(x,y1,scX,Math.max(h,1));
     }
@@ -2941,7 +2941,7 @@ function drawXSection(wx,wz,hdg){
   const cDes=dElev(wx,wz);
   if(cDes!==null){
     const diff=(cDes+vOffset-cGnd)*1000;
-    const col=Math.abs(diff)<25?'#66bb6a':diff>0?'#42a5f5':'#ff7043';
+    const col=Math.abs(diff)<25?'#66bb6a':diff>0?'#42a5f5':'#ef5350';
     ctx.font='bold 11px monospace';ctx.fillStyle=col;ctx.textAlign='center';
     ctx.fillText(`${diff>25?'▲':diff<-25?'▼':'✓'}${Math.abs(Math.round(diff))}mm`,tx(0),13);
     ctx.textAlign='left';
