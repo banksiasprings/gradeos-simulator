@@ -7260,6 +7260,7 @@ function drawPlanViewGuidance(pos, lx, lz, rx, rz){
   const scale = Math.min(w, h) / 160;
   const centerX = w / 2, centerY = h / 2;
 
+  try {
   ctx.fillStyle = '#020810';
   ctx.fillRect(0, 0, w, h);
 
@@ -7442,6 +7443,11 @@ function drawPlanViewGuidance(pos, lx, lz, rx, rz){
   const crossGrade=((rSideE-gElev(pos.x,pos.z))/BH_grade)*100;
   ctx.fillStyle='#7aabcc'; ctx.font='9px monospace'; ctx.textAlign='left';
   ctx.fillText(`LONG: ${longGrade>=0?'+':''}${longGrade.toFixed(1)}%  CROSS: ${crossGrade>=0?'+':''}${crossGrade.toFixed(1)}%`,lgX,lgY-12);
+  } catch(e) {
+    // Fallback rendering if error occurs
+    ctx.fillStyle='#7aabcc'; ctx.font='9px monospace'; ctx.textAlign='center';
+    ctx.fillText('LOADING...', w/2, h/2);
+  }
 }
 
 function drawBladeSection(leftMM, centerMM, rightMM){
@@ -7450,6 +7456,7 @@ function drawBladeSection(leftMM, centerMM, rightMM){
   const ctx = canvas.getContext('2d');
   const w = canvas.width, h = canvas.height;
 
+  try {
   ctx.fillStyle = '#020810';
   ctx.fillRect(0, 0, w, h);
 
@@ -7639,6 +7646,11 @@ function drawBladeSection(leftMM, centerMM, rightMM){
   }
   ctx.fillStyle='#4a7aa0'; ctx.font='8px monospace'; ctx.textAlign='center';
   ctx.fillText('FRONT VIEW — BLADE CROSS-SECTION',w/2,h-4);
+  } catch(e) {
+    // Fallback rendering if image load fails or other error
+    ctx.fillStyle='#7aabcc'; ctx.font='9px monospace'; ctx.textAlign='center';
+    ctx.fillText('LOADING...', w/2, h/2);
+  }
 }
 
 function drawSideProfileGuidance(hdg){
@@ -7647,6 +7659,7 @@ function drawSideProfileGuidance(hdg){
   const ctx = canvas.getContext('2d');
   const w = canvas.width, h = canvas.height;
 
+  try {
   ctx.fillStyle = '#020810';
   ctx.fillRect(0, 0, w, h);
 
@@ -7800,6 +7813,11 @@ function drawSideProfileGuidance(hdg){
   const designName = getActiveDesignName();
   const profileTitle = designName ? `◄ 25m  ${designName}  25m ►` : '◄ 25m  SIDE PROFILE  25m ►';
   ctx.fillText(profileTitle,w/2,h-4);
+  } catch(e) {
+    // Fallback rendering if error occurs
+    ctx.fillStyle='#7aabcc'; ctx.font='9px monospace'; ctx.textAlign='center';
+    ctx.fillText('LOADING...', w/2, h/2);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════
