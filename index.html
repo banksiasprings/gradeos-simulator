@@ -8884,7 +8884,7 @@ const ntripClient={
     const pass=(document.getElementById('ntrip-pass')?.value.trim()||'');
     this.host=host;this.port=port;this.mount=mount;this.user=user;this.pass=pass;
     try{await this._connectFetch(host,port,mount,user,pass);return;}
-    catch(e){console.log('NTRIP direct fetch failed, trying WS proxy:',e.message);}
+    catch(e){console.warn('NTRIP direct fetch failed, trying WS proxy:',e.message);}
     try{await this._connectWS(host,port,mount,user,pass);}
     catch(e){this.connecting=false;this.statusText='Error: '+e.message;this.statusColor='#e53935';this.renderStatus();}
   },

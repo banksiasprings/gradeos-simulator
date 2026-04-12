@@ -2,5 +2,5 @@
 cd /Users/openclaw/Documents/gradeos-simulator
 rm -f .git/HEAD.lock .git/index.lock
 git add -A
-git commit -m "feat: 10m scale bar on side profile guidance canvas (SW v74)"
+git commit -m "fix: convert stray console.log to console.warn in NTRIP fallback (SW v75)"
 git push origin main
