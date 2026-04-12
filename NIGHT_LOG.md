@@ -59,4 +59,28 @@
 - **camFollow and plan mode**: The camFollow flag currently only updates the orb centre in '3d' mode. In 'plan' mode, the planCam could also track the machine (update planPanX/planPanZ). Round C could extend this.
 - **LED pulse on initial load**: When the app first loads, _ledPrevL/R are null, so the pulse won't trigger for the first reading. This is intentional (no false pulse on startup).
 - **Trail colour**: Currently amber (0.9t, 0.55t, 0.05t). Round C could use the track's on-grade green/orange convention to match the existing GPS track colour scheme.
-- **SW version range this round**: v83 → v91 (8 SW bumps, 8 commits).
+- **SW version range this round**: v83 → v91 (8 SW bumps, 8 commits)
+## Round C -- Info Panels & Volume Data -- 2026-04-13
+
+### Completed
+- **v92**: T5 -- vOffset display: when vOffset exactly 0, updateVOffDisplay now shows ON GRADE in green (#66bb6a) instead of +0 mm in amber. Clearer operator feedback. -- verified (source grep)
+- **v93**: T7+T2 -- (a) Cut/fill balance labels: Import -> Borrow, Waste -> Spoil (industry standard earthwork terms). (b) Adaptive volume precision via fmtVol() helper: <10 m3 shows 2 decimals, 10-100 m3 shows 1 decimal, >100 m3 rounds to whole number. Applied to cut, fill, and net labels. -- verified (source grep)
+- **v94**: T1 -- Machine trail colour changed from static amber to dynamic grade-state. _updateTrail now accepts 4th arg cmm; each trail point stores cmm. Colour: green (|cmm|<25mm on-grade), red (cmm>0 CUT), blue (cmm<0 FILL), grey (no design). Both call sites updated to pass cMM2 and cMM respectively. -- verified (source grep: all 3 substitutions OK)
+- **v95**: T4 -- Blade diagram canvas tolerance band added in updateBladePanelDiagram. Draws semi-transparent green rect (rgba 39,174,96,0.12) spanning +-guidanceTolerance mm from ground line, with dashed green border lines and a small +-Xmm label. Falls back to +-50mm if guidanceTolerance undefined. -- verified (source grep)
+- **v96**: T6 -- Topo LED label now shows terrain elevation range when terrain is ACTIVE or REF. updateTopoLed computes min/max from ground array and appends e.g. ACTIVE . 95.2-103.8m to state label. Updates both dp-topo-label and dp-topo-tools-label. -- verified (source grep)
+- **v97**: T8 -- Blade panel DES/ACT readout added. New bv-des-act div inserted in HTML below Grade/XSlope/Elev row. JS in updateBladePanel derives design elevation as elev + cmm/1000 (since cMM = (cDes+vOffset-mel)*1000) and renders DES:X.XXXm / ACT:X.XXXm. Text is green when on-grade, grey otherwise. -- verified (source grep)
+
+### Verified No-Change
+- **T3**: Productivity calc already correct -- sessionCutVol += cut * CS * CS at both cut-sim paths (lines 3293, 3334) correctly applies cell area in m2. Rate = sessionCutVol/hrs is sound. No code change needed.
+
+### Deferred
+- T6 sub-element: Min/max appended to state label text (e.g. ACTIVE . 95.2-103.8m) to avoid HTML surgery. Round D could add a dedicated dp-topo-elev sub-span for cleaner styling.
+- Trail geometry reuse: _updateTrail recreates BufferGeometry every 300ms (flagged Round B). Round D could reuse with needsUpdate=true.
+- camFollow plan mode: Flag only applies to 3D cam; could extend to planPanX/Z tracking (flagged Round B).
+
+### Notes for Round D
+- **Patch files in repo**: patch_t1.py through patch_t8.py left in repo root -- Round D should delete or gitignore these.
+- **SW cache lag on verify**: Chrome JS eval shows old cached content. All verifications done via source grep. Use private window or cache-busting query for live checks.
+- **bv-des-act visibility**: DES/ACT readout only meaningful in split-screen with design loaded. Round D could add display:none when cmm is null and fade in gracefully.
+- **Trail colour convention**: In blade panel, mm>0 labels as CUT. Trail uses same convention: cmm>0 = red (CUT), cmm<0 = blue (FILL). Matches blade panel label convention.
+- **SW version range this round**: v91 -> v97 (6 SW bumps, 6 commits).
