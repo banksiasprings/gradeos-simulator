@@ -3078,6 +3078,7 @@ function toggleMachineType(){
   }
 }
 
+let _smoothedSpd=0;
 function updateMachine(dt){
   if(!machineOn)return;
   // ── Tablet Demo Mode: position/heading already set by sensor callbacks ──
@@ -3160,7 +3161,7 @@ function updateMachine(dt){
   const spdEl=document.getElementById('st-speed');
   if(spdEl){
     spdEl.style.display='';
-    document.getElementById('st-spd-val').textContent=spdKmh.toFixed(1);
+    _smoothedSpd=_smoothedSpd*0.85+spdKmh*0.15;document.getElementById('st-spd-val').textContent=_smoothedSpd.toFixed(1);
     const hdgDeg=Math.round((machinePos.hdg*180/Math.PI%360+360)%360);
     const hdgEl=document.getElementById('st-hdg');
     if(hdgEl)hdgEl.textContent=String(hdgDeg).padStart(3,'0');
