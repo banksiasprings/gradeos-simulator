@@ -7405,6 +7405,14 @@ function drawPlanViewGuidance(pos, lx, lz, rx, rz){
 
   ctx.restore();
 
+  // GPS accuracy ring around machine position
+  const _gpsR=rtkFixType==='RTK FIXED'?0.02:rtkFixType==='RTK FLOAT'?0.30:0.38;
+  const _gpsRpx=_gpsR*scale;
+  const _gpsCol=rtkFixType==='RTK FIXED'?'rgba(39,174,96,0.55)':rtkFixType==='RTK FLOAT'?'rgba(232,160,32,0.55)':'rgba(239,83,80,0.55)';
+  ctx.strokeStyle=_gpsCol; ctx.lineWidth=1.5; ctx.setLineDash([3,3]);
+  ctx.beginPath(); ctx.arc(centerX+pos.x*scale, centerY+pos.z*scale, Math.max(_gpsRpx,3), 0, Math.PI*2); ctx.stroke();
+  ctx.setLineDash([]);
+
   // Blade tip markers
   const ltipX=centerX+lx*scale, ltipZ=centerY+lz*scale;
   const rtipX=centerX+rx*scale, rtipZ=centerY+rz*scale;
