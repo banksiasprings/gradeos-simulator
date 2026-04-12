@@ -7150,8 +7150,8 @@ function updateGuidanceScreens(){
     refCmm = _cf(cGround, cDes) * 1000;
   }
   
-  updateHorizontalAlignmentBar(refCmm);
-  updateVerticalCutFillBar(refCut);
+  updateHorizontalAlignmentBar(cDes !== null ? refCmm : null);
+  updateVerticalCutFillBar(cDes !== null ? refCut : null);
   drawPlanViewGuidance(machinePos, lvx, lvz, rvx, rvz);
   drawBladeSection(refLmm, refCmm, refRmm);
   drawSideProfileGuidance(machinePos.hdg);
@@ -7172,6 +7172,14 @@ function updateHorizontalAlignmentBar(centerMM){
     }
   }
   
+  // NULL STATE — no design active
+  if(centerMM === null){
+    container.querySelectorAll('.h-align-segment').forEach(s => { s.className = 'h-align-segment'; });
+    centerLabel.textContent = '— No design —';
+    centerLabel.style.color = '#4a7aa0';
+    return;
+  }
+
   // Update each segment's color based on distance from center
   const segments = container.querySelectorAll('.h-align-segment');
   segments.forEach(seg => {
@@ -7235,6 +7243,14 @@ function updateVerticalCutFillBar(cutFillMeters){
     }
   }
   
+  // NULL STATE — no design active
+  if(cutFillMeters === null){
+    container.querySelectorAll('.v-cut-segment').forEach(s => { s.className = 'v-cut-segment'; });
+    numeric.textContent = '— No design —';
+    numeric.style.color = '#4a7aa0';
+    return;
+  }
+
   // Update segments
   const segments = container.querySelectorAll('.v-cut-segment');
   segments.forEach(seg => {
