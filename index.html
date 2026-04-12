@@ -1555,6 +1555,7 @@ body.field-mode #field-rtk{display:flex}
 <div id="stbar">
   <div>Tool: <span id="st-tool">Navigate</span></div>
   <div>Terrain: <span id="st-terrain">Hilly Farm</span></div>
+  <div>Active: <span id="st-active-design" style="color:#e8a020">—</span></div>
   <div>Design: <span id="st-dpts">0</span> pts</div>
   <div>Machine: <span id="st-mach">ON — WASD/Arrows</span></div>
   <div>Cut: <span id="st-cut" style="color:#42a5f5">0.0m³</span></div>
@@ -5457,6 +5458,7 @@ async function loadDesignLibrary(){
     // Rebuild ref meshes for reference entries
     designLibrary.filter(e=>e.state==='reference').forEach(e=>buildRefMeshes(e));
     renderDesignPanel();
+    updateActiveDesignDisplay();
   }catch(e){console.warn('GradeOS design library load failed:',e);}
 }
 
@@ -5545,6 +5547,7 @@ function setDesignState(id,newState){
 
   saveDesignLibrary();
   renderDesignPanel();
+  updateActiveDesignDisplay();
 }
 
 // ── Panel UI ─────────────────────────────────────────────────────
@@ -6939,6 +6942,19 @@ function parseRTCM3Stream(buf){
 var guidanceScreenActive = false;
 var guidanceRefPoint = 'center';  // 'center', 'left', 'right'
 var guidanceTolerance = 0.05;  // ±50mm default
+var showGuidanceCutFill = false;  // cut/fill map in plan view guidance (off by default)
+
+function toggleGuidanceCutFill(){
+  showGuidanceCutFill = !showGuidanceCutFill;
+  const led = document.getElementById('gcf-led');
+  if(led){
+    led.style.background = showGuidanceCutFill ? '#22cc44' : '#cc3333';
+    led.style.boxShadow = '0 0 5px ' + (showGuidanceCutFill ? 'rgba(34,204,68,0.6)' : 'rgba(204,51,51,0.6)');
+  }
+  const lbl = document.getElementById('gcf-label');
+  if(lbl){ lbl.textContent = showGuidanceCutFill ? 'ACTIVE' : 'OFF'; lbl.style.color = showGuidanceCutFill ? '#22cc44' : '#cc3333'; }
+  if(guidanceScreenActive) updateGuidanceScreens();
+}
 
 function toggleGuidanceScreen(){
   guidanceScreenActive = !guidanceScreenActive;
@@ -6958,6 +6974,22 @@ function setGuidanceRefPoint(point){
   document.querySelectorAll('#guidance-controls .ref-point').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.point === point);
   });
+}
+
+function getActiveDesignName(){
+  const a = designLibrary.find(e => e.state === 'active');
+  return a ? a.name : null;
+}
+
+function updateActiveDesignDisplay(){
+  const name = getActiveDesignName();
+  const label = name ? name : '—';
+  // Main status bar
+  const stEl = document.getElementById('st-active-design');
+  if(stEl) stEl.textContent = label;
+  // Guidance plan title
+  const gEl = document.getElementById('guidance-active-design');
+  if(gEl) gEl.textContent = name ? name : 'No active design';
 }
 
 function adjGuidanceTolerance(delta){
@@ -7173,7 +7205,8 @@ function drawPlanViewGuidance(pos, lx, lz, rx, rz){
 
   // Cut/fill map or terrain height map
   const _cellPx = CS * scale + 0.5;
-  if(designCount > 0){
+  if(designCount > 0 && showGuidanceCutFill){
+    // Draw cut/fill colour map
     for(let _gz = 0; _gz < N; _gz++){
       for(let _gx = 0; _gx < N; _gx++){
         const _idx = gi(_gx, _gz);
@@ -7188,6 +7221,7 @@ function drawPlanViewGuidance(pos, lx, lz, rx, rz){
       }
     }
   } else {
+    // No cut/fill map — show terrain height tint when terrain is on
     if(showTerrain > 0){
       let _gMin=Infinity,_gMax=-Infinity;
       for(let i=0;i<N*N;i++){if(ground[i]<_gMin)_gMin=ground[i];if(ground[i]>_gMax)_gMax=ground[i];}
@@ -7199,8 +7233,14 @@ function drawPlanViewGuidance(pos, lx, lz, rx, rz){
         ctx.fillRect(centerX+(_gx*CS-80)*scale, centerY+(_gz*CS-80)*scale, _cellPx, _cellPx);
       }
     }
-    ctx.fillStyle='rgba(232,160,32,0.85)'; ctx.font='bold 11px Arial'; ctx.textAlign='center';
-    ctx.fillText('⚠ No active design — set one in Design tab', w/2, h-10);
+    if(designCount > 0 && !showGuidanceCutFill){
+      // Design loaded but map toggled off
+      ctx.fillStyle='rgba(204,51,51,0.75)'; ctx.font='bold 9px Arial'; ctx.textAlign='center';
+      ctx.fillText('CUT/FILL OFF', w/2, h-10);
+    } else if(designCount === 0){
+      ctx.fillStyle='rgba(232,160,32,0.85)'; ctx.font='bold 11px Arial'; ctx.textAlign='center';
+      ctx.fillText('⚠ No active design — set one in Design tab', w/2, h-10);
+    }
   }
 
   // === TOP-VIEW DOZER ICON (D11T-inspired) ===
@@ -8271,7 +8311,7 @@ setInterval(() => {
     <div id="guidance-panels">
       <!-- Plan View (left, ~50%) -->
       <div id="plan-view-panel">
-        <div id="plan-title">Plan View (Bird's Eye)</div>
+        <div id="plan-title">Plan View (Bird's Eye) &nbsp;·&nbsp; <span id="guidance-active-design" style="color:#e8a020;font-style:italic">No active design</span></div>
         <canvas id="plan-canvas"></canvas>
       </div>
 
@@ -8298,6 +8338,14 @@ setInterval(() => {
     <button class="ref-point active" data-point="center" onclick="setGuidanceRefPoint('center')">CTR</button>
     <button class="ref-point" data-point="left" onclick="setGuidanceRefPoint('left')">LEFT</button>
     <button class="ref-point" data-point="right" onclick="setGuidanceRefPoint('right')">RIGHT</button>
+    <!-- Cut/Fill toggle -->
+    <div style="border-top:1px solid #1e4a7a; margin-top:4px; padding-top:4px">
+      <div style="font-size:8px; color:#4a7aa0; text-align:center; margin-bottom:3px; text-transform:uppercase; letter-spacing:1px">Cut/Fill Map</div>
+      <button onclick="toggleGuidanceCutFill()" style="width:100%; display:flex; align-items:center; gap:5px; justify-content:center; padding:4px 6px">
+        <span id="gcf-led" style="display:inline-block; width:7px; height:7px; border-radius:50%; background:#cc3333; box-shadow:0 0 5px rgba(204,51,51,0.6); flex-shrink:0"></span>
+        <span id="gcf-label" style="font-size:10px; color:#cc3333; font-weight:700; letter-spacing:1px">OFF</span>
+      </button>
+    </div>
   </div>
 
   <!-- Tolerance controls -->
