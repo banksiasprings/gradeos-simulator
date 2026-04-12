@@ -7551,6 +7551,9 @@ function drawBladeSection(leftMM, centerMM, rightMM){
   const tolPx=(tol/totalRange)*drawH;
   ctx.fillStyle='rgba(39,174,96,0.15)';
   ctx.fillRect(mL,elev2y(cDesign)-tolPx,drawW,tolPx*2);
+  // Tolerance band label — show ±Xmm at top-left edge of green zone
+  ctx.fillStyle='rgba(39,174,96,0.80)'; ctx.font='7px monospace'; ctx.textAlign='left';
+  ctx.fillText('\u00b1'+(tol*1000).toFixed(0)+'mm', mL+3, elev2y(cDesign)-tolPx-2);
 
   // Design surface (dashed blue)
   if(validD.length>0){
