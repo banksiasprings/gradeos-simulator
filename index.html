@@ -7869,8 +7869,13 @@ function drawSideProfileGuidance(hdg){
   const dElvM = dElev(machinePos.x, machinePos.z);
   const groundY = elev2y(showTerrain > 0 ? gElvM : (dElvM !== null ? dElvM + vOffset : gElvM));
   const machineX = marginL + drawW / 2;
-  // No IMU in simulator — dozer image always upright
-  const _tilt = 0;
+  // Pitch from design grade — simulates dual GPS front/rear antenna elevation difference
+  // In a real machine control system, two GPS receivers separated along the machine body give pitch angle
+  // We sample the design surface 3.5m ahead and 3.5m behind (7m span ≈ D11T wheelbase) along heading
+  const _fwdD = dElev(machinePos.x + Math.sin(hdg)*3.5, machinePos.z + Math.cos(hdg)*3.5);
+  const _bkD  = dElev(machinePos.x - Math.sin(hdg)*3.5, machinePos.z - Math.cos(hdg)*3.5);
+  const _pitch = (_fwdD !== null && _bkD !== null) ? (_fwdD - _bkD) / 7.0 : 0;
+  const _tilt = Math.max(-0.35, Math.min(0.35, Math.atan(_pitch)));
   // Draw side photo flipped so blade faces right (= forward direction in profile)
   const _sH = Math.max(55, drawH * 0.40);
   const _sW = _sH * (653 / 284);
