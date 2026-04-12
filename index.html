@@ -7841,6 +7841,14 @@ function drawSideProfileGuidance(hdg){
   const designName = getActiveDesignName();
   const profileTitle = designName ? `◄ 25m  ${designName}  25m ►` : '◄ 25m  SIDE PROFILE  25m ►';
   ctx.fillText(profileTitle,w/2,h-4);
+  // Scale bar — 10m in bottom-left
+  const _sbScaleW=((10/totalDist)*drawW);
+  ctx.strokeStyle='#4a7aa0'; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.moveTo(marginL,marginT+drawH+28); ctx.lineTo(marginL+_sbScaleW,marginT+drawH+28); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(marginL,marginT+drawH+24); ctx.lineTo(marginL,marginT+drawH+32); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(marginL+_sbScaleW,marginT+drawH+24); ctx.lineTo(marginL+_sbScaleW,marginT+drawH+32); ctx.stroke();
+  ctx.fillStyle='#4a7aa0'; ctx.font='8px monospace'; ctx.textAlign='center';
+  ctx.fillText('10m',marginL+_sbScaleW/2,marginT+drawH+41);
   } catch(e) {
     // Fallback rendering if error occurs
     ctx.fillStyle='#7aabcc'; ctx.font='9px monospace'; ctx.textAlign='center';
