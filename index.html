@@ -7749,6 +7749,9 @@ function drawSideProfileGuidance(hdg){
       pen?ctx.lineTo(x,y):ctx.moveTo(x,y); pen=true;
     }
     ctx.stroke(); ctx.setLineDash([]);
+  } else {
+    ctx.font='11px monospace'; ctx.fillStyle='rgba(102,170,170,0.6)'; ctx.textAlign='center';
+    ctx.fillText('No design active',marginL+drawW/2,marginT+drawH/2);
   }
 
   // === DOZER SIDE VIEW — real D11T photo (flipped: blade faces forward/right) ===
