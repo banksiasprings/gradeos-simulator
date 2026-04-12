@@ -7203,50 +7203,80 @@ function drawPlanViewGuidance(pos, lx, lz, rx, rz){
     ctx.fillText('⚠ No active design — set one in Design tab', w/2, h-10);
   }
 
-  // === TOP-VIEW DOZER ICON ===
+  // === TOP-VIEW DOZER ICON (D11T-inspired) ===
   const mx = centerX + pos.x * scale;
   const mz = centerY + pos.z * scale;
-  const trkLen=28, trkWid=5, trkSep=10, bodyLen=24, bladeLen=32, bladeWid=5;
+  const trkLen=34, trkWid=7, trkGap=12;
+  const bladeW2=trkGap+trkWid*2+6, bladeD2=5, bladeOff=trkLen/2+5;
 
   ctx.save();
   ctx.translate(mx, mz);
   ctx.rotate(-pos.hdg);
 
-  // Blade (front)
-  const bladeOff = trkLen/2 + 4;
-  ctx.fillStyle='#7a8a9a'; ctx.strokeStyle='#aabbcc'; ctx.lineWidth=1;
-  ctx.fillRect(-bladeLen/2, -bladeOff-bladeWid, bladeLen, bladeWid);
-  ctx.strokeRect(-bladeLen/2, -bladeOff-bladeWid, bladeLen, bladeWid);
+  // BLADE (front — wider than track span, steel gray)
+  ctx.fillStyle='#5a6a78'; ctx.strokeStyle='#8a9aaa'; ctx.lineWidth=1.5;
+  ctx.fillRect(-bladeW2/2,-bladeOff-bladeD2,bladeW2,bladeD2);
+  ctx.strokeRect(-bladeW2/2,-bladeOff-bladeD2,bladeW2,bladeD2);
+  // Cutting edge (bright strip at front of blade)
+  ctx.fillStyle='#a8bcc8';
+  ctx.fillRect(-bladeW2/2,-bladeOff-bladeD2,bladeW2,1.5);
+  // Blade ribs
+  ctx.strokeStyle='#6a7a88'; ctx.lineWidth=0.6;
+  for(let r=-2;r<=2;r++){const rx2=r*(bladeW2/5); ctx.beginPath(); ctx.moveTo(rx2,-bladeOff-bladeD2+1); ctx.lineTo(rx2,-bladeOff-1); ctx.stroke();}
 
-  // Push arms
-  ctx.strokeStyle='#506070'; ctx.lineWidth=1.5;
-  ctx.beginPath(); ctx.moveTo(-bladeLen/2, -bladeOff); ctx.lineTo(-trkSep/2-trkWid/2, trkLen/2-6); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(bladeLen/2, -bladeOff); ctx.lineTo(trkSep/2+trkWid/2, trkLen/2-6); ctx.stroke();
+  // PUSH ARMS
+  ctx.strokeStyle='#506070'; ctx.lineWidth=1.8;
+  ctx.beginPath(); ctx.moveTo(-bladeW2/2+6,-bladeOff); ctx.lineTo(-trkGap/2-trkWid/2+2,trkLen*0.05); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(bladeW2/2-6,-bladeOff); ctx.lineTo(trkGap/2+trkWid/2-2,trkLen*0.05); ctx.stroke();
 
-  // Left track
-  ctx.fillStyle='#1e1e1e'; ctx.strokeStyle='#3a3a3a'; ctx.lineWidth=0.5;
-  ctx.fillRect(-trkSep/2-trkWid, -trkLen/2, trkWid, trkLen);
-  ctx.strokeRect(-trkSep/2-trkWid, -trkLen/2, trkWid, trkLen);
-  // Right track
-  ctx.fillRect(trkSep/2, -trkLen/2, trkWid, trkLen);
-  ctx.strokeRect(trkSep/2, -trkLen/2, trkWid, trkLen);
+  // LEFT TRACK
+  ctx.fillStyle='#1a1a1a'; ctx.strokeStyle='#363636'; ctx.lineWidth=0.8;
+  ctx.fillRect(-trkGap/2-trkWid,-trkLen/2,trkWid,trkLen);
+  ctx.strokeRect(-trkGap/2-trkWid,-trkLen/2,trkWid,trkLen);
+  ctx.strokeStyle='#2a2a2a'; ctx.lineWidth=0.5;
+  for(let t=1;t<9;t++){const ty=-trkLen/2+t*(trkLen/9); ctx.beginPath(); ctx.moveTo(-trkGap/2-trkWid+1,ty); ctx.lineTo(-trkGap/2-1,ty); ctx.stroke();}
+  ctx.fillStyle='#303030'; ctx.strokeStyle='#505050'; ctx.lineWidth=0.8;
+  ctx.beginPath(); ctx.arc(-trkGap/2-trkWid/2,-trkLen/2+3,3,0,Math.PI*2); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.arc(-trkGap/2-trkWid/2,trkLen/2-3,3,0,Math.PI*2); ctx.fill(); ctx.stroke();
 
-  // Body
-  ctx.fillStyle='#c4a020'; ctx.strokeStyle='#e0b828'; ctx.lineWidth=0.5;
-  ctx.fillRect(-trkSep/2+0.5, -bodyLen/2, trkSep-1, bodyLen);
-  ctx.strokeRect(-trkSep/2+0.5, -bodyLen/2, trkSep-1, bodyLen);
+  // RIGHT TRACK
+  ctx.fillStyle='#1a1a1a'; ctx.strokeStyle='#363636'; ctx.lineWidth=0.8;
+  ctx.fillRect(trkGap/2,-trkLen/2,trkWid,trkLen);
+  ctx.strokeRect(trkGap/2,-trkLen/2,trkWid,trkLen);
+  ctx.strokeStyle='#2a2a2a'; ctx.lineWidth=0.5;
+  for(let t=1;t<9;t++){const ty=-trkLen/2+t*(trkLen/9); ctx.beginPath(); ctx.moveTo(trkGap/2+1,ty); ctx.lineTo(trkGap/2+trkWid-1,ty); ctx.stroke();}
+  ctx.fillStyle='#303030'; ctx.strokeStyle='#505050'; ctx.lineWidth=0.8;
+  ctx.beginPath(); ctx.arc(trkGap/2+trkWid/2,-trkLen/2+3,3,0,Math.PI*2); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.arc(trkGap/2+trkWid/2,trkLen/2-3,3,0,Math.PI*2); ctx.fill(); ctx.stroke();
 
-  // Cab
-  ctx.fillStyle='#0d1e30'; ctx.strokeStyle='#1e4a6a'; ctx.lineWidth=0.5;
-  ctx.fillRect(-3+1, 2, 7, 7); ctx.strokeRect(-3+1, 2, 7, 7);
+  // ENGINE HOOD (central body)
+  const bodyW3=trkGap-1, bodyLen3=26;
+  ctx.fillStyle='#c4a020'; ctx.strokeStyle='#d4b030'; ctx.lineWidth=0.8;
+  ctx.fillRect(-bodyW3/2,-bodyLen3/2,bodyW3,bodyLen3);
+  ctx.strokeRect(-bodyW3/2,-bodyLen3/2,bodyW3,bodyLen3);
+  ctx.strokeStyle='rgba(0,0,0,0.28)'; ctx.lineWidth=0.5;
+  for(let g=0;g<4;g++){const gy=-bodyLen3/2+5+g*5; ctx.beginPath(); ctx.moveTo(-bodyW3/2+1,gy); ctx.lineTo(bodyW3/2-1,gy); ctx.stroke();}
+  // Radiator grill at front of hood
+  ctx.fillStyle='#a08010'; ctx.fillRect(-bodyW3/2,-bodyLen3/2,bodyW3,3);
+
+  // CAB (at rear, positive Y)
+  ctx.fillStyle='#0d1e30'; ctx.strokeStyle='#1e4a6a'; ctx.lineWidth=0.8;
+  ctx.fillRect(-3.5,bodyLen3*0.18,7,7); ctx.strokeRect(-3.5,bodyLen3*0.18,7,7);
+
+  // RIPPER (rear)
+  ctx.fillStyle='#2e3540'; ctx.strokeStyle='#4a5560'; ctx.lineWidth=0.8;
+  ctx.fillRect(-5,trkLen/2+1,10,3); ctx.strokeRect(-5,trkLen/2+1,10,3);
+  ctx.strokeStyle='#4a5560'; ctx.lineWidth=0.8;
+  for(let t=-1;t<=1;t++){ctx.beginPath(); ctx.moveTo(t*4,trkLen/2+1); ctx.lineTo(t*4,trkLen/2+5); ctx.stroke();}
 
   // GPS dot
-  ctx.fillStyle='#e8a020';
-  ctx.beginPath(); ctx.arc(1,5,2,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#f0c030';
+  ctx.beginPath(); ctx.arc(0,bodyLen3*0.18+3.5,2.5,0,Math.PI*2); ctx.fill();
 
-  // Forward arrow above blade
-  ctx.fillStyle='rgba(232,160,32,0.8)';
-  ctx.beginPath(); ctx.moveTo(0,-bladeOff-bladeWid-8); ctx.lineTo(-4,-bladeOff-bladeWid-3); ctx.lineTo(4,-bladeOff-bladeWid-3); ctx.closePath(); ctx.fill();
+  // Direction arrow (above blade)
+  ctx.fillStyle='rgba(232,160,32,0.85)';
+  const arrY2=-bladeOff-bladeD2-9;
+  ctx.beginPath(); ctx.moveTo(0,arrY2-5); ctx.lineTo(-5,arrY2); ctx.lineTo(5,arrY2); ctx.closePath(); ctx.fill();
 
   ctx.restore();
 
@@ -7387,42 +7417,50 @@ function drawBladeSection(leftMM, centerMM, rightMM){
     ctx.fillText('TOPO OFF',mL+drawW-2,mT+10);
   }
 
-  // === DOZER FRONT VIEW (fixed position) ===
+  // === DOZER FRONT VIEW — D11T-inspired (fixed position in upper panel) ===
   const bodyBaseY=mT+drawH*0.32;
-  const bodyH2=36, bodyW2=84, trackW2=20, trackH2=13, cabW2=50, cabH2=22;
+  const trkH2f=22, trkW2f=26, bodyW2=76, bodyH2=30, cabW2=46, cabH2=18;
+  const leftTrkLf=ctrX-bodyW2/2-trkW2f, rightTrkLf=ctrX+bodyW2/2;
 
-  // Tracks
-  ctx.fillStyle='#181818'; ctx.strokeStyle='#363636'; ctx.lineWidth=1;
-  ctx.fillRect(ctrX-bodyW2/2-trackW2,bodyBaseY-trackH2,trackW2,trackH2);
-  ctx.strokeRect(ctrX-bodyW2/2-trackW2,bodyBaseY-trackH2,trackW2,trackH2);
-  ctx.fillRect(ctrX+bodyW2/2,bodyBaseY-trackH2,trackW2,trackH2);
-  ctx.strokeRect(ctrX+bodyW2/2,bodyBaseY-trackH2,trackW2,trackH2);
-  ctx.strokeStyle='#282828'; ctx.lineWidth=0.5;
-  for(let t=0;t<5;t++){
-    for(const [bx,tw] of [[ctrX-bodyW2/2-trackW2,trackW2],[ctrX+bodyW2/2,trackW2]]){
-      const tx2=bx+t*(tw/4);
-      ctx.beginPath(); ctx.moveTo(tx2,bodyBaseY-trackH2+1); ctx.lineTo(tx2,bodyBaseY-1); ctx.stroke();
-    }
-  }
+  // LEFT TRACK (tall, with frame + sprocket arc)
+  ctx.fillStyle='#181818'; ctx.strokeStyle='#383838'; ctx.lineWidth=1;
+  ctx.fillRect(leftTrkLf,bodyBaseY-trkH2f,trkW2f,trkH2f);
+  ctx.strokeRect(leftTrkLf,bodyBaseY-trkH2f,trkW2f,trkH2f);
+  ctx.fillStyle='#1e1e1e'; ctx.fillRect(leftTrkLf+3,bodyBaseY-trkH2f+3,trkW2f-6,trkH2f-6);
+  ctx.strokeStyle='#2e2e2e'; ctx.lineWidth=0.6;
+  for(let t=1;t<5;t++){const tx2=leftTrkLf+t*(trkW2f/5); ctx.beginPath(); ctx.moveTo(tx2,bodyBaseY-trkH2f+2); ctx.lineTo(tx2,bodyBaseY-2); ctx.stroke();}
+  ctx.fillStyle='#242424'; ctx.strokeStyle='#505050'; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.arc(leftTrkLf+trkW2f/2,bodyBaseY-trkH2f,7,0,Math.PI); ctx.fill(); ctx.stroke();
 
-  // Body
-  const bodyTopY=bodyBaseY-trackH2-bodyH2;
+  // RIGHT TRACK
+  ctx.fillStyle='#181818'; ctx.strokeStyle='#383838'; ctx.lineWidth=1;
+  ctx.fillRect(rightTrkLf,bodyBaseY-trkH2f,trkW2f,trkH2f);
+  ctx.strokeRect(rightTrkLf,bodyBaseY-trkH2f,trkW2f,trkH2f);
+  ctx.fillStyle='#1e1e1e'; ctx.fillRect(rightTrkLf+3,bodyBaseY-trkH2f+3,trkW2f-6,trkH2f-6);
+  ctx.strokeStyle='#2e2e2e'; ctx.lineWidth=0.6;
+  for(let t=1;t<5;t++){const tx2=rightTrkLf+t*(trkW2f/5); ctx.beginPath(); ctx.moveTo(tx2,bodyBaseY-trkH2f+2); ctx.lineTo(tx2,bodyBaseY-2); ctx.stroke();}
+  ctx.fillStyle='#242424'; ctx.strokeStyle='#505050'; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.arc(rightTrkLf+trkW2f/2,bodyBaseY-trkH2f,7,0,Math.PI); ctx.fill(); ctx.stroke();
+
+  // BODY
+  const bodyTopY=bodyBaseY-trkH2f-bodyH2;
   ctx.fillStyle='#b89820'; ctx.strokeStyle='#d4b030'; ctx.lineWidth=1;
   ctx.fillRect(ctrX-bodyW2/2,bodyTopY,bodyW2,bodyH2);
   ctx.strokeRect(ctrX-bodyW2/2,bodyTopY,bodyW2,bodyH2);
-  ctx.strokeStyle='rgba(0,0,0,0.25)'; ctx.lineWidth=0.5;
-  for(let g=0;g<5;g++){
-    const gx=ctrX-bodyW2/2+5+g*5;
-    ctx.beginPath(); ctx.moveTo(gx,bodyTopY+4); ctx.lineTo(gx,bodyBaseY-trackH2-3); ctx.stroke();
-  }
+  ctx.strokeStyle='rgba(0,0,0,0.28)'; ctx.lineWidth=0.7;
+  for(let g=0;g<7;g++){const gx=ctrX-bodyW2/2+6+g*10; ctx.beginPath(); ctx.moveTo(gx,bodyTopY+4); ctx.lineTo(gx,bodyTopY+bodyH2-4); ctx.stroke();}
 
-  // Cab
+  // CAB
   const cabTopY=bodyTopY-cabH2;
   ctx.fillStyle='#0d1e30'; ctx.strokeStyle='#1e4a6a'; ctx.lineWidth=1;
-  ctx.fillRect(ctrX-cabW2/2+8,cabTopY,cabW2,cabH2);
-  ctx.strokeRect(ctrX-cabW2/2+8,cabTopY,cabW2,cabH2);
-  ctx.fillStyle='rgba(80,170,220,0.28)';
-  ctx.fillRect(ctrX-cabW2/2+10,cabTopY+2,cabW2-4,cabH2-4);
+  ctx.fillRect(ctrX-cabW2/2,cabTopY,cabW2,cabH2);
+  ctx.strokeRect(ctrX-cabW2/2,cabTopY,cabW2,cabH2);
+  ctx.fillStyle='rgba(80,180,230,0.22)';
+  ctx.fillRect(ctrX-cabW2/2+4,cabTopY+3,cabW2-8,cabH2-6);
+  // Cab guard rails
+  ctx.strokeStyle='#1e3a50'; ctx.lineWidth=0.8;
+  ctx.beginPath(); ctx.moveTo(ctrX-cabW2/2-2,cabTopY); ctx.lineTo(ctrX-cabW2/2-2,bodyTopY); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(ctrX+cabW2/2+2,cabTopY); ctx.lineTo(ctrX+cabW2/2+2,bodyTopY); ctx.stroke();
 
   // === BLADE — straight rigid bar ===
   const tolMM=tol*1000;
@@ -7436,18 +7474,24 @@ function drawBladeSection(leftMM, centerMM, rightMM){
   const bladeRightY2=clampY(elev2y(rBladeE));
   const bladeColor=Math.abs(centerMM)<=tolMM?'#27ae60':centerMM>0?'#e05040':'#4a90e2';
 
-  // Push arms
-  ctx.strokeStyle='#506070'; ctx.lineWidth=2;
-  ctx.beginPath(); ctx.moveTo(ctrX-bodyW2/2+6,bodyBaseY-trackH2-bodyH2*0.4); ctx.lineTo(bladeLeftX+8,bladeLeftY2-4); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(ctrX+bodyW2/2-6,bodyBaseY-trackH2-bodyH2*0.4); ctx.lineTo(bladeRightX-8,bladeRightY2-4); ctx.stroke();
+  // Push arms (A-frame from body lower corners to blade tips)
+  const armAnchorY=bodyBaseY-trkH2f-bodyH2*0.4;
+  ctx.strokeStyle='#607880'; ctx.lineWidth=2.5;
+  ctx.beginPath(); ctx.moveTo(ctrX-bodyW2/2+6,armAnchorY); ctx.lineTo(bladeLeftX+20,bladeLeftY2-4); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(ctrX+bodyW2/2-6,armAnchorY); ctx.lineTo(bladeRightX-20,bladeRightY2-4); ctx.stroke();
+  // Hydraulic tilt cylinders
+  ctx.strokeStyle='#909a9a'; ctx.lineWidth=2;
+  const bMidYf=(bladeLeftY2+bladeRightY2)/2;
+  ctx.beginPath(); ctx.moveTo(ctrX-12,bodyTopY+bodyH2*0.2); ctx.lineTo(ctrX-20,bMidYf-6); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(ctrX+12,bodyTopY+bodyH2*0.2); ctx.lineTo(ctrX+20,bMidYf-6); ctx.stroke();
 
   // Blade bar
-  ctx.strokeStyle=bladeColor; ctx.lineWidth=9; ctx.lineCap='round';
+  ctx.strokeStyle=bladeColor; ctx.lineWidth=11; ctx.lineCap='round';
   ctx.beginPath(); ctx.moveTo(bladeLeftX,bladeLeftY2); ctx.lineTo(bladeRightX,bladeRightY2); ctx.stroke();
   ctx.lineCap='butt';
   ctx.fillStyle=bladeColor;
-  ctx.beginPath(); ctx.arc(bladeLeftX,bladeLeftY2,6,0,Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.arc(bladeRightX,bladeRightY2,6,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(bladeLeftX,bladeLeftY2,7,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(bladeRightX,bladeRightY2,7,0,Math.PI*2); ctx.fill();
 
   // Callouts
   const callColor=(mm)=>Math.abs(mm)<=tolMM?'#27ae60':mm>0?'#e05040':'#4a90e2';
@@ -7584,46 +7628,92 @@ function drawSideProfileGuidance(hdg){
     ctx.stroke(); ctx.setLineDash([]);
   }
 
-  // === DOZER SILHOUETTE ===
-  const groundY=elev2y(gElev(machinePos.x,machinePos.z));
+  // === DOZER SILHOUETTE (D11T-inspired side view, blade faces left) ===
+  const gElvM=gElev(machinePos.x,machinePos.z);
+  const dElvM=dElev(machinePos.x,machinePos.z);
+  const groundY=elev2y(showTerrain>0?gElvM:(dElvM!==null?dElvM+vOffset:gElvM));
   const machineX=marginL+drawW/2;
-  const trkL=32, trkH=7;
-  ctx.fillStyle='#1e1e1e'; ctx.strokeStyle='#444'; ctx.lineWidth=1;
-  ctx.beginPath(); ctx.roundRect(machineX-trkL/2,groundY-trkH,trkL,trkH,3); ctx.fill(); ctx.stroke();
-  ctx.strokeStyle='#333'; ctx.lineWidth=0.5;
-  for(let t=-3;t<=3;t++){
-    const tx2=machineX+t*(trkL/7);
-    ctx.beginPath(); ctx.moveTo(tx2,groundY-trkH+1); ctx.lineTo(tx2,groundY-1); ctx.stroke();
-  }
-  ctx.fillStyle='#2a2a2a'; ctx.strokeStyle='#555'; ctx.lineWidth=1;
-  ctx.beginPath(); ctx.arc(machineX-trkL/2+4,groundY-trkH/2,4,0,Math.PI*2); ctx.fill(); ctx.stroke();
-  ctx.beginPath(); ctx.arc(machineX+trkL/2-4,groundY-trkH/2,4,0,Math.PI*2); ctx.fill(); ctx.stroke();
 
-  const bodyH3=14, bodyW3=26, bodyTop=groundY-trkH-bodyH3;
-  ctx.fillStyle='#c4a020'; ctx.strokeStyle='#e0b828'; ctx.lineWidth=1;
-  ctx.fillRect(machineX-bodyW3/2,bodyTop,bodyW3,bodyH3);
-  ctx.strokeRect(machineX-bodyW3/2,bodyTop,bodyW3,bodyH3);
+  const trkLS=56, trkHS=11, sprRS=6;
+  const trkLeftS=machineX-18, trkRightS=trkLeftS+trkLS;
 
-  const cabW3=12, cabH3=11, cabLeft=machineX+2, cabTop=bodyTop-cabH3;
-  ctx.fillStyle='#0e2030'; ctx.strokeStyle='#2a5070'; ctx.lineWidth=1;
-  ctx.fillRect(cabLeft,cabTop,cabW3,cabH3);
-  ctx.strokeRect(cabLeft,cabTop,cabW3,cabH3);
-  ctx.fillStyle='rgba(80,160,210,0.35)';
-  ctx.fillRect(cabLeft+1.5,cabTop+1.5,cabW3-3,cabH3-3);
+  // TRACK BODY
+  ctx.fillStyle='#1a1a1a'; ctx.strokeStyle='#3e3e3e'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.roundRect(trkLeftS,groundY-trkHS,trkLS,trkHS,3); ctx.fill(); ctx.stroke();
+  // Grouser pads
+  ctx.strokeStyle='#2e2e2e'; ctx.lineWidth=0.7;
+  for(let i=1;i<10;i++){const tx2=trkLeftS+(trkLS*i/10); ctx.beginPath(); ctx.moveTo(tx2,groundY-trkHS+1); ctx.lineTo(tx2,groundY-1); ctx.stroke();}
+  // Drive sprocket (rear)
+  ctx.fillStyle='#242424'; ctx.strokeStyle='#525252'; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.arc(trkRightS-sprRS,groundY-trkHS/2,sprRS,0,Math.PI*2); ctx.fill(); ctx.stroke();
+  ctx.strokeStyle='#3a3a3a'; ctx.lineWidth=0.8;
+  for(let s=0;s<6;s++){const a=s*Math.PI/3; ctx.beginPath(); ctx.moveTo(trkRightS-sprRS,groundY-trkHS/2); ctx.lineTo(trkRightS-sprRS+Math.cos(a)*4.5,groundY-trkHS/2+Math.sin(a)*4.5); ctx.stroke();}
+  // Front idler
+  ctx.fillStyle='#202020'; ctx.strokeStyle='#404040'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.arc(trkLeftS+sprRS-1,groundY-trkHS/2,sprRS-1,0,Math.PI*2); ctx.fill(); ctx.stroke();
+  // Mid rollers
+  ctx.fillStyle='#1e1e1e'; ctx.strokeStyle='#3a3a3a'; ctx.lineWidth=0.8;
+  for(let r=0;r<3;r++){const rx2=trkLeftS+14+(r*13); ctx.beginPath(); ctx.arc(rx2,groundY-3,2.5,0,Math.PI*2); ctx.fill(); ctx.stroke();}
 
-  ctx.fillStyle='#404040';
-  ctx.fillRect(machineX-bodyW3/2+5,bodyTop-10,3,10);
+  // ENGINE HOOD
+  const hoodLS=trkLeftS+16, hoodWS=trkLS-30, hoodHS=16, hoodTopS=groundY-trkHS-hoodHS;
+  ctx.fillStyle='#b89820'; ctx.strokeStyle='#d4b030'; ctx.lineWidth=1;
+  ctx.fillRect(hoodLS,hoodTopS,hoodWS,hoodHS); ctx.strokeRect(hoodLS,hoodTopS,hoodWS,hoodHS);
+  ctx.strokeStyle='rgba(0,0,0,0.3)'; ctx.lineWidth=0.8;
+  for(let g=0;g<5;g++){const gx=hoodLS+4+g*6; ctx.beginPath(); ctx.moveTo(gx,hoodTopS+2); ctx.lineTo(gx,hoodTopS+hoodHS-2); ctx.stroke();}
+  // Radiator grill
+  ctx.fillStyle='#a08010'; ctx.strokeStyle='#c09820'; ctx.lineWidth=0.8;
+  ctx.fillRect(hoodLS,hoodTopS,6,hoodHS); ctx.strokeRect(hoodLS,hoodTopS,6,hoodHS);
+  ctx.strokeStyle='#987808'; ctx.lineWidth=0.5;
+  for(let g=0;g<4;g++){const gy2=hoodTopS+2+g*3.5; ctx.beginPath(); ctx.moveTo(hoodLS+1,gy2); ctx.lineTo(hoodLS+5,gy2); ctx.stroke();}
 
-  ctx.strokeStyle='#607080'; ctx.lineWidth=2;
-  ctx.beginPath(); ctx.moveTo(machineX-bodyW3/2+4,bodyTop+5); ctx.lineTo(machineX-trkL/2-8,groundY-trkH-6); ctx.stroke();
+  // CAB (at rear)
+  const cabWS=15, cabHS=15, cabLS=trkRightS-cabWS-2, cabTopS=hoodTopS-cabHS;
+  ctx.fillStyle='#0d1e30'; ctx.strokeStyle='#1e4a6a'; ctx.lineWidth=1;
+  ctx.fillRect(cabLS,cabTopS,cabWS,cabHS); ctx.strokeRect(cabLS,cabTopS,cabWS,cabHS);
+  ctx.fillStyle='rgba(80,180,230,0.22)';
+  ctx.fillRect(cabLS+1.5,cabTopS+2.5,7,cabHS-5);
+  ctx.strokeStyle='#1e3a50'; ctx.lineWidth=0.8;
+  ctx.beginPath(); ctx.moveTo(cabLS-2,cabTopS); ctx.lineTo(cabLS-2,hoodTopS); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cabLS,cabTopS-3); ctx.lineTo(cabLS+cabWS,cabTopS-3); ctx.stroke();
 
-  const bladeH4=16, bladeX2=machineX-trkL/2-10, bladeTop3=groundY-trkH-bladeH4+4;
-  ctx.fillStyle='#7a8a9a'; ctx.strokeStyle='#99aabb'; ctx.lineWidth=1.5;
-  ctx.fillRect(bladeX2,bladeTop3,5,bladeH4);
-  ctx.strokeRect(bladeX2,bladeTop3,5,bladeH4);
+  // EXHAUST STACK
+  ctx.fillStyle='#303030'; ctx.strokeStyle='#505050'; ctx.lineWidth=0.8;
+  ctx.fillRect(hoodLS+4,hoodTopS-14,3,14); ctx.strokeRect(hoodLS+4,hoodTopS-14,3,14);
+  ctx.beginPath(); ctx.arc(hoodLS+5.5,hoodTopS-14,3,Math.PI,Math.PI*2); ctx.fill(); ctx.stroke();
 
+  // PUSH ARMS
+  const armAXS=hoodLS+6, armAYS=hoodTopS+hoodHS*0.45;
+  const bladeXS=trkLeftS-13, bladeHS=24, bTopS=groundY-trkHS-bladeHS+6;
+  ctx.strokeStyle='#607880'; ctx.lineWidth=2.5;
+  ctx.beginPath(); ctx.moveTo(armAXS,armAYS-2); ctx.lineTo(bladeXS+6,bTopS+bladeHS*0.25); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(armAXS,armAYS+5); ctx.lineTo(bladeXS+6,bTopS+bladeHS*0.75); ctx.stroke();
+  // Hydraulic cylinder
+  ctx.strokeStyle='#808a90'; ctx.lineWidth=1.8;
+  ctx.beginPath(); ctx.moveTo(bladeXS+5,bTopS+3); ctx.lineTo(hoodLS+3,hoodTopS+3); ctx.stroke();
+
+  // BLADE
+  ctx.fillStyle='#6a7a8a'; ctx.strokeStyle='#9ab0c0'; ctx.lineWidth=1.5;
+  ctx.beginPath();
+  ctx.moveTo(bladeXS+2,bTopS); ctx.lineTo(bladeXS+8,bTopS+2);
+  ctx.lineTo(bladeXS+8,bTopS+bladeHS-4); ctx.lineTo(bladeXS+2,bTopS+bladeHS);
+  ctx.lineTo(bladeXS-2,bTopS+bladeHS); ctx.lineTo(bladeXS-2,bTopS);
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+  // Cutting edge
+  ctx.fillStyle='#b0c0cc'; ctx.strokeStyle='#c8d8e0'; ctx.lineWidth=1;
+  ctx.fillRect(bladeXS-4,bTopS+bladeHS-3,12,3);
+
+  // RIPPER (rear)
+  ctx.strokeStyle='#4a5560'; ctx.lineWidth=2.5;
+  ctx.beginPath(); ctx.moveTo(trkRightS+4,hoodTopS+hoodHS*0.5); ctx.lineTo(trkRightS+7,groundY+3); ctx.stroke();
+  ctx.fillStyle='#404850'; ctx.strokeStyle='#606a72'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(trkRightS+5,groundY+2); ctx.lineTo(trkRightS+10,groundY+5); ctx.lineTo(trkRightS+5,groundY+8); ctx.closePath(); ctx.fill(); ctx.stroke();
+
+  // GPS MAST on cab
+  ctx.strokeStyle='#2a3040'; ctx.lineWidth=1.2;
+  ctx.beginPath(); ctx.moveTo(cabLS+cabWS/2,cabTopS-3); ctx.lineTo(cabLS+cabWS/2,cabTopS-14); ctx.stroke();
   ctx.fillStyle='#f0c030';
-  ctx.beginPath(); ctx.arc(machineX,groundY-trkH-bodyH3/2,4,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cabLS+cabWS/2,cabTopS-14,3.5,0,Math.PI*2); ctx.fill();
 
   // Elevation axis
   ctx.fillStyle='#3a6080'; ctx.font='9px monospace'; ctx.textAlign='right';
