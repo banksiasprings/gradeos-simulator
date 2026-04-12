@@ -7068,6 +7068,7 @@ function toggleGuidanceScreen(){
   const screen = document.getElementById('guidance-screen');
   if(guidanceScreenActive){
     screen.classList.add('show');
+    _gradeTrendBuf=[];  // clear stale trend samples on fresh open
     initGuidanceCanvases();
     // Reduce mesh opacity when guidance screen is open (cosmetic: easier to see overlaid guidance)
     if(desMesh && desMesh.material){
