@@ -3426,7 +3426,7 @@ function clearAsBuilt(){
 let haulArrow=null;
 function updateHaulArrow(cutCx,cutCz,fillCx,fillCz,haulDist){
   if(haulArrow){scene.remove(haulArrow);haulArrow.geometry.dispose();haulArrow=null;}
-  if(haulDist<2||isNaN(cutCx)||isNaN(fillCx))return;
+  if(haulDist<1||isNaN(cutCx)||isNaN(fillCx))return;
   const pts=[
     new THREE.Vector3(cutCx,3,cutCz),
     new THREE.Vector3(fillCx,3,fillCz)
