@@ -5028,6 +5028,17 @@ function updateBladePanelDiagram(lmm,cmm,rmm){
   // Ground line across full width
   ctx.strokeStyle='#3da030';ctx.lineWidth=2;
   ctx.beginPath();ctx.moveTo(0,bY);ctx.lineTo(W,bY);ctx.stroke();
+  // Tolerance band overlay (green zone = ±guidanceTolerance mm)
+  const _tol=(typeof guidanceTolerance!=='undefined'?guidanceTolerance:50);
+  const tolPx=(_tol/MAX)*H*0.45;
+  ctx.fillStyle='rgba(39,174,96,0.12)';
+  ctx.fillRect(0,bY-tolPx,W,tolPx*2);
+  ctx.strokeStyle='rgba(39,174,96,0.35)';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(0,bY-tolPx);ctx.lineTo(W,bY-tolPx);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(0,bY+tolPx);ctx.lineTo(W,bY+tolPx);ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='rgba(39,174,96,0.5)';ctx.font='7px monospace';ctx.textAlign='right';
+  ctx.fillText('±'+_tol+'mm',W-2,bY-tolPx-1);
   // Three blade positions
   const positions=[{x:W*0.2,mm:lmm,lbl:'A'},{x:W*0.5,mm:cmm,lbl:'C'},{x:W*0.8,mm:rmm,lbl:'B'}];
   positions.forEach(pos=>{
