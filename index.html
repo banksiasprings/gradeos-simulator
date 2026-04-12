@@ -1559,6 +1559,7 @@ body.field-mode #field-rtk{display:flex}
   <div>Design: <span id="st-dpts">0</span> pts</div>
   <div>Machine: <span id="st-mach">ON — WASD/Arrows</span></div>
   <div>Cut: <span id="st-cut" style="color:#42a5f5">0.0m³</span></div>
+  <div id="st-voff" style="display:none">V-Off: <span id="st-voff-val" style="color:#7aabcc;font-family:monospace">0</span> mm</div>
   <div id="st-prod" style="display:none">Rate: <span id="st-rate" style="color:#66bb6a">—</span> &nbsp; ETA: <span id="st-eta" style="color:#ffb74d">—</span></div>
   <div id="st-speed" style="display:none">Spd: <span id="st-spd-val" style="color:#7aabcc;font-family:monospace">0.0</span> km/h · <span id="st-hdg" style="color:#7aabcc;font-family:monospace">000</span>°</div>
   <div id="st-hint" style="margin-left:auto;color:#4a7aa0">Scroll=zoom · Right-drag=orbit · Dbl-click=probe elevation &amp; grade</div>
@@ -3148,7 +3149,7 @@ function updateMachine(dt){
   // ── RTK accuracy jitter: simulate position noise when not in Fixed mode ──
   // This demonstrates WHY RTK Fixed matters for grade control precision
   if(rtkFixType!=='RTK FIXED'){
-    const jAmt=rtkFixType==='RTK FLOAT'?0.035:0.22; // Float=35mm noise, DGPS=220mm noise
+    const jAmt=rtkFixType==='RTK FLOAT'?0.020:0.380; // Float=20mm noise (typical RTK Float), DGPS=380mm noise (typical SBAS)
     machinePos.x+=(Math.random()-0.5)*jAmt;
     machinePos.z+=(Math.random()-0.5)*jAmt;
   }
@@ -4190,6 +4191,16 @@ function updateVOffDisplay(){
   const el=document.getElementById('voff-val');
   el.textContent=(mm>=0?'+':'')+mm+' mm';
   el.style.color=mm===0?'#e8a020':mm>0?'#66bb6a':'#ff7043';
+  // Also update status bar display (only show when vOffset !== 0)
+  const stEl=document.getElementById('st-voff');
+  if(stEl){
+    if(mm!==0){
+      stEl.style.display='block';
+      document.getElementById('st-voff-val').textContent=(mm>=0?'+':'')+mm;
+    }else{
+      stEl.style.display='none';
+    }
+  }
 }
 function updateVoffBalance(){  const box=document.getElementById('voff-balance');  if(!box)return;  if(designCount===0){box.style.display='none';return;}  box.style.display='block';  let cut=0,fill=0;const ca=CS*CS;  for(let i=0;i<N*N;i++){    if(!hasD[i])continue;    const d=(design[i]+vOffset)-ground[i];    if(d>0)cut+=d*ca;else fill+=Math.abs(d)*ca;  }  const net=cut-fill;  document.getElementById('vb-cut').textContent=cut.toFixed(1)+' m³';  document.getElementById('vb-fill').textContent=fill.toFixed(1)+' m³';  const st=document.getElementById('vb-status');  if(Math.abs(net)<0.5){st.textContent='✅ Balanced';st.style.color='#66bb6a';}  else if(net>0){st.textContent='⬆ Import '+net.toFixed(1)+' m³';st.style.color='#ff7043';}  else{st.textContent='⬇ Waste '+Math.abs(net).toFixed(1)+' m³';st.style.color='#42a5f5';}}function toggleVoffMem(){
   const m=document.getElementById('voff-memories');
@@ -4480,6 +4491,7 @@ function clearDesignSurface(){
   buildStakes();buildGradeArrows();buildDaylightMesh();buildStripPlan();calcVol();
   document.getElementById('st-hint').textContent='Design surface cleared';
   closeFPModal();
+  updateActiveDesignDisplay();
 }
 function parseLandXML(txt,fname,defaultTarget){
   const parser=new DOMParser();
@@ -6953,7 +6965,7 @@ var _imgDozerSide=(function(){var i=new Image();i.src='data:image/png;base64,iVB
 // ═══════════════════════════════════════════════════════════════════
 var guidanceScreenActive = false;
 var guidanceRefPoint = 'center';  // 'center', 'left', 'right'
-var guidanceTolerance = 0.05;  // ±50mm default
+var guidanceTolerance = 0.025;  // ±25mm default (industry standard for rough grade)
 var showGuidanceCutFill = false;  // cut/fill map in plan view guidance (off by default)
 
 function toggleGuidanceCutFill(){
@@ -7551,8 +7563,15 @@ function drawBladeSection(leftMM, centerMM, rightMM){
     ctx.fillText('TOPO OFF',mL+drawW-2,mT+10);
   }
 
-  // Cross-slope
-  const crossSlope=(gPts[nS-1]-gPts[0])/(BH*2)*100;
+  // Cross-slope — calculate from blade geometry (machine roll), not terrain sampling
+  const realBH=1.7; // actual blade half-width in metres
+  const perpRx=machinePos.x+Math.cos(machinePos.hdg)*realBH,perpRz=machinePos.z-Math.sin(machinePos.hdg)*realBH;
+  const rSideElev=gElev(perpRx,perpRz);
+  const mel=machinePos.y;
+  const machRoll=Math.atan2(mel-rSideElev,realBH);
+  const lBladeE=mel-Math.sin(machRoll)*realBH;
+  const rBladeE=mel+Math.sin(machRoll)*realBH;
+  const crossSlope=(rBladeE-lBladeE)/(realBH*2)*100;
   const slopeCol=Math.abs(crossSlope)<3?'#27ae60':'#e8a020';
   ctx.fillStyle=slopeCol; ctx.font='bold 9px monospace'; ctx.textAlign='right';
   ctx.fillText('XSLOPE '+(crossSlope>=0?'+':'')+crossSlope.toFixed(1)+'%',mL+drawW-2,mT+24);
@@ -7566,7 +7585,7 @@ function drawBladeSection(leftMM, centerMM, rightMM){
     ctx.fillText(m+'m',mx2,mT+drawH+30);
   }
   ctx.fillStyle='#4a7aa0'; ctx.font='8px monospace'; ctx.textAlign='center';
-  ctx.fillText('BLADE CROSS-SECTION — FRONT VIEW',w/2,h-4);
+  ctx.fillText('FRONT VIEW — BLADE CROSS-SECTION',w/2,h-4);
 }
 
 function drawSideProfileGuidance(hdg){
@@ -7725,7 +7744,9 @@ function drawSideProfileGuidance(hdg){
   ctx.fillText(gradeLabel+' '+(grade>=0?'+':'')+grade.toFixed(1)+'%',marginL+4,marginT+13);
 
   ctx.fillStyle='#4a7aa0'; ctx.font='8px monospace'; ctx.textAlign='center';
-  ctx.fillText('◄ 25m  SIDE PROFILE  25m ►',w/2,h-4);
+  const designName = getActiveDesignName();
+  const profileTitle = designName ? `◄ 25m  ${designName}  25m ►` : '◄ 25m  SIDE PROFILE  25m ►';
+  ctx.fillText(profileTitle,w/2,h-4);
 }
 
 // ═══════════════════════════════════════════════════════════════════
