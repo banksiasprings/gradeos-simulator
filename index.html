@@ -8455,7 +8455,9 @@ async function forceRefresh(){
 
 function showUpdateToast(message, duration=0){
   const toast=document.getElementById('update-toast');
+  if(!toast) return;
   const span=toast.querySelector('span');
+  if(!span) return;
   span.textContent=message;
   toast.classList.add('show');
 
