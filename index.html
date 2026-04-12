@@ -7869,12 +7869,8 @@ function drawSideProfileGuidance(hdg){
   const dElvM = dElev(machinePos.x, machinePos.z);
   const groundY = elev2y(showTerrain > 0 ? gElvM : (dElvM !== null ? dElvM + vOffset : gElvM));
   const machineX = marginL + drawW / 2;
-  // Pre-compute grade for image tilt angle
-  // Tilt from terrain slope: sample gElev 3m ahead and 3m behind for 6m span
-  const _fwdElev = gElev(machinePos.x + Math.sin(hdg)*3, machinePos.z + Math.cos(hdg)*3);
-  const _bkElev  = gElev(machinePos.x - Math.sin(hdg)*3, machinePos.z - Math.cos(hdg)*3);
-  const _rise = (_fwdElev - _bkElev) / 6;
-  const _tilt = Math.max(-0.35, Math.min(0.35, Math.atan(_rise)));
+  // No IMU in simulator — dozer image always upright
+  const _tilt = 0;
   // Draw side photo flipped so blade faces right (= forward direction in profile)
   const _sH = Math.max(55, drawH * 0.40);
   const _sW = _sH * (653 / 284);
