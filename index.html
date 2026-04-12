@@ -2228,7 +2228,13 @@ function genContours(){
   if(!showContours)return;
   let minE=Infinity,maxE=-Infinity;
   for(let i=0;i<ground.length;i++){if(ground[i]<minE)minE=ground[i];if(ground[i]>maxE)maxE=ground[i];}
-  const MINOR=0.5,MAJOR=2.0;
+  // Dynamic contour interval based on elevation range
+  const range=maxE-minE;
+  let MINOR=0.5,MAJOR=2.0;
+  if(range<1.5){MINOR=0.25;MAJOR=1.0;}         // very flat: 0.25m minor / 1m major
+  else if(range<3){MINOR=0.5;MAJOR=2.0;}       // gentle: 0.5m minor / 2m major
+  else if(range<8){MINOR=1.0;MAJOR=5.0;}       // moderate: 1m minor / 5m major
+  else {MINOR=2.0;MAJOR=10.0;}                 // steep: 2m minor / 10m major
   const segs={};
   for(let gz=0;gz<GR;gz++){
     for(let gx=0;gx<GR;gx++){
