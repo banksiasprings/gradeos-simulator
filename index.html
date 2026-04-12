@@ -1124,7 +1124,7 @@ body.field-mode #field-rtk{display:flex}
           <div id="ver-info" style="font-size:10px;color:#7aabcc;background:#071525;border:1px solid #1e4a7a;border-radius:4px;padding:8px 10px;margin-bottom:8px;line-height:1.8">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
               <span style="color:#4a7aa0;text-transform:uppercase;letter-spacing:.5px;font-size:9px">Your version</span>
-              <span id="ver-current" style="color:#e8a020;font-weight:700;font-family:monospace">v0.8 · SW&nbsp;v40</span>
+              <span id="ver-current" style="color:#e8a020;font-weight:700;font-family:monospace">v0.8 · SW&nbsp;v41</span>
             </div>
             <div style="display:flex;justify-content:space-between;align-items:center">
               <span style="color:#4a7aa0;text-transform:uppercase;letter-spacing:.5px;font-size:9px">Latest</span>
@@ -4267,11 +4267,8 @@ function applyTerrainVisibility(){
   // 3D terrain mesh
   terrMesh.visible=showTerrain>0;
   terrMat.opacity=showTerrain===2?0.35:1;
-  // Contour lines — hide when terrain off, dim when reference mode
+  // Contour lines — hide when terrain off; REF mode uses dimmer opacity set in genContours
   contourGrp.visible=showTerrain>0&&showContours;
-  if(showTerrain===2){
-    contourGrp.children.forEach(c=>{if(c.material){c.material.opacity*=0.5;}});
-  }
   // Flow lines — only show if user had them on AND terrain is on
   flowGrp.visible=showTerrain>0&&showFlow;
 }
@@ -7178,10 +7175,10 @@ function drawPlanViewGuidance(pos, lx, lz, rx, rz){
     ctx.stroke();
   }
   
-  // Draw design cut/fill map (or terrain height map when no design)
+  // Draw design cut/fill map (always when design loaded) OR terrain height map (follows showTerrain)
   const _cellPx = CS * scale + 0.5;
-  const _cfAlpha = showTerrain===2 ? 0.5 : 1; // dim in reference mode
-  if(designCount > 0 && showTerrain > 0){
+  if(designCount > 0){
+    // Design IS loaded — always show cut/fill regardless of terrain toggle
     for(let _gz = 0; _gz < N; _gz++){
       for(let _gx = 0; _gx < N; _gx++){
         const _idx = gi(_gx, _gz);
@@ -7189,25 +7186,26 @@ function drawPlanViewGuidance(pos, lx, lz, rx, rz){
         const _diff = (design[_idx] + vOffset) - ground[_idx];
         const _px = centerX + (_gx * CS - 80) * scale;
         const _pz = centerY + (_gz * CS - 80) * scale;
-        if(_diff > 0.025){ const _t=Math.min(_diff/2,1); ctx.fillStyle=`rgba(66,165,245,${((0.25+_t*0.45)*_cfAlpha).toFixed(2)})`; }
-        else if(_diff < -0.025){ const _t=Math.min(-_diff/2,1); ctx.fillStyle=`rgba(239,83,80,${((0.25+_t*0.45)*_cfAlpha).toFixed(2)})`; }
-        else { ctx.fillStyle=`rgba(102,187,106,${(0.55*_cfAlpha).toFixed(2)})`; }
+        if(_diff > 0.025){ const _t=Math.min(_diff/2,1); ctx.fillStyle=`rgba(66,165,245,${(0.25+_t*0.45).toFixed(2)})`; }
+        else if(_diff < -0.025){ const _t=Math.min(-_diff/2,1); ctx.fillStyle=`rgba(239,83,80,${(0.25+_t*0.45).toFixed(2)})`; }
+        else { ctx.fillStyle='rgba(102,187,106,0.55)'; }
         ctx.fillRect(_px, _pz, _cellPx, _cellPx);
       }
     }
-  } else if(designCount === 0 || showTerrain === 0){
+  } else {
+    // No design — show terrain height map only when terrain is ON
     if(showTerrain>0){
       let _gMin=Infinity,_gMax=-Infinity;
       for(let i=0;i<N*N;i++){if(ground[i]<_gMin)_gMin=ground[i];if(ground[i]>_gMax)_gMax=ground[i];}
       const _gRng=_gMax-_gMin||1;
-      const _tAlpha=showTerrain===2?0.22:0.45; // reference mode = dimmer
+      const _tAlpha=showTerrain===2?0.22:0.45;
       for(let _gz=0;_gz<N;_gz++) for(let _gx=0;_gx<N;_gx++){
         const _t=(ground[gi(_gx,_gz)]-_gMin)/_gRng;
         ctx.fillStyle=`rgba(${Math.round(20+_t*30)},${Math.round(55+_t*70)},${Math.round(90+_t*55)},${_tAlpha})`;
         ctx.fillRect(centerX+(_gx*CS-80)*scale, centerY+(_gz*CS-80)*scale, _cellPx, _cellPx);
       }
     }
-    // Label clearly: no design loaded
+    // Label: no design
     ctx.fillStyle='rgba(232,160,32,0.85)';
     ctx.font='bold 11px Arial';
     ctx.textAlign='center';
