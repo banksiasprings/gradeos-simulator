@@ -5120,9 +5120,10 @@ function updateBladePanel(lmm,cmm,rmm,grade,elev,xslope){
   const _daEl=document.getElementById('bv-des-act');
   if(_daEl){if(elev!==null&&cmm!==null&&cmm!==undefined){
     const _de=elev+cmm/1000;
+    _daEl.style.display='';
     _daEl.textContent='DES:'+_de.toFixed(3)+'m / ACT:'+elev.toFixed(3)+'m';
     _daEl.style.color=Math.abs(cmm)<25?'#66bb6a':'#4a7aa0';
-  }else{_daEl.textContent='';}}
+  }else{_daEl.style.display='none';_daEl.textContent='';}}
   // RTK accuracy warning in blade panel
   const accNote=document.getElementById('bv-acc-note');
   if(accNote){
