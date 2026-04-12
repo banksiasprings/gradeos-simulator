@@ -7574,7 +7574,8 @@ function drawBladeSection(leftMM, centerMM, rightMM){
   const crossSlope=(xslopeRBladeE-xslopeLBladeE)/(xslopeBH*2)*100;
   const slopeCol=Math.abs(crossSlope)<3?'#27ae60':'#e8a020';
   ctx.fillStyle=slopeCol; ctx.font='bold 9px monospace'; ctx.textAlign='right';
-  ctx.fillText('XSLOPE '+(crossSlope>=0?'+':'')+crossSlope.toFixed(1)+'%',mL+drawW-2,mT+24);
+  const arrow=(crossSlope>0.5?'→':crossSlope<-0.5?'←':'·');
+  ctx.fillText('XSLOPE '+(crossSlope>=0?'+':'')+crossSlope.toFixed(1)+'% '+arrow,mL+drawW-2,mT+24);
 
   // Distance axis
   ctx.strokeStyle='#1e4060'; ctx.lineWidth=0.5;
