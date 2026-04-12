@@ -3032,9 +3032,9 @@ function updateTextRibbon(lmm,cmm,rmm,grade,elev,xslope){
   ln.textContent=L.num;ln.style.color=L.col;ll.textContent=L.lbl;ll.style.color=L.col;la.textContent=L.arr;la.style.color=L.col;
   cn.textContent=C.num;cn.style.color=C.col;cl.textContent=C.lbl;cl.style.color=C.col;
   rn.textContent=R.num;rn.style.color=R.col;rl.textContent=R.lbl;rl.style.color=R.col;ra.textContent=R.arr;ra.style.color=R.col;
-  if(grade!==null)document.getElementById('tr-grade').textContent=(grade>=0?'+':'')+(Math.abs(grade)<1?grade.toFixed(2):grade.toFixed(1))+'%';
-  if(xslope!==undefined&&xslope!==null)document.getElementById('tr-xslope').textContent=(xslope>=0?'+':'')+(Math.abs(xslope)<1?xslope.toFixed(2):xslope.toFixed(1))+'%';
-  if(elev!==null)document.getElementById('tr-elev').textContent=elev.toFixed(3)+'m';
+  const _gEl=document.getElementById('tr-grade');if(grade===null||isNaN(grade)){_gEl.textContent='--';}else{_gEl.textContent=(grade>=0?'+':'')+(Math.abs(grade)<1?grade.toFixed(2):grade.toFixed(1))+'%';}
+  const _xEl=document.getElementById('tr-xslope');if(xslope===undefined||xslope===null||isNaN(xslope)){_xEl.textContent='--';}else{_xEl.textContent=(xslope>=0?'+':'')+(Math.abs(xslope)<1?xslope.toFixed(2):xslope.toFixed(1))+'%';}
+  const _eEl=document.getElementById('tr-elev');if(elev===null||isNaN(elev)){_eEl.textContent='--';}else{_eEl.textContent=elev.toFixed(3)+'m';}
 }
 
 // ═══════════════════════════════════════════════════════════════════
