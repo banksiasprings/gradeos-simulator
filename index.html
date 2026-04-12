@@ -5695,6 +5695,7 @@ function _registerDesign(name,type){
   designLibrary.push(entry);
   saveDesignLibrary();
   renderDesignPanel();
+  showUpdateToast('✅ Design registered: '+name, 2500);
 }
 
 // Update active library entry snapshot (or create new entry if none exists)
