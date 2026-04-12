@@ -1124,7 +1124,7 @@ body.field-mode #field-rtk{display:flex}
           <div id="ver-info" style="font-size:10px;color:#7aabcc;background:#071525;border:1px solid #1e4a7a;border-radius:4px;padding:8px 10px;margin-bottom:8px;line-height:1.8">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
               <span style="color:#4a7aa0;text-transform:uppercase;letter-spacing:.5px;font-size:9px">Your version</span>
-              <span id="ver-current" style="color:#e8a020;font-weight:700;font-family:monospace">v0.8 · SW&nbsp;v41</span>
+              <span id="ver-current" style="color:#e8a020;font-weight:700;font-family:monospace">v0.8 · SW&nbsp;v42</span>
             </div>
             <div style="display:flex;justify-content:space-between;align-items:center">
               <span style="color:#4a7aa0;text-transform:uppercase;letter-spacing:.5px;font-size:9px">Latest</span>
@@ -7159,20 +7159,14 @@ function drawPlanViewGuidance(pos, lx, lz, rx, rz){
   ctx.fillStyle = '#020810';
   ctx.fillRect(0, 0, w, h);
   
-  // Draw grid
-  ctx.strokeStyle = '#1a3a5c';
+  // Draw grid — dimmer when terrain is off
+  ctx.strokeStyle = showTerrain > 0 ? '#1a3a5c' : '#0d1e30';
   ctx.lineWidth = 0.5;
   for(let i = -80; i <= 80; i += 20){
     const px = centerX + i * scale;
     const pz = centerY + i * scale;
-    ctx.beginPath();
-    ctx.moveTo(px, 0);
-    ctx.lineTo(px, h);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(0, pz);
-    ctx.lineTo(w, pz);
-    ctx.stroke();
+    ctx.beginPath();ctx.moveTo(px, 0);ctx.lineTo(px, h);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(0, pz);ctx.lineTo(w, pz);ctx.stroke();
   }
   
   // Draw design cut/fill map (always when design loaded) OR terrain height map (follows showTerrain)
@@ -7344,6 +7338,26 @@ function drawSideProfileGuidance(hdg){
   const range = maxElev - minElev || 1;
   const scale = (h - margin * 2) / range;
   
+  // Draw ground surface (terrain) — only when showTerrain > 0
+  if(showTerrain > 0){
+    ctx.strokeStyle = showTerrain === 2 ? 'rgba(160,82,45,0.4)' : '#a0522d';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for(let i = 0; i < samples; i++){
+      const px = margin + (i / (samples - 1)) * (w - margin * 2);
+      const py = h - margin - (elevs[i] - minElev) * scale;
+      if(i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    }
+    ctx.stroke();
+  } else {
+    // Terrain OFF — label so operator knows ground line is hidden
+    ctx.font = '9px monospace';
+    ctx.fillStyle = 'rgba(204,51,51,0.7)';
+    ctx.textAlign = 'right';
+    ctx.fillText('TOPO OFF', w - margin + 20, 20);
+    ctx.textAlign = 'left';
+  }
+
   // Draw design surface
   ctx.strokeStyle = '#4a7aa0';
   ctx.lineWidth = 1;
@@ -7358,18 +7372,6 @@ function drawSideProfileGuidance(hdg){
   }
   ctx.stroke();
   ctx.setLineDash([]);
-  
-  // Draw ground surface
-  ctx.strokeStyle = '#a0522d';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  for(let i = 0; i < samples; i++){
-    const px = margin + (i / (samples - 1)) * (w - margin * 2);
-    const py = h - margin - (elevs[i] - minElev) * scale;
-    if(i === 0) ctx.moveTo(px, py);
-    else ctx.lineTo(px, py);
-  }
-  ctx.stroke();
   
   // Draw machine position (at center)
   const machineX = margin + (w - margin * 2) / 2;
