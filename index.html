@@ -5955,7 +5955,10 @@ function toggleKeyHelp(){
           ['Ctrl+Z','Undo last design change'],
           ['Ctrl+Y','Redo'],
           ['General',''],
+          ['G','Guidance screen'],
           ['H','This keyboard help'],
+          ['P','Pitch card'],
+          ['F','Field operator mode'],
         ].map(([k,v])=>k&&!v?
           `<tr><td colspan="2" style="padding:6px 0 2px;color:#e8a020;font-weight:700;text-transform:uppercase;letter-spacing:1px;border-top:1px solid #152535;font-size:10px">${k}</td></tr>`:
           `<tr><td style="padding:3px 12px 3px 0;color:#7aabcc;font-family:monospace;white-space:nowrap">${k}</td><td style="padding:3px 0;color:#dce8f5">${v}</td></tr>`
