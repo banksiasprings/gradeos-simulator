@@ -7268,6 +7268,7 @@ function drawPlanViewGuidance(pos, lx, lz, rx, rz){
   const canvas = document.getElementById('plan-canvas');
   if(!canvas || !canvas.parentElement) return;
   const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = true;
   const w = canvas.width, h = canvas.height;
   const scale = Math.min(w, h) / 160;
   const centerX = w / 2, centerY = h / 2;
@@ -7479,6 +7480,7 @@ function drawBladeSection(leftMM, centerMM, rightMM){
   const canvas = document.getElementById('blade-section-canvas');
   if(!canvas || !canvas.parentElement) return;
   const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = true;
   const w = canvas.width, h = canvas.height;
 
   try {
@@ -7682,6 +7684,7 @@ function drawSideProfileGuidance(hdg){
   const canvas = document.getElementById('side-profile-canvas');
   if(!canvas || !canvas.parentElement) return;
   const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = true;
   const w = canvas.width, h = canvas.height;
 
   try {
