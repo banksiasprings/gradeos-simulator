@@ -3080,6 +3080,7 @@ function toggleMachineType(){
 }
 
 let _smoothedSpd=0;
+const _TRAIL=[];let _trailMesh=null,_trailT=0;function _updateTrail(x,z,y){const now=performance.now();if(now-_trailT<300)return;_trailT=now;_TRAIL.push({x,y:y+0.3,z});if(_TRAIL.length>15)_TRAIL.shift();if(_trailMesh){scene.remove(_trailMesh);_trailMesh.geometry.dispose();_trailMesh=null;}if(_TRAIL.length<2)return;const pos=[],col=[];const n=_TRAIL.length;for(let i=0;i<n;i++){const p=_TRAIL[i];const t=(i+1)/n;pos.push(p.x,p.y,p.z);col.push(0.9*t,0.55*t,0.05*t);}const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));geo.setAttribute('color',new THREE.Float32BufferAttribute(col,3));_trailMesh=new THREE.Points(geo,new THREE.PointsMaterial({size:0.7,vertexColors:true,sizeAttenuation:true,depthWrite:false}));scene.add(_trailMesh);}
 function updateMachine(dt){
   if(!machineOn)return;
   // ── Tablet Demo Mode: position/heading already set by sensor callbacks ──
@@ -3125,7 +3126,7 @@ function updateMachine(dt){
       if(posE2)posE2.textContent=machinePos.x.toFixed(1);
       if(posN2)posN2.textContent=machinePos.z.toFixed(1);
     }
-    recordAsBuilt(machinePos.x,machinePos.z,cDes2,mel2);
+    recordAsBuilt(machinePos.x,machinePos.z,cDes2,mel2);_updateTrail(machinePos.x,machinePos.z,mel2);
     if(showXsec)drawXSection(machinePos.x,machinePos.z,machinePos.hdg);
     return;
   }
@@ -3267,7 +3268,7 @@ function updateMachine(dt){
   }
   if(showXsec)drawXSection(machinePos.x,machinePos.z,machinePos.hdg);
   // As-built
-  recordAsBuilt(machinePos.x,machinePos.z,cDes,mel);
+  recordAsBuilt(machinePos.x,machinePos.z,cDes,mel);_updateTrail(machinePos.x,machinePos.z,mel);
   // ── Live terrain cut simulation ─────────────────────────────────────
   if(cutSimEnabled && designCount>0){
     const movFwd=(keys['ArrowUp']||keys['w']||keys['W'])||autoMovingFwd;
