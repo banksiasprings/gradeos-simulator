@@ -2966,6 +2966,7 @@ function drawXSection(wx,wz,hdg){
 // ═══════════════════════════════════════════════════════════════════
 const ledCanvas=document.getElementById('ledbar');
 
+let _ledPrevL=null,_ledPrevR=null,_ledChanging=false,_ledPulseStart=0;
 function drawLEDBar(leftMM,rightMM){
   const W=ledCanvas.offsetWidth||vp.clientWidth;
   if(W<10)return;
@@ -2974,7 +2975,7 @@ function drawLEDBar(leftMM,rightMM){
   ctx.fillStyle='#020a14';ctx.fillRect(0,0,W,22);
   const SW=13,SH=12,SG=2,half=W/2;
   const maxSeg=Math.floor((half-20)/(SW+SG));
-  const MAX=500;
+  const MAX=500;  const _chg=(_ledPrevL!==null&&Math.abs(leftMM-_ledPrevL)>3)||(_ledPrevR!==null&&Math.abs(rightMM-_ledPrevR)>3);if(_chg){_ledChanging=true;_ledPulseStart=Date.now();}_ledPrevL=leftMM;_ledPrevR=rightMM;const _pe=Date.now()-_ledPulseStart;const _pulse=(_ledChanging&&_pe<1200)?(1+0.25*Math.sin(_pe*0.018)):1;if(_pe>=1200)_ledChanging=false;
   // Colour ramp: inner = lighter, outer = darker/more saturated
   const cutCols=['#ef5350','#e53935','#c62828','#8b0000','#4a0000'];
   const fillCols=['#42a5f5','#1e88e5','#1565c0','#0d47a1','#082954'];
@@ -2992,7 +2993,7 @@ function drawLEDBar(leftMM,rightMM){
       let x;
       if(side==='L')x=half-(i+1)*(SW+SG)-SG-2;
       else x=half+i*(SW+SG)+SG+2;
-      const alpha=lit&&!isGrade?Math.max(0.4,1-i*0.06):1;
+      const alpha=lit&&!isGrade?Math.max(0.4,1-i*0.06)*_pulse:lit&&isGrade?_pulse:1;
       ctx.globalAlpha=alpha;
       ctx.fillStyle=col;
       const r=2;const rx=x,ry=(22-SH)/2,rw=SW,rh=SH;
