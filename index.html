@@ -7464,6 +7464,10 @@ function drawPlanViewGuidance(pos, lx, lz, rx, rz){
   ctx.fillStyle='#7aabcc'; ctx.font='9px monospace'; ctx.textAlign='left';
   const _fmtG=(g)=>(g>=0?'+':'')+(Math.abs(g)<1?g.toFixed(2):g.toFixed(1))+'%';
   ctx.fillText(`LONG: ${_fmtG(longGrade)}  CROSS: ${_fmtG(crossGrade)}`,lgX,lgY-12);
+  // Speed display (top-right corner, near north arrow)
+  const _spdTxt=(document.getElementById('st-spd-val')?.textContent||'0.0')+' km/h';
+  ctx.fillStyle='#4a7aa0'; ctx.font='8px monospace'; ctx.textAlign='right';
+  ctx.fillText(_spdTxt, w-4, h-6);
   } catch(e) {
     // Fallback rendering if error occurs
     ctx.fillStyle='#7aabcc'; ctx.font='9px monospace'; ctx.textAlign='center';
