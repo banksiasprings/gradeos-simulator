@@ -7478,6 +7478,15 @@ function drawPlanViewGuidance(pos, lx, lz, rx, rz){
   ctx.beginPath(); ctx.moveTo(naX,naY-8); ctx.lineTo(naX,naY+8); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(naX-3,naY-3); ctx.lineTo(naX,naY-8); ctx.lineTo(naX+3,naY-3); ctx.stroke();
 
+  // Design name label — top-centre of plan canvas
+  if(typeof getActiveDesignName === 'function'){
+    const _planDN=getActiveDesignName();
+    if(_planDN){
+      ctx.fillStyle='rgba(74,160,240,0.88)'; ctx.font='bold 8px monospace'; ctx.textAlign='center';
+      ctx.fillText('\u25aa '+_planDN, w/2, 10);
+    }
+  }
+
   // Grade display (long + cross)
   const BH_grade=1.7;
   const perpX_g=Math.cos(pos.hdg), perpZ_g=-Math.sin(pos.hdg);
