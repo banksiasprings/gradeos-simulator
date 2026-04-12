@@ -8360,13 +8360,13 @@ setInterval(() => {
   <!-- Controls overlay -->
   <div id="guidance-controls">
     <div style="font-size:8px; color:#4a7aa0; text-align:center; margin-bottom:2px; text-transform:uppercase; letter-spacing:1px">Reference Pt</div>
-    <button class="ref-point active" data-point="center" onclick="setGuidanceRefPoint('center')">CTR</button>
-    <button class="ref-point" data-point="left" onclick="setGuidanceRefPoint('left')">LEFT</button>
-    <button class="ref-point" data-point="right" onclick="setGuidanceRefPoint('right')">RIGHT</button>
+    <button class="ref-point active" data-point="center" onclick="setGuidanceRefPoint('center')" title="Use center blade tip for guidance reference">CTR</button>
+    <button class="ref-point" data-point="left" onclick="setGuidanceRefPoint('left')" title="Use left blade tip for guidance reference">LEFT</button>
+    <button class="ref-point" data-point="right" onclick="setGuidanceRefPoint('right')" title="Use right blade tip for guidance reference">RIGHT</button>
     <!-- Cut/Fill toggle -->
     <div style="border-top:1px solid #1e4a7a; margin-top:4px; padding-top:4px">
       <div style="font-size:8px; color:#4a7aa0; text-align:center; margin-bottom:3px; text-transform:uppercase; letter-spacing:1px">Cut/Fill Map</div>
-      <button onclick="toggleGuidanceCutFill()" style="width:100%; display:flex; align-items:center; gap:5px; justify-content:center; padding:4px 6px">
+      <button onclick="toggleGuidanceCutFill()" title="Toggle cut/fill color map visibility on plan view" style="width:100%; display:flex; align-items:center; gap:5px; justify-content:center; padding:4px 6px">
         <span id="gcf-led" style="display:inline-block; width:7px; height:7px; border-radius:50%; background:#cc3333; box-shadow:0 0 5px rgba(204,51,51,0.6); flex-shrink:0"></span>
         <span id="gcf-label" style="font-size:10px; color:#cc3333; font-weight:700; letter-spacing:1px">OFF</span>
       </button>
@@ -8376,13 +8376,13 @@ setInterval(() => {
   <!-- Tolerance controls -->
   <div id="tolerance-display">
     <span style="font-size:9px; color:#4a7aa0; text-transform:uppercase; letter-spacing:1px">Tolerance:</span>
-    <button onclick="adjGuidanceTolerance(-0.01)">−</button>
+    <button onclick="adjGuidanceTolerance(-0.01)" title="Decrease tolerance zone">−</button>
     <span id="tolerance-value">±50mm</span>
-    <button onclick="adjGuidanceTolerance(0.01)">+</button>
+    <button onclick="adjGuidanceTolerance(0.01)" title="Increase tolerance zone">+</button>
   </div>
 
   <!-- Exit button -->
-  <button id="guidance-exit" onclick="toggleGuidanceScreen()">✕ Exit Guidance</button>
+  <button id="guidance-exit" onclick="toggleGuidanceScreen()" title="Close guidance screen and return to main 3D view">✕ Exit Guidance</button>
 </div>
 
 <script>
