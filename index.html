@@ -844,6 +844,14 @@ body.field-mode #field-rtk{display:flex}
 .pro-type-tab:hover,.pro-type-tab.act{background:#e8a020;border-color:#e8a020;color:#0a1520;font-weight:700}
 #pro-el-preview{font-size:10px;color:#7aabcc;font-family:monospace;background:#040c18;border:1px solid #1a3a5c;border-radius:3px;padding:5px 8px;min-height:28px}
 /* Profile load modal */
+@media(max-height:600px){
+  #h-align-bar{height:24px;font-size:9px}
+  #plan-title,#blade-section-title,#side-profile-title{padding:2px 4px;font-size:8px}
+  #guidance-controls{gap:2px;padding:3px 2px}
+  #tolerance-display{padding:2px 4px;font-size:9px}
+  #guidance-exit{padding:4px 8px;font-size:10px}
+  #v-cut-fill-bar{font-size:8px}
+}
 #pro-load-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:300;align-items:center;justify-content:center}
 #pro-load-modal.show{display:flex}
 #pro-load-box{background:#0d1f35;border:1px solid #e8a020;border-radius:6px;width:380px;max-width:96vw}
