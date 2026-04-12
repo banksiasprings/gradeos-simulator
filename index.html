@@ -4355,6 +4355,18 @@ function updateTopoLed(){
     const el=document.getElementById(id);
     if(el){el.textContent=s.label;el.style.color=s.color;}
   });
+  // Elevation range label for topo scale context
+  if(showTerrain>0&&ground&&ground.length){
+    let minE=Infinity,maxE=-Infinity;
+    for(let i=0;i<ground.length;i++){if(ground[i]<minE)minE=ground[i];if(ground[i]>maxE)maxE=ground[i];}
+    if(isFinite(minE)){
+      const rng=minE.toFixed(1)+'\u2013'+maxE.toFixed(1)+'m';
+      ['dp-topo-label','dp-topo-tools-label'].forEach(id=>{
+        const el=document.getElementById(id);
+        if(el)el.textContent=s.label+' \u00b7 '+rng;
+      });
+    }
+  }
 }
 function toggleContours(){
   showContours=!showContours;
