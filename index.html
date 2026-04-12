@@ -1563,6 +1563,7 @@ body.field-mode #field-rtk{display:flex}
   <div id="st-voff" style="display:none">V-Off: <span id="st-voff-val" style="color:#7aabcc;font-family:monospace">0</span> mm</div>
   <div id="st-prod" style="display:none">Rate: <span id="st-rate" style="color:#66bb6a">—</span> &nbsp; ETA: <span id="st-eta" style="color:#ffb74d">—</span></div>
   <div id="st-speed" style="display:none">Spd: <span id="st-spd-val" style="color:#7aabcc;font-family:monospace">0.0</span> km/h · <span id="st-hdg" style="color:#7aabcc;font-family:monospace">000</span>°</div>
+  <div id="st-pos" style="display:none">E: <span id="st-pos-e" style="color:#7aabcc;font-family:monospace">0.0</span> N: <span id="st-pos-n" style="color:#7aabcc;font-family:monospace">0.0</span></div>
   <div id="st-hint" style="margin-left:auto;color:#4a7aa0">Scroll=zoom · Right-drag=orbit · Dbl-click=probe elevation &amp; grade</div>
 </div>
 
@@ -3098,6 +3099,15 @@ function updateMachine(dt){
       const hdgEl2=document.getElementById('st-hdg');
       if(hdgEl2)hdgEl2.textContent=String(hdgDeg2).padStart(3,'0');
     }
+    // Position display
+    const posEl2=document.getElementById('st-pos');
+    if(posEl2){
+      posEl2.style.display='';
+      const posE2=document.getElementById('st-pos-e');
+      const posN2=document.getElementById('st-pos-n');
+      if(posE2)posE2.textContent=machinePos.x.toFixed(1);
+      if(posN2)posN2.textContent=machinePos.z.toFixed(1);
+    }
     recordAsBuilt(machinePos.x,machinePos.z,cDes2,mel2);
     if(showXsec)drawXSection(machinePos.x,machinePos.z,machinePos.hdg);
     return;
@@ -3139,6 +3149,15 @@ function updateMachine(dt){
     const hdgDeg=Math.round((machinePos.hdg*180/Math.PI%360+360)%360);
     const hdgEl=document.getElementById('st-hdg');
     if(hdgEl)hdgEl.textContent=String(hdgDeg).padStart(3,'0');
+  }
+  // Position display
+  const posEl=document.getElementById('st-pos');
+  if(posEl){
+    posEl.style.display='';
+    const posE=document.getElementById('st-pos-e');
+    const posN=document.getElementById('st-pos-n');
+    if(posE)posE.textContent=machinePos.x.toFixed(1);
+    if(posN)posN.textContent=machinePos.z.toFixed(1);
   }
   // Snapshot terrain history for time-lapse replay (every 3s while cutting)
   if(isCutting&&performance.now()-lastHistorySnap>3000){
