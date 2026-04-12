@@ -7015,8 +7015,20 @@ function toggleGuidanceScreen(){
   if(guidanceScreenActive){
     screen.classList.add('show');
     initGuidanceCanvases();
+    // Reduce mesh opacity when guidance screen is open (cosmetic: easier to see overlaid guidance)
+    if(desMesh && desMesh.material){
+      if(!desMesh._origOpacity) desMesh._origOpacity = desMesh.material.opacity;
+      desMesh.material.opacity = desMesh._origOpacity * 0.4;
+    }
+    if(terrMesh && terrMesh.material){
+      if(!terrMesh._origOpacity) terrMesh._origOpacity = terrMesh.material.opacity;
+      terrMesh.material.opacity = terrMesh._origOpacity * 0.4;
+    }
   } else {
     screen.classList.remove('show');
+    // Restore mesh opacity when guidance screen closes
+    if(desMesh && desMesh.material && desMesh._origOpacity) desMesh.material.opacity = desMesh._origOpacity;
+    if(terrMesh && terrMesh.material && terrMesh._origOpacity) terrMesh.material.opacity = terrMesh._origOpacity;
   }
   const guideBtn = document.getElementById('guide-topbar-btn');
   if(guideBtn) guideBtn.classList.toggle('act', guidanceScreenActive);
