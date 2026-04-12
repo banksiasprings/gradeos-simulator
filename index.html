@@ -7400,6 +7400,17 @@ function drawPlanViewGuidance(pos, lx, lz, rx, rz){
   ctx.strokeStyle='#e8a020'; ctx.lineWidth=1.5;
   ctx.beginPath(); ctx.moveTo(naX,naY-8); ctx.lineTo(naX,naY+8); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(naX-3,naY-3); ctx.lineTo(naX,naY-8); ctx.lineTo(naX+3,naY-3); ctx.stroke();
+
+  // Grade display (long + cross)
+  const BH_grade=1.7;
+  const perpX_g=Math.cos(pos.hdg), perpZ_g=-Math.sin(pos.hdg);
+  const fwdX=Math.sin(pos.hdg), fwdZ=Math.cos(pos.hdg);
+  const aheadE=gElev(pos.x+fwdX*5,pos.z+fwdZ*5);
+  const longGrade=((aheadE-gElev(pos.x,pos.z))/5)*100;
+  const rSideE=gElev(pos.x+perpX_g*BH_grade,pos.z+perpZ_g*BH_grade);
+  const crossGrade=((rSideE-gElev(pos.x,pos.z))/BH_grade)*100;
+  ctx.fillStyle='#7aabcc'; ctx.font='9px monospace'; ctx.textAlign='left';
+  ctx.fillText(`LONG: ${longGrade>=0?'+':''}${longGrade.toFixed(1)}%  CROSS: ${crossGrade>=0?'+':''}${crossGrade.toFixed(1)}%`,lgX,lgY-12);
 }
 
 function drawBladeSection(leftMM, centerMM, rightMM){
