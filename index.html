@@ -3343,6 +3343,7 @@ function updateMachine(dt){
     } else { excavDigT=0; }
   }
   if(camFollow&&camMode==='3d'){orb.cx=machinePos.x;orb.cz=machinePos.z;updateCam();}  // Follow cam
+  if(camFollow&&camMode==='plan'){planPanX=machinePos.x;planPanZ=machinePos.z;planCam.position.set(planPanX,300,planPanZ);planCam.lookAt(planPanX,0,planPanZ);}  // Plan follow cam
   if(camMode==='follow'){
     const behX=machinePos.x-Math.sin(machinePos.hdg)*22;
     const behZ=machinePos.z-Math.cos(machinePos.hdg)*22;
