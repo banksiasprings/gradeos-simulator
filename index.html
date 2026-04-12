@@ -3167,7 +3167,14 @@ function updateMachine(dt){
   const perpX=Math.cos(machinePos.hdg),perpZ=-Math.sin(machinePos.hdg);
   const lx=machinePos.x-perpX*BH,lz=machinePos.z-perpZ*BH;
   const rx=machinePos.x+perpX*BH,rz=machinePos.z+perpZ*BH;
-  const lGnd=gElev(lx,lz),rGnd=gElev(rx,rz);
+  // GPS machine control: blade tip elevation from machine geometry (roll + GPS centre height)
+  // A real GPS dozer knows blade position from GPS receivers on the blade frame.
+  // It does NOT sample terrain under the blade tips — that surface is unknown until surveyed.
+  const _perpRx=machinePos.x+Math.cos(machinePos.hdg)*BH,_perpRz=machinePos.z-Math.sin(machinePos.hdg)*BH;
+  const _rSideElev=gElev(_perpRx,_perpRz);
+  const _machRoll=Math.atan2(mel-_rSideElev,BH);
+  const lBladeElev=mel-Math.sin(_machRoll)*BH;
+  const rBladeElev=mel+Math.sin(_machRoll)*BH;
   const lDes=dElev(lx,lz),rDes=dElev(rx,rz),cDes=dElev(machinePos.x,machinePos.z);
   // For excavator: compute bucket tip depth at the dig point (4m ahead)
   let lMM,rMM,cMM;
@@ -3188,15 +3195,15 @@ function updateMachine(dt){
     lMM=dlD!==null?(dlD+vOffset-dlG)*1000:null;
     rMM=drD!==null?(drD+vOffset-drG)*1000:null;
   }else{
-    lMM=lDes!==null?(lDes+vOffset-lGnd)*1000:null;
-    rMM=rDes!==null?(rDes+vOffset-rGnd)*1000:null;
+    lMM=lDes!==null?(lDes+vOffset-lBladeElev)*1000:null;
+    rMM=rDes!==null?(rDes+vOffset-rBladeElev)*1000:null;
     cMM=cDes!==null?(cDes+vOffset-mel)*1000:null;
   }
   // Longitudinal grade — use design grade when design is active (shows target, not terrain)
   const _gFwdDes=dElev(machinePos.x+Math.sin(machinePos.hdg)*2,machinePos.z+Math.cos(machinePos.hdg)*2);
   const grade=(_gFwdDes!==null&&cDes!==null)?((_gFwdDes-cDes)/2)*100:((fwd-mel)/2)*100;
   // Cross slope — use design crossfall when design is active
-  const xslope=(lDes!==null&&rDes!==null)?((rDes-lDes)/(BH*2))*100:((rGnd-lGnd)/(BH*2))*100;
+  const xslope=(lDes!==null&&rDes!==null)?((rDes-lDes)/(BH*2))*100:((rBladeElev-lBladeElev)/(BH*2))*100;
   // Blade focus point determines guidance reference
   const focusMM=bladeFocus==='tipA'?lMM:bladeFocus==='tipB'?rMM:cMM;
   updateTextRibbon(lMM,cMM,rMM,grade,mel,xslope);
@@ -7022,14 +7029,21 @@ function updateGuidanceScreens(){
   
   // Get current blade measurements
   const perpX = Math.cos(machinePos.hdg), perpZ = -Math.sin(machinePos.hdg);
-  const BH = 8;  // blade half-width (m)
-  const lx = machinePos.x - perpX * BH, lz = machinePos.z - perpZ * BH;
-  const rx = machinePos.x + perpX * BH, rz = machinePos.z + perpZ * BH;
-  
+  const BLADE_HW = 1.7;   // actual blade half-width (m) for guidance readings
+  const VIZ_HW = 8;       // wider reference zone (m) for plan-view visualisation only
+  const lx = machinePos.x - perpX * BLADE_HW, lz = machinePos.z - perpZ * BLADE_HW;
+  const rx = machinePos.x + perpX * BLADE_HW, rz = machinePos.z + perpZ * BLADE_HW;
+  const lvx = machinePos.x - perpX * VIZ_HW, lvz = machinePos.z - perpZ * VIZ_HW;
+  const rvx = machinePos.x + perpX * VIZ_HW, rvz = machinePos.z + perpZ * VIZ_HW;
+
   const mel = gElev(machinePos.x, machinePos.z);
-  const lGround = gElev(lx, lz);
-  const rGround = gElev(rx, rz);
-  const cGround = mel;
+  // GPS guidance: blade tip elevation from machine geometry (roll + GPS centre height)
+  // Real GPS dozers know blade position from receivers on the blade frame — they do NOT sample terrain under tips
+  const _rSideGS=gElev(machinePos.x+Math.cos(machinePos.hdg)*BLADE_HW,machinePos.z-Math.sin(machinePos.hdg)*BLADE_HW);
+  const _rollGS=Math.atan2(mel-_rSideGS,BLADE_HW);
+  const lGround=mel-Math.sin(_rollGS)*BLADE_HW;
+  const rGround=mel+Math.sin(_rollGS)*BLADE_HW;
+  const cGround=mel;
   
   const _lDes = dElev(lx, lz);
   const _rDes = dElev(rx, rz);
@@ -7062,7 +7076,7 @@ function updateGuidanceScreens(){
   
   updateHorizontalAlignmentBar(refCmm);
   updateVerticalCutFillBar(refCut);
-  drawPlanViewGuidance(machinePos, lx, lz, rx, rz);
+  drawPlanViewGuidance(machinePos, lvx, lvz, rvx, rvz);
   drawBladeSection(refLmm, refCmm, refRmm);
   drawSideProfileGuidance(machinePos.hdg);
 }
