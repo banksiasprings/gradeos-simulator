@@ -3032,6 +3032,7 @@ document.addEventListener('keydown',e=>{
   if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key))e.preventDefault();
   if(e.ctrlKey&&e.key==='z'){e.preventDefault();doUndo();}
   if(e.ctrlKey&&(e.key==='y'||e.key==='Y')){e.preventDefault();doRedo();}
+  if((e.key==='g'||e.key==='G')&&!e.ctrlKey&&!e.altKey&&!e.metaKey){e.preventDefault();toggleGuidanceScreen();}
 });
 document.addEventListener('keyup',e=>{keys[e.key]=false;});
 
