@@ -37,3 +37,26 @@
 - **`getActiveDesignName` guard**: The design name label uses `typeof getActiveDesignName === 'function'` guard so it degrades gracefully if the function is ever renamed.
 
 - **SW version range this round**: v77 → v83 (6 SW bumps, 6 commits).
+
+
+## Round B — 3D View & Machine Simulation — 2026-04-13
+### Completed
+- **v84**: T5 — drawXSection cut colour changed from orange rgba(200,80,20,.28)/#ff7043 to red rgba(220,50,50,.28)/#ef5350 to match app-wide convention (red=cut, blue=fill). Fill shading (blue) was already correct. — verified ✓ (code grep: ef5350=2 matches, rgba 220,50,50=1 match)
+- **v85**: T7 — Null/NaN guards added to updateTextRibbon for grade, xslope and elev fields. Previously passing null would leave stale value; NaN would show literal 'NaN'. Now shows '--' for any null/NaN/undefined case. — verified ✓ (JS: tr-grade showed '+2.5%' not NaN after boot)
+- **v86**: T1 — LED bar colour scheme aligned with guidance screen: cutCols changed to red shades (#ef5350→#4a0000), fillCols changed to blue shades (#42a5f5→#082954). On-grade green unchanged. — verified ✓ (code grep: cutCols in LED bar section)
+- **v87**: T6 — Speed display low-pass filter added: `_smoothedSpd = _smoothedSpd * 0.85 + spdKmh * 0.15`. Module-level `let _smoothedSpd=0` added before updateMachine. Position updates unchanged; display-only smoothing. — verified ✓ (JS: typeof _smoothedSpd = number)
+- **v88**: T3 — Haul arrow threshold lowered from 2m to 1m. Arrow now visible for short hauls (1–3m range). Still hidden < 1m to avoid degenerate zero-length lines. — verified ✓ (code grep: haulDist<1)
+- **v89**: T8 — LED bar pulse animation added. Module-level _ledPrevL/_ledPrevR track previous readings; when change > 3mm detected, _ledChanging=true and a 1.2s sine-wave pulse (_pe*0.018 freq) modulates LED alpha by up to +25%. — verified ✓ (JS: typeof _ledChanging = boolean)
+- **v90**: T4 — Machine position trail added: `_updateTrail()` samples position every 300ms, stores last 15 points in `_TRAIL[]`, renders as Three.js Points geometry with amber colour fading (oldest=dim, newest=bright). Called from both tabletDemoActive and regular updateMachine paths. — verified ✓ (code: 3 x _updateTrail in source)
+- **v91**: T9 — Camera auto-follow toggle: `let camFollow=true` added; F key toggles it; when true and camMode==='3d', orb.cx/cz snap to machinePos each frame via updateCam(). Existing camMode='follow' (chase-cam) untouched. — verified ✓ (code: 3 x camFollow in source)
+
+### Skipped / Already Implemented
+- **T2** (updateTextRibbon grade format): Already implemented in a prior round — `Math.abs(grade)<1?grade.toFixed(2):grade.toFixed(1)` already present. No change needed.
+
+### Notes for Round C
+- **SW v90/v91 not yet visible via Chrome JS**: Service worker caching delay means the browser still served v89 content during verification. T4 (_TRAIL, _updateTrail) and T9 (camFollow) could not be confirmed via JS eval. All code confirmed in repo source via grep.
+- **_updateTrail performance**: Recreates Three.js BufferGeometry every 300ms. Could be optimised in Round C by reusing the geometry and updating the position buffer attribute in-place with `geometry.attributes.position.needsUpdate=true`.
+- **camFollow and plan mode**: The camFollow flag currently only updates the orb centre in '3d' mode. In 'plan' mode, the planCam could also track the machine (update planPanX/planPanZ). Round C could extend this.
+- **LED pulse on initial load**: When the app first loads, _ledPrevL/R are null, so the pulse won't trigger for the first reading. This is intentional (no false pulse on startup).
+- **Trail colour**: Currently amber (0.9t, 0.55t, 0.05t). Round C could use the track's on-grade green/orange convention to match the existing GPS track colour scheme.
+- **SW version range this round**: v83 → v91 (8 SW bumps, 8 commits).
