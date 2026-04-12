@@ -7301,6 +7301,17 @@ function drawPlanViewGuidance(pos, lx, lz, rx, rz){
   ctx.fillStyle = '#020810';
   ctx.fillRect(0, 0, w, h);
 
+  // RTK status border — FIXED=green, FLOAT=amber, else red — instant quality awareness
+  const _rtkBCol=rtkFixType==='RTK FIXED'?'rgba(39,174,96,0.55)':
+                 rtkFixType==='RTK FLOAT'?'rgba(232,160,32,0.75)':
+                 'rgba(239,83,80,0.80)';
+  if(rtkFixType!=='RTK FIXED'){
+    ctx.fillStyle=rtkFixType==='RTK FLOAT'?'rgba(232,160,32,0.04)':'rgba(239,83,80,0.06)';
+    ctx.fillRect(0,0,w,h);
+  }
+  ctx.strokeStyle=_rtkBCol; ctx.lineWidth=3;
+  ctx.strokeRect(1.5,1.5,w-3,h-3);
+
   // Grid — dimmer when terrain is off
   ctx.strokeStyle = showTerrain > 0 ? '#1a3a5c' : '#0d1e30';
   ctx.lineWidth = 0.5;

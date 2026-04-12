@@ -1,4 +1,4 @@
-const CACHE = 'gradeos-v81';
+const CACHE = 'gradeos-v82';
 const ASSETS = ['./', './index.html'];
 
 self.addEventListener('install', e => {
