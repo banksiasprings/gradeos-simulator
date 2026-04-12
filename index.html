@@ -2371,9 +2371,14 @@ function genTerrain(type){
     document.getElementById('scout-stats').innerHTML=
       `🚁 Drone DEM imported<br>📡 Coverage: <b style="color:#66bb6a">100%</b> · 2,847 images<br>📐 GSD: 2.1 cm/px · RMS: ±18mm`;
   }
-  document.getElementById('st-terrain').textContent={flat:'Flat Paddock',hilly:'Hilly Farm',valley:'Valley',
+  // Compute and display elevation range
+  const minElev=Math.min(...ground);
+  const maxElev=Math.max(...ground);
+  const elevRange=maxElev-minElev;
+  const terrainLabel={flat:'Flat Paddock',hilly:'Hilly Farm',valley:'Valley',
     dam_site:'Dam Site',embankment:'Embankment',cut_hill:'Cut Hill',irrig_bay:'Irrigation Bay',drone:'Drone DEM',
     road_cut:'Road Construction',house_pad:'House Pad Development'}[type]||type;
+  document.getElementById('st-terrain').textContent=`${terrainLabel} ${minElev.toFixed(1)}–${maxElev.toFixed(1)}m`;
   // Close drawer after terrain selection
   document.getElementById('side-drawer').classList.remove('open');
 }
