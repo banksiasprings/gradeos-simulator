@@ -1170,7 +1170,8 @@ body.field-mode #field-rtk{display:flex}
         <div id="voff-label">V-OFFSET</div>
       </div>
       <button class="vob-btn" onclick="adjVOffset(0.025)" title="+25mm">+</button>
-      <button class="vob-btn" style="margin-left:4px;font-size:11px" onclick="autoBalanceVOffset()" title="Auto-balance: find V-Offset that equalises cut and fill volumes">⚖</button>
+      <button class="vob-btn" style="margin-left:4px;font-size:11px" onclick="setVOffset(0);document.getElementById('st-hint').textContent='V-Offset reset to 0 mm';" title="Reset to 0">⟲</button>
+      <button class="vob-btn" style="margin-left:2px;font-size:11px" onclick="autoBalanceVOffset()" title="Auto-balance: find V-Offset that equalises cut and fill volumes">⚖</button>
       <button class="vob-btn" style="margin-left:2px;font-size:11px" onclick="toggleVoffMem()" title="Memories">☰</button>
     </div>
 
