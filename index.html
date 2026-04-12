@@ -1280,6 +1280,7 @@ body.field-mode #field-rtk{display:flex}
           <span>XSlope: <span id="bv-xslope" style="color:#7aabcc;font-family:monospace">—</span></span>
           <span>Elev: <span id="bv-elev" style="color:#7aabcc;font-family:monospace">—</span></span>
         </div>
+        <div id="bv-des-act" style="font-size:9px;color:#4a7aa0;font-family:monospace;margin-top:1px;text-align:center"></div>
         <div id="bv-acc-note" style="display:none;margin-top:4px;text-align:center;font-size:10px;font-weight:700;padding:2px 6px;border-radius:3px;background:rgba(232,160,32,.15)"></div>
       </div>
     </div>
@@ -5116,6 +5117,12 @@ function updateBladePanel(lmm,cmm,rmm,grade,elev,xslope){
   if(grade!==null)document.getElementById('bv-grade').textContent=(grade>=0?'+':'')+(Math.abs(grade)<1?grade.toFixed(2):grade.toFixed(1))+'%';
   if(xslope!==null&&xslope!==undefined)document.getElementById('bv-xslope').textContent=(xslope>=0?'+':'')+(Math.abs(xslope)<1?xslope.toFixed(2):xslope.toFixed(1))+'%';
   if(elev!==null)document.getElementById('bv-elev').textContent=elev.toFixed(3)+'m';
+  const _daEl=document.getElementById('bv-des-act');
+  if(_daEl){if(elev!==null&&cmm!==null&&cmm!==undefined){
+    const _de=elev+cmm/1000;
+    _daEl.textContent='DES:'+_de.toFixed(3)+'m / ACT:'+elev.toFixed(3)+'m';
+    _daEl.style.color=Math.abs(cmm)<25?'#66bb6a':'#4a7aa0';
+  }else{_daEl.textContent='';}}
   // RTK accuracy warning in blade panel
   const accNote=document.getElementById('bv-acc-note');
   if(accNote){
