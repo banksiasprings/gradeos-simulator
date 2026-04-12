@@ -3260,7 +3260,9 @@ function updateMachine(dt){
         }
       }
       // Update cut volume display
-      document.getElementById('st-cut').textContent=sessionCutVol.toFixed(1)+'m³';
+      const cutEl=document.getElementById('st-cut');
+      cutEl.textContent=(isCutting?'🔥 ':'')+ sessionCutVol.toFixed(1)+'m³';
+      cutEl.style.color=isCutting?'#ef5350':'#42a5f5';
     } else { isCutting=false; }
   }
 
@@ -3292,7 +3294,9 @@ function updateMachine(dt){
           terrainDirty=true;isCutting=true;
         }
       }
-      document.getElementById('st-cut').textContent=sessionCutVol.toFixed(1)+'m³';
+      const cutEl=document.getElementById('st-cut');
+      cutEl.textContent=(isCutting?'🔥 ':'')+ sessionCutVol.toFixed(1)+'m³';
+      cutEl.style.color=isCutting?'#ef5350':'#42a5f5';
     } else { excavDigT=0; }
   }
   // Follow cam
