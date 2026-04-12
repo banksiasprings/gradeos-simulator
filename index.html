@@ -1124,7 +1124,7 @@ body.field-mode #field-rtk{display:flex}
           <div id="ver-info" style="font-size:10px;color:#7aabcc;background:#071525;border:1px solid #1e4a7a;border-radius:4px;padding:8px 10px;margin-bottom:8px;line-height:1.8">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
               <span style="color:#4a7aa0;text-transform:uppercase;letter-spacing:.5px;font-size:9px">Your version</span>
-              <span id="ver-current" style="color:#e8a020;font-weight:700;font-family:monospace">v0.8 · SW&nbsp;v32</span>
+              <span id="ver-current" style="color:#e8a020;font-weight:700;font-family:monospace">v0.8 · SW&nbsp;v39</span>
             </div>
             <div style="display:flex;justify-content:space-between;align-items:center">
               <span style="color:#4a7aa0;text-transform:uppercase;letter-spacing:.5px;font-size:9px">Latest</span>
@@ -1748,7 +1748,7 @@ let camMode='3d';
 let showXsec=false;
 let showContours=true;
 let showCutFill=true;
-let showTerrain=0; // 0=off, 1=active (green), 2=reference (blue)
+let showTerrain=1; // 0=off, 1=active (green), 2=reference (blue)
 let bladeFocus='center'; // 'center', 'tipA' (left), 'tipB' (right)
 let bladeTargetY=0.45;   // for smooth blade animation
 let showSurvey=false;
@@ -7183,13 +7183,16 @@ function drawPlanViewGuidance(pos, lx, lz, rx, rz){
       }
     }
   } else {
-    let _gMin=Infinity,_gMax=-Infinity;
-    for(let i=0;i<N*N;i++){if(ground[i]<_gMin)_gMin=ground[i];if(ground[i]>_gMax)_gMax=ground[i];}
-    const _gRng=_gMax-_gMin||1;
-    for(let _gz=0;_gz<N;_gz++) for(let _gx=0;_gx<N;_gx++){
-      const _t=(ground[gi(_gx,_gz)]-_gMin)/_gRng;
-      ctx.fillStyle=`rgba(${Math.round(20+_t*30)},${Math.round(55+_t*70)},${Math.round(90+_t*55)},0.45)`;
-      ctx.fillRect(centerX+(_gx*CS-80)*scale, centerY+(_gz*CS-80)*scale, _cellPx, _cellPx);
+    if(showTerrain>0){
+      let _gMin=Infinity,_gMax=-Infinity;
+      for(let i=0;i<N*N;i++){if(ground[i]<_gMin)_gMin=ground[i];if(ground[i]>_gMax)_gMax=ground[i];}
+      const _gRng=_gMax-_gMin||1;
+      const _tAlpha=showTerrain===2?0.22:0.45; // reference mode = dimmer
+      for(let _gz=0;_gz<N;_gz++) for(let _gx=0;_gx<N;_gx++){
+        const _t=(ground[gi(_gx,_gz)]-_gMin)/_gRng;
+        ctx.fillStyle=`rgba(${Math.round(20+_t*30)},${Math.round(55+_t*70)},${Math.round(90+_t*55)},${_tAlpha})`;
+        ctx.fillRect(centerX+(_gx*CS-80)*scale, centerY+(_gz*CS-80)*scale, _cellPx, _cellPx);
+      }
     }
     // Label clearly: no design loaded
     ctx.fillStyle='rgba(232,160,32,0.85)';
