@@ -1757,6 +1757,8 @@ let savedProfiles=[];
 let pfPoints=[];
 let pfDrag=null;
 let vOffset=0;
+let guidanceZoomPlan = 1.0, guidanceZoomBlade = 1.0, guidanceZoomSide = 1.0;
+function zoomGuidance(panel, dir) { const factor = dir > 0 ? 1.25 : 0.8; if (panel === 'plan')  guidanceZoomPlan  = Math.max(0.4, Math.min(3.0, guidanceZoomPlan  * factor)); if (panel === 'blade') guidanceZoomBlade = Math.max(0.4, Math.min(3.0, guidanceZoomBlade * factor)); if (panel === 'side')  guidanceZoomSide  = Math.max(0.4, Math.min(3.0, guidanceZoomSide  * factor)); }
 let camMode='3d';
 let showXsec=false;
 let showContours=true;
@@ -7333,6 +7335,7 @@ function drawPlanViewGuidance(pos, lx, lz, rx, rz){
   try {
   ctx.fillStyle = '#020810';
   ctx.fillRect(0, 0, w, h);
+  ctx.save(); const _zCX=w/2,_zCY=h/2; ctx.translate(_zCX,_zCY); ctx.scale(guidanceZoomPlan,guidanceZoomPlan); ctx.translate(-_zCX,-_zCY);
 
   // RTK status border — FIXED=green, FLOAT=amber, else red — instant quality awareness
   const _rtkBCol=rtkFixType==='RTK FIXED'?'rgba(39,174,96,0.55)':
@@ -7473,6 +7476,7 @@ function drawPlanViewGuidance(pos, lx, lz, rx, rz){
   ctx.beginPath(); ctx.moveTo(0,arrY2-5); ctx.lineTo(-5,arrY2); ctx.lineTo(5,arrY2); ctx.closePath(); ctx.fill();
 
   ctx.restore();
+  { const _mxC2=centerX+pos.x*scale, _mzC2=centerY+pos.z*scale; ctx.save(); ctx.translate(_mxC2,_mzC2); ctx.rotate(-pos.hdg); const _mLen=10.5*scale, _mWid=3.1*scale; ctx.strokeStyle='#888'; ctx.lineWidth=1.5; ctx.strokeRect(-_mLen/2,-_mWid/2,_mLen,_mWid); ctx.strokeStyle='#555'; const _tg=2.485*scale/2; ctx.beginPath(); ctx.moveTo(-_mLen/2,-_tg); ctx.lineTo(_mLen/2,-_tg); ctx.stroke(); ctx.beginPath(); ctx.moveTo(-_mLen/2,_tg); ctx.lineTo(_mLen/2,_tg); ctx.stroke(); ctx.restore(); }
 
   // GPS accuracy ring around machine position
   const _gpsR=rtkFixType==='RTK FIXED'?0.02:rtkFixType==='RTK FLOAT'?0.30:0.38;
@@ -7551,6 +7555,7 @@ function drawPlanViewGuidance(pos, lx, lz, rx, rz){
   const _spdTxt=(document.getElementById('st-spd-val')?.textContent||'0.0')+' km/h';
   ctx.fillStyle='#4a7aa0'; ctx.font='8px monospace'; ctx.textAlign='right';
   ctx.fillText(_spdTxt, w-4, h-6);
+  ctx.restore();
   } catch(e) {
     // Fallback rendering if error occurs
     ctx.fillStyle='#7aabcc'; ctx.font='9px monospace'; ctx.textAlign='center';
@@ -7573,6 +7578,7 @@ function drawBladeSection(leftMM, centerMM, rightMM){
   const mL=44, mR=14, mT=40, mB=46;
   const drawW=w-mL-mR, drawH=h-mT-mB;
   const ctrX=mL+drawW/2;
+  ctx.save(); const _zCXB=w/2,_zCYB=h/2; ctx.translate(_zCXB,_zCYB); ctx.scale(guidanceZoomBlade,guidanceZoomBlade); ctx.translate(-_zCXB,-_zCYB);
 
   // Sample ground + design across blade width (21 points)
   const perpX=Math.cos(machinePos.hdg), perpZ=-Math.sin(machinePos.hdg);
@@ -7706,6 +7712,9 @@ function drawBladeSection(leftMM, centerMM, rightMM){
   ctx.beginPath(); ctx.arc(bladeLeftX,bladeLeftY2,7,0,Math.PI*2); ctx.fill();
   ctx.beginPath(); ctx.arc(bladeRightX,bladeRightY2,7,0,Math.PI*2); ctx.fill();
 
+  // D11T machine silhouette (front view)
+  { const _groundY_b=elev2y(cGround); const _ppmB=drawW/16; const _trkW=2.485*_ppmB, _trkH=0.6*_ppmB; const _mL2=ctrX-_trkW/2, _mR2=ctrX+_trkW/2; ctx.fillStyle='rgba(80,80,80,0.5)'; ctx.fillRect(_mL2-8,_groundY_b-_trkH,8,_trkH); ctx.fillRect(_mR2,_groundY_b-_trkH,8,_trkH); const _cabW=_trkW*0.4, _cabH=1.8*_ppmB; ctx.fillStyle='rgba(60,60,80,0.4)'; ctx.fillRect(ctrX-_cabW/2,_groundY_b-_trkH-_cabH,_cabW,_cabH); }
+
   // Callouts
   const callColor=(mm)=>Math.abs(mm)<=tolMM?'#27ae60':mm>0?'#e05040':'#4a90e2';
   const callText=(mm)=>Math.abs(mm)<10?'✓ ON GRADE':((mm>0?'▲':'▼')+Math.abs(mm).toFixed(0)+'mm '+(mm>0?'CUT':'FILL'));
@@ -7763,6 +7772,7 @@ function drawBladeSection(leftMM, centerMM, rightMM){
   }
   ctx.fillStyle='#4a7aa0'; ctx.font='8px monospace'; ctx.textAlign='center';
   ctx.fillText('FRONT VIEW — BLADE CROSS-SECTION',w/2,h-4);
+  ctx.restore();
   } catch(e) {
     // Fallback rendering if image load fails or other error
     ctx.fillStyle='#7aabcc'; ctx.font='9px monospace'; ctx.textAlign='center';
@@ -7784,6 +7794,7 @@ function drawSideProfileGuidance(hdg){
   const marginL=38, marginR=20, marginT=28, marginB=44;
   const drawW=w-marginL-marginR, drawH=h-marginT-marginB;
   const samples=60, totalDist=50;
+  ctx.save(); const _zCXS=w/2,_zCYS=h/2; ctx.translate(_zCXS,_zCYS); ctx.scale(guidanceZoomSide,guidanceZoomSide); ctx.translate(-_zCXS,-_zCYS);
   const elevs=[], desns=[], dists=[];
   for(let i=0;i<samples;i++){
     const dist=(i/(samples-1)-0.5)*totalDist;
@@ -7889,7 +7900,7 @@ function drawSideProfileGuidance(hdg){
     ctx.restore();
     ctx.globalAlpha = 1.0;
   }
-  // Blade cutting-edge indicator: glowing dot + cut/fill needle at forward blade tip
+  { const _ppmSP=drawW/totalDist; const _mLen2SP=10.5*_ppmSP/2; const _bodyHSP=1.5*_ppmSP; const _cabHSP=3.8*_ppmSP; const _cabWSP=2.5*_ppmSP; ctx.fillStyle='rgba(60,60,80,0.3)'; ctx.fillRect(machineX-_mLen2SP,groundY-_bodyHSP,10.5*_ppmSP,_bodyHSP); ctx.fillStyle='rgba(60,60,80,0.4)'; ctx.fillRect(machineX-_cabWSP/2,groundY-_cabHSP,_cabWSP,_cabHSP-_bodyHSP); ctx.fillStyle='rgba(40,40,40,0.5)'; ctx.fillRect(machineX-_mLen2SP,groundY-0.5*_ppmSP,10.5*_ppmSP,0.5*_ppmSP); }  // Blade cutting-edge indicator: glowing dot + cut/fill needle at forward blade tip
   const _bladeX = machineX + Math.cos(_tilt) * _sW * 0.38;
   const _bladeY = groundY  + Math.sin(_tilt) * _sW * 0.38;
   const _cMM = dElvM !== null ? (dElvM + vOffset - gElvM) * 1000 : null;
@@ -7944,6 +7955,7 @@ function drawSideProfileGuidance(hdg){
   ctx.beginPath(); ctx.moveTo(marginL+_sbScaleW,marginT+drawH+24); ctx.lineTo(marginL+_sbScaleW,marginT+drawH+32); ctx.stroke();
   ctx.fillStyle='#4a7aa0'; ctx.font='8px monospace'; ctx.textAlign='center';
   ctx.fillText('10m',marginL+_sbScaleW/2,marginT+drawH+41);
+  ctx.restore();
   } catch(e) {
     // Fallback rendering if error occurs
     ctx.fillStyle='#7aabcc'; ctx.font='9px monospace'; ctx.textAlign='center';
@@ -8485,7 +8497,7 @@ setInterval(() => {
     <div id="guidance-panels">
       <!-- Plan View (left, ~50%) -->
       <div id="plan-view-panel">
-        <div id="plan-title">Plan View (Bird's Eye) &nbsp;·&nbsp; <span id="guidance-active-design" style="color:#e8a020;font-style:italic">No active design</span></div>
+        <div id="plan-title" style="display:flex;align-items:center;justify-content:space-between;"><span>Plan View (Bird's Eye) &nbsp;·&nbsp; <span id="guidance-active-design" style="color:#e8a020;font-style:italic">No active design</span></span><span><button onclick="zoomGuidance('plan',-1)" style="background:#333;color:#fff;border:none;padding:2px 7px;cursor:pointer;font-size:14px;border-radius:3px;">&#8722;</button><button onclick="zoomGuidance('plan',1)" style="background:#333;color:#fff;border:none;padding:2px 7px;cursor:pointer;font-size:14px;border-radius:3px;margin-left:3px;">+</button></span></div>
         <canvas id="plan-canvas"></canvas>
       </div>
 
@@ -8493,13 +8505,13 @@ setInterval(() => {
       <div id="guidance-right-col">
         <!-- Blade Cross-Section -->
         <div id="blade-section-panel">
-          <div id="blade-section-title">Blade Cross-Section (Front)</div>
+          <div id="blade-section-title" style="display:flex;align-items:center;justify-content:space-between;"><span>Blade Cross-Section (Front)</span><span><button onclick="zoomGuidance('blade',-1)" style="background:#333;color:#fff;border:none;padding:2px 7px;cursor:pointer;font-size:14px;border-radius:3px;">&#8722;</button><button onclick="zoomGuidance('blade',1)" style="background:#333;color:#fff;border:none;padding:2px 7px;cursor:pointer;font-size:14px;border-radius:3px;margin-left:3px;">+</button></span></div>
           <canvas id="blade-section-canvas"></canvas>
         </div>
 
         <!-- Side Profile -->
         <div id="side-profile-panel">
-          <div id="side-profile-title">Side Profile</div>
+          <div id="side-profile-title" style="display:flex;align-items:center;justify-content:space-between;"><span>Side Profile</span><span><button onclick="zoomGuidance('side',-1)" style="background:#333;color:#fff;border:none;padding:2px 7px;cursor:pointer;font-size:14px;border-radius:3px;">&#8722;</button><button onclick="zoomGuidance('side',1)" style="background:#333;color:#fff;border:none;padding:2px 7px;cursor:pointer;font-size:14px;border-radius:3px;margin-left:3px;">+</button></span></div>
           <canvas id="side-profile-canvas"></canvas>
         </div>
       </div>
