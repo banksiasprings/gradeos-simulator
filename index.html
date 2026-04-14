@@ -3013,6 +3013,42 @@ function drawLEDBar(leftMM,rightMM){
   ctx.beginPath();ctx.arc(half,11,2,0,Math.PI*2);
   ctx.fillStyle='#040c18';ctx.fill();
 }
+// --- guidance LED bar helper (draws on any canvas ctx) ---
+function drawGuidanceLEDBar(ctx,w,h,leftMM,rightMM){
+  const barH=18,barY=h-barH;
+  ctx.save();
+  ctx.fillStyle='#020a14'; ctx.fillRect(0,barY,w,barH);
+  const SW=10,SH=9,SG=2,half=w/2;
+  const maxSeg=Math.floor((half-16)/(SW+SG));
+  const MAX=500;
+  const cutCols=['#ef5350','#e53935','#c62828','#8b0000','#4a0000'];
+  const fillCols=['#42a5f5','#1e88e5','#1565c0','#0d47a1','#082954'];
+  const drawSide=(side,mm)=>{
+    const isCut=mm>25,isFill=mm<-25,isGrade=!isCut&&!isFill;
+    const filled=Math.ceil(Math.min(Math.abs(mm)/MAX,1)*maxSeg);
+    for(let i=0;i<maxSeg;i++){
+      const lit=isGrade?(i<2):i<filled;
+      let col;
+      if(!lit){col='#0a1e30';}
+      else if(isGrade){col=i===0?'#00e676':'#00c853';}
+      else if(isCut){col=cutCols[Math.min(i,cutCols.length-1)];}
+      else{col=fillCols[Math.min(i,fillCols.length-1)];}
+      const x=side==='L'?half-(i+1)*(SW+SG)-SG-2:half+i*(SW+SG)+SG+2;
+      ctx.globalAlpha=lit&&!isGrade?Math.max(0.4,1-i*0.06):1;
+      ctx.fillStyle=col;
+      const ry2=barY+(barH-SH)/2;
+      ctx.beginPath();
+      if(ctx.roundRect)ctx.roundRect(x,ry2,SW,SH,2);else ctx.rect(x,ry2,SW,SH);
+      ctx.fill();
+    }
+    ctx.globalAlpha=1;
+  };
+  drawSide('L',leftMM); drawSide('R',rightMM);
+  ctx.fillStyle='#e8a020'; ctx.fillRect(half-1,barY+1,2,barH-2);
+  ctx.beginPath(); ctx.arc(half,barY+barH/2,3,0,Math.PI*2); ctx.fillStyle='#e8a020'; ctx.fill();
+  ctx.beginPath(); ctx.arc(half,barY+barH/2,1.5,0,Math.PI*2); ctx.fillStyle='#040c18'; ctx.fill();
+  ctx.restore();
+}
 
 // ═══════════════════════════════════════════════════════════════════
 // TEXT RIBBON UPDATER
@@ -7556,6 +7592,12 @@ function drawPlanViewGuidance(pos, lx, lz, rx, rz){
   ctx.fillStyle='#4a7aa0'; ctx.font='8px monospace'; ctx.textAlign='right';
   ctx.fillText(_spdTxt, w-4, h-6);
   ctx.restore();
+  // Cut/fill LED bar — left & right blade tip positions
+  { const _pvgLG=gElev(lx,lz), _pvgRG=gElev(rx,rz);
+    const _pvgLD=dElev(lx,lz), _pvgRD=dElev(rx,rz);
+    const _pvgLmm=_pvgLD!==null?(_pvgLG-(_pvgLD+vOffset))*1000:0;
+    const _pvgRmm=_pvgRD!==null?(_pvgRG-(_pvgRD+vOffset))*1000:0;
+    drawGuidanceLEDBar(ctx,w,h,_pvgLmm,_pvgRmm); }
   } catch(e) {
     // Fallback rendering if error occurs
     ctx.fillStyle='#7aabcc'; ctx.font='9px monospace'; ctx.textAlign='center';
@@ -7773,6 +7815,8 @@ function drawBladeSection(leftMM, centerMM, rightMM){
   ctx.fillStyle='#4a7aa0'; ctx.font='8px monospace'; ctx.textAlign='center';
   ctx.fillText('FRONT VIEW — BLADE CROSS-SECTION',w/2,h-4);
   ctx.restore();
+  // Cut/fill LED bar — blade left & right cut/fill
+  drawGuidanceLEDBar(ctx,w,h,leftMM,rightMM);
   } catch(e) {
     // Fallback rendering if image load fails or other error
     ctx.fillStyle='#7aabcc'; ctx.font='9px monospace'; ctx.textAlign='center';
@@ -7956,6 +8000,11 @@ function drawSideProfileGuidance(hdg){
   ctx.fillStyle='#4a7aa0'; ctx.font='8px monospace'; ctx.textAlign='center';
   ctx.fillText('10m',marginL+_sbScaleW/2,marginT+drawH+41);
   ctx.restore();
+  // Cut/fill LED bar — centre elevation at machine position
+  { const _spCI=Math.floor(samples/2);
+    const _spCG=elevs[_spCI], _spCD=desns[_spCI];
+    const _spCmm=_spCD!==null?(_spCG-_spCD)*1000:0;
+    drawGuidanceLEDBar(ctx,w,h,_spCmm,_spCmm); }
   } catch(e) {
     // Fallback rendering if error occurs
     ctx.fillStyle='#7aabcc'; ctx.font='9px monospace'; ctx.textAlign='center';
