@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GradeOS Simulator v0.8 · SW v103</title>
+<title>GradeOS Simulator v0.8 · SW v109</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
@@ -3061,7 +3061,7 @@ function updateTextRibbon(lmm,cmm,rmm,grade,elev,xslope){
     return{
       num:isGrade?'ON GD':abs.toFixed(0),
       lbl:isGrade?'ON GRADE ✓':mm>0?'mm CUT':'mm FILL',
-      col:isGrade?'#66bb6a':mm>0?'#42a5f5':'#ff7043',
+      col:isGrade?'#66bb6a':mm>0?'#ef5350':'#42a5f5',
       arr:isGrade?'':mm>0?'▲':'▼'
     };
   };
@@ -3105,7 +3105,7 @@ function toggleMachineType(){
   document.getElementById('st-mach').textContent='ON — WASD/Arrows'+(machineType==='excavator'?' · SPACE=Dig':'');
   document.getElementById('st-hint').textContent=machineType==='excavator'
     ? '🦾 Excavator mode: WASD to track, SPACE to dig at current position'
-    : '🚜 Dozer mode: WASD/Arrows to drive, blade cuts as you move';
+    : '🚜 Dozer mode: WASD/Arrows to drive · Shift=fast, blade cuts as you move';
   // Update ribbon labels
   if(machineType==='excavator'){
     document.getElementById('tr-llbl').textContent='REACH LEFT';
@@ -3169,7 +3169,7 @@ function updateMachine(dt){
     if(showXsec)drawXSection(machinePos.x,machinePos.z,machinePos.hdg);
     return;
   }
-  const spd=8,turn=1.8;
+  const spd=keys['Shift']?4:1.2,turn=1.8;
   // ── Auto-steer: drive parallel N-S strips automatically ──────────────
   autoMovingFwd=false;
   if(autoSteer){
@@ -6052,7 +6052,7 @@ function toggleKeyHelp(){
 document.addEventListener('keydown',e=>{
   if(e.key==='h'||e.key==='H'){if(!e.ctrlKey&&!e.metaKey)toggleKeyHelp();}
   if(e.key==='p'||e.key==='P'){if(!e.ctrlKey&&!e.metaKey)togglePitchCard();}
-  if(e.key==='f'||e.key==='F'){if(!e.ctrlKey&&!e.metaKey)toggleFieldMode();}
+  if(e.key==='m'||e.key==='M'){if(!e.ctrlKey&&!e.metaKey)toggleFieldMode();}
 });
 
 // ═══════════════════════════════════════════════════════════════════
@@ -7188,8 +7188,8 @@ function updateGuidanceScreens(){
   const mel = gElev(machinePos.x, machinePos.z);
   // GPS guidance: blade tip elevation from machine geometry (roll + GPS centre height)
   // Real GPS dozers know blade position from receivers on the blade frame — they do NOT sample terrain under tips
-  const lGround=mel;
-  const rGround=mel;
+  const lGround=gElev(lx,lz);
+  const rGround=gElev(rx,rz);
   const cGround=mel;
   
   const _lDes = dElev(lx, lz);
@@ -7201,7 +7201,7 @@ function updateGuidanceScreens(){
   const cDes = _cDes !== null ? _cDes + vOffset : null;
 
   // Helper: ground - design (0 if no design)
-  const _cf = (g, d) => d !== null ? g - d : 0;
+  const _cf = (g, d) => d !== null ? g - d : null;
   // Calculate cut/fill at reference point (positive = cut, negative = fill)
   let refCut, refLmm, refRmm, refCmm;
   if(guidanceRefPoint === 'left'){
