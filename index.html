@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GradeOS Simulator v0.8 · SW v103</title>
+<title>GradeOS Simulator v0.8 · SW v104</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
@@ -3061,7 +3061,7 @@ function updateTextRibbon(lmm,cmm,rmm,grade,elev,xslope){
     return{
       num:isGrade?'ON GD':abs.toFixed(0),
       lbl:isGrade?'ON GRADE ✓':mm>0?'mm CUT':'mm FILL',
-      col:isGrade?'#66bb6a':mm>0?'#42a5f5':'#ff7043',
+      col:isGrade?'#66bb6a':mm>0?'#ef5350':'#42a5f5',
       arr:isGrade?'':mm>0?'▲':'▼'
     };
   };
@@ -3169,7 +3169,7 @@ function updateMachine(dt){
     if(showXsec)drawXSection(machinePos.x,machinePos.z,machinePos.hdg);
     return;
   }
-  const spd=8,turn=1.8;
+  const spd=keys['Shift']?4:1.2,turn=1.8;
   // ── Auto-steer: drive parallel N-S strips automatically ──────────────
   autoMovingFwd=false;
   if(autoSteer){
@@ -4344,7 +4344,7 @@ function setCamMode(mode){
   }
   // Cab mode: show hint
   if(mode==='cab'){
-    document.getElementById('st-hint').textContent='🚜 Cab view — WASD to drive · text ribbon shows live grade guidance';
+    document.getElementById('st-hint').textContent='🚜 Cab view — WASD to drive · Shift=fast · text ribbon shows live grade guidance';
   }
 }
 function toggleXsec(){
@@ -5804,6 +5804,11 @@ function loop(t){
   requestAnimationFrame(loop);
   const dt=Math.min((t-last)/1000,0.05);last=t;
   updateMachine(dt);
+  // Throttled guidance screen update (10Hz)
+  if(guidanceScreenActive && t - (_lastGuidanceT||0) > 100){
+    updateGuidanceScreens();
+    _lastGuidanceT = t;
+  }
   autoSavePosition(t);
   updateFleet2(dt);
   // Throttled GPS track rebuild
@@ -6037,6 +6042,7 @@ function toggleKeyHelp(){
           ['H','This keyboard help'],
           ['P','Pitch card'],
           ['F','Camera follow toggle'],
+          ['M','Field / operator mode'],
         ].map(([k,v])=>k&&!v?
           `<tr><td colspan="2" style="padding:6px 0 2px;color:#e8a020;font-weight:700;text-transform:uppercase;letter-spacing:1px;border-top:1px solid #152535;font-size:10px">${k}</td></tr>`:
           `<tr><td style="padding:3px 12px 3px 0;color:#7aabcc;font-family:monospace;white-space:nowrap">${k}</td><td style="padding:3px 0;color:#dce8f5">${v}</td></tr>`
@@ -6052,7 +6058,7 @@ function toggleKeyHelp(){
 document.addEventListener('keydown',e=>{
   if(e.key==='h'||e.key==='H'){if(!e.ctrlKey&&!e.metaKey)toggleKeyHelp();}
   if(e.key==='p'||e.key==='P'){if(!e.ctrlKey&&!e.metaKey)togglePitchCard();}
-  if(e.key==='f'||e.key==='F'){if(!e.ctrlKey&&!e.metaKey)toggleFieldMode();}
+  if(e.key==='m'||e.key==='M'){if(!e.ctrlKey&&!e.metaKey)toggleFieldMode();}
 });
 
 // ═══════════════════════════════════════════════════════════════════
@@ -7188,8 +7194,8 @@ function updateGuidanceScreens(){
   const mel = gElev(machinePos.x, machinePos.z);
   // GPS guidance: blade tip elevation from machine geometry (roll + GPS centre height)
   // Real GPS dozers know blade position from receivers on the blade frame — they do NOT sample terrain under tips
-  const lGround=mel;
-  const rGround=mel;
+  const lGround=gElev(lx,lz);
+  const rGround=gElev(rx,rz);
   const cGround=mel;
   
   const _lDes = dElev(lx, lz);
@@ -7200,25 +7206,26 @@ function updateGuidanceScreens(){
   const rDes = _rDes !== null ? _rDes + vOffset : null;
   const cDes = _cDes !== null ? _cDes + vOffset : null;
 
-  // Helper: ground - design (0 if no design)
-  const _cf = (g, d) => d !== null ? g - d : 0;
+  // Helper: ground - design (null if no design)
+  const _cf = (g, d) => d !== null ? g - d : null;
+  const _cfMM = (g, d) => { const v=_cf(g,d); return v!==null?v*1000:null; };
   // Calculate cut/fill at reference point (positive = cut, negative = fill)
   let refCut, refLmm, refRmm, refCmm;
   if(guidanceRefPoint === 'left'){
     refCut = _cf(lGround, lDes);
-    refLmm = _cf(lGround, lDes) * 1000;
-    refRmm = _cf(rGround, rDes) * 1000;
-    refCmm = _cf(cGround, cDes) * 1000;
+    refLmm = _cfMM(lGround, lDes);
+    refRmm = _cfMM(rGround, rDes);
+    refCmm = _cfMM(cGround, cDes);
   } else if(guidanceRefPoint === 'right'){
     refCut = _cf(rGround, rDes);
-    refLmm = _cf(lGround, lDes) * 1000;
-    refRmm = _cf(rGround, rDes) * 1000;
-    refCmm = _cf(cGround, cDes) * 1000;
+    refLmm = _cfMM(lGround, lDes);
+    refRmm = _cfMM(rGround, rDes);
+    refCmm = _cfMM(cGround, cDes);
   } else {  // center
     refCut = _cf(cGround, cDes);
-    refLmm = _cf(lGround, lDes) * 1000;
-    refRmm = _cf(rGround, rDes) * 1000;
-    refCmm = _cf(cGround, cDes) * 1000;
+    refLmm = _cfMM(lGround, lDes);
+    refRmm = _cfMM(rGround, rDes);
+    refCmm = _cfMM(cGround, cDes);
   }
   
   updateHorizontalAlignmentBar(cDes !== null ? refCmm : null);
@@ -7734,7 +7741,7 @@ function drawBladeSection(leftMM, centerMM, rightMM){
   const bladeLeftX=mL+4, bladeRightX=mL+drawW-4;
   const bladeLeftY2=clampY(elev2y(lBladeE));
   const bladeRightY2=clampY(elev2y(rBladeE));
-  const bladeColor=Math.abs(centerMM)<=tolMM?'#27ae60':centerMM>0?'#e05040':'#4a90e2';
+  const bladeColor=centerMM===null?'#4a7aa0':Math.abs(centerMM)<=tolMM?'#27ae60':centerMM>0?'#e05040':'#4a90e2';
 
   // Push arms (A-frame from body lower corners to blade tips)
   ctx.strokeStyle='#607880'; ctx.lineWidth=2.5;
@@ -8442,12 +8449,6 @@ function buildProfileDesignSurface(){
   closeProfileDesigner();
 }
 
-// Call updateGuidanceScreens in the main loop (10Hz = 100ms; 20Hz is too fast for guidance-only updates)
-setInterval(() => {
-  if(guidanceScreenActive){
-    updateGuidanceScreens();
-  }
-}, 100);
 
 </script>
 
