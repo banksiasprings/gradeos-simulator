@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GradeOS Simulator v0.8 · SW v121</title>
+<title>GradeOS Simulator v0.8 · SW v122</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <!-- Slice 1 — blade-pose seam. See CONTEXT.md, ADR-0002. -->
 <script type="module" src="./src/product/guidance/blade-pose.js"></script>
@@ -867,6 +867,7 @@ const cabSysState={
   showLEDLeft:true,     // Slice 7 — left tip cut/fill light bar
   showLEDRight:true,    // Slice 7 — right tip cut/fill light bar
   showLEDAlign:true,    // Slice 7 — top alignment light bar
+  perfMode:'lite',      // Slice 8 — 'lite' or 'full'
 };
 function cabOpenSystemSettings(){
   // Populate fields from current state
@@ -883,6 +884,9 @@ function cabOpenSystemSettings(){
   [5,10,20,50,100].forEach(mm=>{
     cabActivateRadio('cab-sys-incr-'+mm,Math.abs(cabSysState.bumpIncrementM-mm/1000)<1e-5);
   });
+  // Slice 8 — perf mode radios
+  cabActivateRadio('cab-sys-perf-lite', cabSysState.perfMode!=='full');
+  cabActivateRadio('cab-sys-perf-full', cabSysState.perfMode==='full');
   // Slice 7 — light bar radios
   cabActivateRadio('cab-sys-led-left-on',  cabSysState.showLEDLeft!==false);
   cabActivateRadio('cab-sys-led-left-off', cabSysState.showLEDLeft===false);
@@ -951,6 +955,24 @@ function cabSysSetLED(which,on){
   cabActivateRadio('cab-sys-led-'+which+'-on',on===true);
   cabActivateRadio('cab-sys-led-'+which+'-off',on===false);
   cabResizeRenderer();
+  cabPersistState();
+}
+// Slice 8 — Performance Mode toggle. Apply renderer settings live where
+// possible; pixel ratio + shadow map need a reload to fully re-init meshes
+// (we apply at boot from persisted state).
+function cabSysSetPerfMode(mode){
+  if(mode!=='lite'&&mode!=='full')return;
+  cabSysState.perfMode=mode;
+  window._cabPerfMode=mode;
+  cabActivateRadio('cab-sys-perf-lite',mode==='lite');
+  cabActivateRadio('cab-sys-perf-full',mode==='full');
+  // Try live-apply (won't reset existing materials / shadows but will affect
+  // future frames).
+  if(typeof renderer!=='undefined'&&renderer){
+    renderer.setPixelRatio(mode==='full'?Math.min(window.devicePixelRatio,2):1);
+    renderer.shadowMap.enabled=(mode==='full');
+    if(typeof cabResizeRenderer==='function')cabResizeRenderer();
+  }
   cabPersistState();
 }
 function cabApplyLEDVisibility(){
@@ -1320,13 +1342,15 @@ function cabOpenSystemStatus(){
   cabOpenOverlay('cab-overlay-systemstatus');
   // Refresh while open
   if(window._cabStatusInterval)clearInterval(window._cabStatusInterval);
+  // Slice 8 — Lite mode refreshes at 2 s, Full at 500 ms.
+  const _refreshMs = (cabSysState.perfMode==='full') ? 500 : 2000;
   window._cabStatusInterval=setInterval(()=>{
     if(document.getElementById('cab-overlay-systemstatus').classList.contains('hidden')){
       clearInterval(window._cabStatusInterval); window._cabStatusInterval=null;
     }else{
       cabRefreshSystemStatus();
     }
-  },500);
+  },_refreshMs);
 }
 function cabRefreshSystemStatus(){
   const rtk=(typeof rtkFixType!=='undefined')?rtkFixType:'—';
@@ -1466,6 +1490,8 @@ function cabLoadState(){
         window.SIM_BLADE_MOUNTING.antennaB.dy=cabSysState.antennaB_dy;
       }
       if(typeof guidanceTolerance!=='undefined')guidanceTolerance=cabSysState.defaultToleranceM;
+      // Slice 8 — apply perf mode at load (renderer may already exist if init runs late).
+      window._cabPerfMode=cabSysState.perfMode||'lite';
       // Slice 5 — restore offsets
       if(o.offsets){
         if(o.offsets.elevation!=null&&typeof vOffset!=='undefined'){
@@ -3604,6 +3630,14 @@ body.cab-led-align-hidden #cab-centre-pane{grid-row:3 / 5}
         <div class="cab-field-hint">Per CONTEXT.md GQ-5 — toolbar is hideable for operators who don't want it.</div>
       </div>
       <div class="cab-field">
+        <label class="cab-field-label">Performance Mode</label>
+        <div class="cab-field-row">
+          <button class="cab-radio" id="cab-sys-perf-lite" onclick="cabSysSetPerfMode('lite')">Lite (default)</button>
+          <button class="cab-radio" id="cab-sys-perf-full" onclick="cabSysSetPerfMode('full')">Full quality</button>
+        </div>
+        <div class="cab-field-hint">Lite caps the render pixel ratio to 1, disables shadow mapping, and slows the refresh on background panels — most operators won't see the difference and the cab UI stays smooth even on modest hardware. Full re-enables retina rendering and shadows. Reload required for full effect on Three.js settings.</div>
+      </div>
+      <div class="cab-field">
         <label class="cab-field-label">Light Bars (visible on the work screen)</label>
         <div class="cab-field-row">
           <span class="cab-field-prefix" style="min-width:90px">Left tip cut/fill:</span>
@@ -4674,8 +4708,11 @@ let liveLastFixKey=null;
 // ═══════════════════════════════════════════════════════════════════
 const vp=document.getElementById('viewport');
 const renderer=new THREE.WebGLRenderer({antialias:true,preserveDrawingBuffer:true});
-renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
-renderer.shadowMap.enabled=true;
+// Slice 8 (Performance) — Lite mode by default. Settings overridable in System Settings.
+// Lite: pixelRatio = 1 (vs devicePixelRatio = 2 on retina = 4x pixel cost), shadowMap off.
+window._cabPerfMode = (typeof window._cabPerfMode !== 'undefined') ? window._cabPerfMode : 'lite';
+renderer.setPixelRatio(window._cabPerfMode === 'full' ? Math.min(window.devicePixelRatio, 2) : 1);
+renderer.shadowMap.enabled = (window._cabPerfMode === 'full');
 const threeCanvas=renderer.domElement;
 threeCanvas.className='three-canvas';
 vp.appendChild(threeCanvas);
@@ -8750,8 +8787,26 @@ function loop(t){
     lastProdUpdateT=t;
   }
   const activeCam=(camMode==='plan')?planCam:camera;
-  renderer.render(scene,activeCam);
+  // Slice 8 (Performance) — skip the Three.js render entirely when the
+  // canvas is hidden. In cab mode the canvas only renders when a pane has
+  // 3D selected (it's been relocated into that pane). Out of cab mode the
+  // canvas lives in #viewport which is the dominant surface.
+  if(_cabShouldRender3D())renderer.render(scene,activeCam);
   if(fieldMode)updateFieldPanels();
+}
+function _cabShouldRender3D(){
+  const tc = renderer && renderer.domElement;
+  if(!tc) return false;
+  // Out of cab mode → assume visible.
+  if(!document.body.classList.contains('cab-mode')) return true;
+  // In cab mode → only render if the canvas is inside a pane content
+  // (i.e. a pane has 3D selected) AND that pane is visible.
+  const parent = tc.parentElement;
+  if(!parent || !parent.id || !parent.id.startsWith('cab-pane-')) return false;
+  const paneIdx = parseInt(parent.id.match(/cab-pane-(\d+)-content/) ? RegExp.$1 : '0', 10);
+  if(!paneIdx) return false;
+  const visiblePaneCount = {'1single':1,'2vertical':2,'2horizontal':2,'1big2small':3,'3equal':3}[cabPaneState.layout] || 3;
+  return paneIdx <= visiblePaneCount;
 }
 loop(0);
 
