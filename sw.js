@@ -1,4 +1,4 @@
-const CACHE = 'gradeos-v154';
+const CACHE = 'gradeos-v155';
 const ASSETS = [
   './',
   './index.html',

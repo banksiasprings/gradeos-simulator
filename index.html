@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GradeOS Simulator v0.9 · SW v154</title>
+<title>GradeOS Simulator v0.9 · SW v155</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <!-- Slice 11.5 — GLTF model loader (Three.js example loaders are global scripts, not modules) -->
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -2052,6 +2052,8 @@ function cabOpenProfileDesigner(){
   const wB=document.getElementById('cab-pd-width-b');
   if(wA)wA.value='0';
   if(wB)wB.value='0';
+  // Slice 30 — reset preview to Plan tab on open.
+  if(typeof cabPDSetPreviewTab==='function')cabPDSetPreviewTab('plan');
   cabPDGotoStep(1);
 }
 
@@ -2076,7 +2078,14 @@ function cabPDGotoStep(n){
   }
   const sub=document.getElementById('cab-pd-step-subtitle');
   if(sub)sub.textContent='Step '+_cabPDStep+' of 3 : '+_CAB_PD_STEP_TITLES[_cabPDStep];
-  if(_cabPDStep===3)cabPDUpdateSummary();
+  if(_cabPDStep===3){
+    cabPDUpdateSummary();
+    // Slice 30 — re-build the 3D preview if currently on the 3D tab.
+    if(_cabPDPreviewTab==='3d' && _cabPDPreviewRenderer){
+      cabPDPreviewRebuildMesh();
+      cabPDPreviewRender();
+    }
+  }
   if(_cabPDStep===1 && typeof cabPDInitPlanCanvas==='function'){
     setTimeout(()=>{cabPDInitPlanCanvas();},0);
   }
@@ -2621,6 +2630,245 @@ function cabPDResetWidths(){
   if(wBEl) wBEl.value='0';
   cabPDUpdateSummary();
   cabPDUpdateFooter();
+}
+
+// ── Slice 30 — Plan / 3D preview tab on Step 3 ───────────────────────
+// Lazily instantiates a small Three.js renderer + scene the first time
+// the user picks the 3D tab. Builds a mesh from the live extrusion,
+// renders only when 3D tab is visible, disposes when the wizard closes
+// (clean up GPU memory, important on Eco/low-end hardware).
+let _cabPDPreviewTab='plan';
+let _cabPDPreviewRenderer=null;
+let _cabPDPreviewScene=null;
+let _cabPDPreviewCamera=null;
+let _cabPDPreviewMesh=null;
+let _cabPDPreviewOrbit={ azimuth:0.7, elevation:0.6, radius:50, target:{x:0,y:0,z:0} };
+let _cabPDPreviewDrag=null;
+
+function cabPDSetPreviewTab(tab){
+  if(tab!=='plan' && tab!=='3d')return;
+  _cabPDPreviewTab=tab;
+  document.getElementById('cab-pd-tab-plan')?.classList.toggle('is-active', tab==='plan');
+  document.getElementById('cab-pd-tab-3d')?.classList.toggle('is-active', tab==='3d');
+  document.getElementById('cab-pd-tab-plan-body')?.classList.toggle('hidden', tab!=='plan');
+  document.getElementById('cab-pd-tab-3d-body')?.classList.toggle('hidden', tab!=='3d');
+  if(tab==='3d'){
+    cabPDPreviewInit();
+    cabPDPreviewRebuildMesh();
+    cabPDPreviewRender();
+  }
+}
+
+function cabPDPreviewInit(){
+  if(_cabPDPreviewRenderer || typeof THREE==='undefined') return;
+  const cv=document.getElementById('cab-pd-preview-canvas');
+  if(!cv)return;
+  _cabPDPreviewRenderer=new THREE.WebGLRenderer({
+    canvas:cv,
+    antialias:!(window.cabSysState && window.cabSysState.perfMode==='eco'),
+    alpha:false,
+  });
+  _cabPDPreviewRenderer.setPixelRatio(1);
+  _cabPDPreviewRenderer.setSize(cv.width, cv.height, false);
+  _cabPDPreviewRenderer.setClearColor(0x06101a, 1);
+  _cabPDPreviewScene=new THREE.Scene();
+  _cabPDPreviewScene.add(new THREE.AmbientLight(0xffffff, 0.65));
+  const dir=new THREE.DirectionalLight(0xffffff, 0.95);
+  dir.position.set(8, 14, 6); _cabPDPreviewScene.add(dir);
+  const back=new THREE.DirectionalLight(0xfff5d8, 0.35);
+  back.position.set(-6, 8, -10); _cabPDPreviewScene.add(back);
+  _cabPDPreviewCamera=new THREE.PerspectiveCamera(45, cv.width/cv.height, 0.5, 600);
+  cabPDPreviewUpdateCamera();
+  // Pointer controls — orbit (drag), zoom (wheel/pinch), pan (shift+drag).
+  cv.addEventListener('pointerdown', _cabPDPreviewPointerDown);
+  cv.addEventListener('pointermove', _cabPDPreviewPointerMove);
+  cv.addEventListener('pointerup',   _cabPDPreviewPointerUp);
+  cv.addEventListener('pointerleave',_cabPDPreviewPointerUp);
+  cv.addEventListener('wheel', _cabPDPreviewWheel, {passive:false});
+}
+
+function cabPDPreviewUpdateCamera(){
+  if(!_cabPDPreviewCamera)return;
+  const o=_cabPDPreviewOrbit;
+  // Spherical → Cartesian. azimuth 0 = +X axis, π/2 = +Z; elevation 0 = horizon.
+  const cx=o.target.x + o.radius * Math.cos(o.elevation) * Math.sin(o.azimuth);
+  const cy=o.target.y + o.radius * Math.sin(o.elevation);
+  const cz=o.target.z + o.radius * Math.cos(o.elevation) * Math.cos(o.azimuth);
+  _cabPDPreviewCamera.position.set(cx, cy, cz);
+  _cabPDPreviewCamera.up.set(0,1,0);
+  _cabPDPreviewCamera.lookAt(o.target.x, o.target.y, o.target.z);
+}
+
+function cabPDPreviewRebuildMesh(){
+  if(!_cabPDPreviewScene)return;
+  // Clear previous mesh.
+  if(_cabPDPreviewMesh){
+    _cabPDPreviewScene.remove(_cabPDPreviewMesh);
+    if(_cabPDPreviewMesh.geometry) _cabPDPreviewMesh.geometry.dispose();
+    if(_cabPDPreviewMesh.material) _cabPDPreviewMesh.material.dispose();
+    _cabPDPreviewMesh=null;
+  }
+  if(typeof extrudeProfileAlongPolyline!=='function')return;
+  const polyPts=cabPDParsePolyline();
+  if(polyPts.length<2 || !Array.isArray(_cabPDProfile) || _cabPDProfile.length<2){
+    const hint=document.getElementById('cab-pd-preview-hint');
+    if(hint)hint.textContent='Need ≥2 alignment points and ≥2 section vertices to preview.';
+    return;
+  }
+  // Build args matching cabPDApply (so preview matches what Apply will do).
+  const polyline=polyPts.map(p=>({x:p.x,z:p.z}));
+  const polylineElev=polyPts.map(p=>(p.elev!=null)?p.elev:gElev(p.x,p.z));
+  const wAStr=(document.getElementById('cab-pd-width-a')?.value||'').trim();
+  const wBStr=(document.getElementById('cab-pd-width-b')?.value||'').trim();
+  const args={profile:[..._cabPDProfile], polyline, polylineElev};
+  if(wAStr) args.widthA=Math.max(0, parseFloat(wAStr)||0);
+  if(wBStr) args.widthB=Math.max(0, parseFloat(wBStr)||0);
+  const ex=extrudeProfileAlongPolyline(args);
+  if(!ex || !ex.elevAt){ return; }
+  // Sample on a regular grid covering the bbox. Resolution capped — Eco
+  // gets fewer samples to keep CPU low.
+  const eco=(window.cabSysState && window.cabSysState.perfMode==='eco');
+  const SAMP=eco?40:64;
+  const bb=ex.bbox;
+  const xs=new Float32Array(SAMP), zs=new Float32Array(SAMP);
+  for(let i=0;i<SAMP;i++){
+    xs[i]=bb.minX + (bb.maxX-bb.minX) * i/(SAMP-1);
+    zs[i]=bb.minZ + (bb.maxZ-bb.minZ) * i/(SAMP-1);
+  }
+  const positions=[];
+  const colors=[];
+  const indices=[];
+  // Sample elevation at each grid cell. Mark cells outside the surface as null
+  // by using a sentinel y; we'll skip building triangles for null cells.
+  const NULL_Y=-9999;
+  const yArr=new Float32Array(SAMP*SAMP);
+  let minY=Infinity, maxY=-Infinity;
+  for(let zi=0;zi<SAMP;zi++){
+    for(let xi=0;xi<SAMP;xi++){
+      const e=ex.elevAt(xs[xi], zs[zi]);
+      if(e==null){ yArr[zi*SAMP+xi]=NULL_Y; continue; }
+      yArr[zi*SAMP+xi]=e;
+      if(e<minY)minY=e; if(e>maxY)maxY=e;
+    }
+  }
+  if(!isFinite(minY)){
+    const hint=document.getElementById('cab-pd-preview-hint');
+    if(hint)hint.textContent='Surface has no coverage — alignment may be empty.';
+    return;
+  }
+  // Build vertex buffer + colour ramp by elevation (low = dark blue, high = amber).
+  for(let zi=0;zi<SAMP;zi++){
+    for(let xi=0;xi<SAMP;xi++){
+      const y=yArr[zi*SAMP+xi];
+      positions.push(xs[xi], (y===NULL_Y?minY:y), zs[zi]);
+      if(y===NULL_Y){ colors.push(0,0,0); }
+      else {
+        const t=(maxY-minY)<1e-3?0.5:(y-minY)/(maxY-minY);
+        // dark navy → amber gradient
+        const r=0.20 + t*0.71, g=0.30 + t*0.43, b=0.45 - t*0.32;
+        colors.push(r, g, b);
+      }
+    }
+  }
+  // Build triangles only for fully-covered quads.
+  for(let zi=0;zi<SAMP-1;zi++){
+    for(let xi=0;xi<SAMP-1;xi++){
+      const a=zi*SAMP+xi;
+      const b=zi*SAMP+xi+1;
+      const c=(zi+1)*SAMP+xi;
+      const d=(zi+1)*SAMP+xi+1;
+      if(yArr[a]===NULL_Y || yArr[b]===NULL_Y || yArr[c]===NULL_Y || yArr[d]===NULL_Y) continue;
+      indices.push(a, c, b);
+      indices.push(b, c, d);
+    }
+  }
+  if(indices.length===0){
+    const hint=document.getElementById('cab-pd-preview-hint');
+    if(hint)hint.textContent='Surface coverage too sparse to mesh — widen Width A/B or add alignment vertices.';
+    return;
+  }
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('color',    new THREE.Float32BufferAttribute(colors,    3));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  const mat=new THREE.MeshLambertMaterial({vertexColors:true, side:THREE.DoubleSide});
+  _cabPDPreviewMesh=new THREE.Mesh(geo, mat);
+  _cabPDPreviewScene.add(_cabPDPreviewMesh);
+  // Auto-frame: aim camera at centre of bbox; radius = diagonal × ~0.9.
+  const cx=(bb.minX+bb.maxX)/2, cz=(bb.minZ+bb.maxZ)/2, cy=(minY+maxY)/2;
+  const diag=Math.hypot(bb.maxX-bb.minX, bb.maxZ-bb.minZ, maxY-minY);
+  _cabPDPreviewOrbit.target={x:cx, y:cy, z:cz};
+  _cabPDPreviewOrbit.radius=Math.max(8, diag*0.9);
+  cabPDPreviewUpdateCamera();
+  const hint=document.getElementById('cab-pd-preview-hint');
+  if(hint)hint.textContent='Surface: '+(maxY-minY).toFixed(2)+' m elevation range over '+(bb.maxX-bb.minX).toFixed(1)+'×'+(bb.maxZ-bb.minZ).toFixed(1)+' m.';
+}
+
+function cabPDPreviewRender(){
+  if(_cabPDPreviewRenderer && _cabPDPreviewScene && _cabPDPreviewCamera){
+    _cabPDPreviewRenderer.render(_cabPDPreviewScene, _cabPDPreviewCamera);
+  }
+}
+
+function _cabPDPreviewPointerDown(ev){
+  ev.preventDefault();
+  _cabPDPreviewDrag={x:ev.clientX, y:ev.clientY, mode:(ev.shiftKey?'pan':'orbit'), pointerId:ev.pointerId};
+  try{ev.target.setPointerCapture(ev.pointerId);}catch(e){}
+  ev.target.style.cursor='grabbing';
+}
+function _cabPDPreviewPointerMove(ev){
+  if(!_cabPDPreviewDrag)return;
+  const dx=ev.clientX-_cabPDPreviewDrag.x;
+  const dy=ev.clientY-_cabPDPreviewDrag.y;
+  _cabPDPreviewDrag.x=ev.clientX; _cabPDPreviewDrag.y=ev.clientY;
+  if(_cabPDPreviewDrag.mode==='pan'){
+    // Pan target along camera right + camera up axes.
+    const o=_cabPDPreviewOrbit;
+    const right={x:Math.cos(o.azimuth), y:0, z:-Math.sin(o.azimuth)};
+    const up   ={x:-Math.sin(o.elevation)*Math.sin(o.azimuth), y:Math.cos(o.elevation), z:-Math.sin(o.elevation)*Math.cos(o.azimuth)};
+    const k=o.radius*0.0015;
+    o.target.x -= dx*k*right.x + dy*k*up.x;
+    o.target.y +=               dy*k*up.y;
+    o.target.z -= dx*k*right.z + dy*k*up.z;
+  } else {
+    _cabPDPreviewOrbit.azimuth   -= dx*0.008;
+    _cabPDPreviewOrbit.elevation += dy*0.008;
+    _cabPDPreviewOrbit.elevation  = Math.max(-1.4, Math.min(1.4, _cabPDPreviewOrbit.elevation));
+  }
+  cabPDPreviewUpdateCamera();
+  cabPDPreviewRender();
+}
+function _cabPDPreviewPointerUp(ev){
+  if(_cabPDPreviewDrag){
+    if(ev && ev.target && ev.target.releasePointerCapture){
+      try{ev.target.releasePointerCapture(_cabPDPreviewDrag.pointerId);}catch(e){}
+    }
+    _cabPDPreviewDrag=null;
+  }
+  const cv=document.getElementById('cab-pd-preview-canvas');
+  if(cv)cv.style.cursor='grab';
+}
+function _cabPDPreviewWheel(ev){
+  ev.preventDefault();
+  const f=ev.deltaY>0?1.12:(1/1.12);
+  _cabPDPreviewOrbit.radius=Math.max(2, Math.min(500, _cabPDPreviewOrbit.radius*f));
+  cabPDPreviewUpdateCamera();
+  cabPDPreviewRender();
+}
+
+function cabPDPreviewDispose(){
+  if(_cabPDPreviewMesh){
+    if(_cabPDPreviewMesh.geometry) _cabPDPreviewMesh.geometry.dispose();
+    if(_cabPDPreviewMesh.material) _cabPDPreviewMesh.material.dispose();
+    _cabPDPreviewMesh=null;
+  }
+  if(_cabPDPreviewRenderer){
+    _cabPDPreviewRenderer.dispose();
+    _cabPDPreviewRenderer=null;
+  }
+  _cabPDPreviewScene=null;
+  _cabPDPreviewCamera=null;
 }
 
 // Apply: extrude + write to design[] heightmap + register in designLibrary.
@@ -4397,6 +4645,16 @@ body.cab-mode #design-panel{ z-index: 9100 !important; }
 .cab-pd-source-body{ /* container for source-specific input controls */ }
 .cab-pd-source-body.hidden{ display:none }
 
+/* ── Slice 30 — Plan/3D tab toggle on Step 3 ─────────────────────── */
+.cab-pd-tab{
+  background:transparent; border:none; border-bottom:3px solid transparent;
+  color:#7aa0c0; font-size:13px; font-weight:700; letter-spacing:.4px;
+  padding:10px 18px; cursor:pointer; transition:all .12s;
+  font-family:inherit;
+}
+.cab-pd-tab:hover{ color:#dce8f5; background:rgba(255,255,255,.04); }
+.cab-pd-tab.is-active{ color:#e8a020; border-bottom-color:#e8a020; background:rgba(232,160,32,.08); }
+
 /* Touch-friendly Next/Apply target (A1 — live daily, gloves on). */
 .cab-btn-apply:disabled{
   background:#3a4a5a; color:#5a6a7a; cursor:not-allowed;
@@ -5288,9 +5546,23 @@ body.cab-led-align-hidden #cab-offsets > .cab-offset-cell:not(.cab-offset-cell-h
           </div>
           <div class="cab-field-hint" id="cab-pd-width-hint">Profile is truncated or extended (with a flat edge) to match. Set both to the section's native width to disable.</div>
         </div>
-        <div class="cab-field">
+        <!-- Slice 30 — Plan / 3D tab toggle. Plan view = summary text;
+             3D view = a small Three.js preview of the proposed extruded
+             surface. Renders only when 3D tab is active to keep CPU low. -->
+        <div class="cab-field" style="border-bottom:1px solid #1a2840;padding-bottom:0;margin-bottom:0">
+          <div class="cab-field-row" style="gap:0">
+            <button class="cab-pd-tab is-active" id="cab-pd-tab-plan" onclick="cabPDSetPreviewTab('plan')">📋 Plan / Summary</button>
+            <button class="cab-pd-tab"           id="cab-pd-tab-3d"   onclick="cabPDSetPreviewTab('3d')">🧊 3D Preview</button>
+          </div>
+        </div>
+        <div class="cab-field" id="cab-pd-tab-plan-body">
           <label class="cab-field-label">Summary</label>
           <div class="cab-field-hint" id="cab-pd-summary" style="font-size:13px;line-height:1.7;color:#dce8f5">—</div>
+        </div>
+        <div class="cab-field hidden" id="cab-pd-tab-3d-body">
+          <label class="cab-field-label">3D preview <span style="color:#7aa0c0;font-weight:400;font-size:11px">· drag to rotate · scroll/pinch to zoom</span></label>
+          <canvas id="cab-pd-preview-canvas" width="640" height="360" style="background:#06101a;border:1px solid #1a2840;border-radius:4px;display:block;cursor:grab;touch-action:none"></canvas>
+          <div class="cab-field-hint" id="cab-pd-preview-hint">—</div>
         </div>
         <div class="cab-field">
           <div class="cab-field-hint" style="color:#e8a020">Tap "Apply Design" to extrude this section along the alignment and write it into the active design surface.</div>
