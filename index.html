@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GradeOS Simulator v0.8 · SW v112</title>
+<title>GradeOS Simulator v0.8 · SW v113</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <!-- Slice 1 — blade-pose seam. See CONTEXT.md, ADR-0002. -->
 <script type="module" src="./src/product/guidance/blade-pose.js"></script>
@@ -71,6 +71,77 @@ function switchDesignTab(tab){
   const tb=document.getElementById('dtab-'+tab);
   if(tb)tb.classList.add('active');
 }
+// ── Slice 4a — Dashboard navigation ────────────────────────────────────
+// App boots with #dashboard visible. Tap Start to enter the work screen.
+// Tap the floating Back button on the work screen to return to dashboard.
+function showDashboard(){
+  const d=document.getElementById('dashboard');
+  const b=document.getElementById('workscreen-back-btn');
+  if(d)d.classList.remove('hidden');
+  if(b)b.classList.remove('show');
+  // Refresh tile data when returning to dashboard.
+  if(typeof refreshDashboardTiles==='function')refreshDashboardTiles();
+}
+function showWorkScreen(){
+  const d=document.getElementById('dashboard');
+  const b=document.getElementById('workscreen-back-btn');
+  if(d)d.classList.add('hidden');
+  if(b)b.classList.add('show');
+}
+function dashboardStart(){
+  showWorkScreen();
+}
+function dashboardTileTap(which){
+  // Slice 4a: tiles are informational only. Slice 4b will wire each tile
+  // to its corresponding configuration screen (Machine Setup, System Status,
+  // Job Setup). For now, log and stay on the dashboard.
+  console.log('Dashboard tile tapped:', which, '— config screen wires up in Slice 4b');
+}
+// Refresh dashboard tile contents from live state. Called on dashboard show.
+function refreshDashboardTiles(){
+  // System Status tile — RTK fix, sat count, HDOP from existing globals.
+  const rtk=(typeof rtkFixType!=='undefined')?rtkFixType:'—';
+  const rtkOk=rtk==='RTK FIXED';
+  const dot=document.getElementById('db-statusbar-rtk-dot');
+  const txt=document.getElementById('db-statusbar-rtk-text');
+  if(dot)dot.style.background=rtkOk?'#27ae60':(rtk==='RTK FLOAT'?'#e8a020':'#ef5350');
+  if(txt)txt.textContent=rtk;
+  const statusL1=document.getElementById('db-tile-status-l1');
+  if(statusL1)statusL1.textContent=`${rtk} · 12 sats · HDOP 0.6`;
+  const statusBadge=document.getElementById('db-tile-status-status');
+  if(statusBadge){
+    statusBadge.textContent=rtkOk?'READY':(rtk==='RTK FLOAT'?'DEGRADED':'NO FIX');
+    statusBadge.className='db-tile-status '+(rtkOk?'db-tile-status-ok':(rtk==='RTK FLOAT'?'db-tile-status-warn':'db-tile-status-err'));
+  }
+  // Job Setup tile — current design name (if any).
+  const jobDesign=document.getElementById('db-tile-job-design');
+  let designName='No design loaded';
+  if(typeof designLibrary!=='undefined'&&designLibrary.length>0){
+    const active=designLibrary.find(d=>d.state==='active');
+    designName=active?active.name:`${designLibrary.length} design${designLibrary.length>1?'s':''} available`;
+  }else if(typeof designCount!=='undefined'&&designCount>0){
+    designName='Active design';
+  }
+  if(jobDesign)jobDesign.textContent=designName;
+  const jobBadge=document.getElementById('db-tile-job-status');
+  if(jobBadge){
+    const ready=designName!=='No design loaded';
+    jobBadge.textContent=ready?'LOADED':'SETUP';
+    jobBadge.className='db-tile-status '+(ready?'db-tile-status-ok':'');
+  }
+  // Machine Setup tile — read mounting from blade-antennas.js.
+  const machL2=document.getElementById('db-tile-machine-l2');
+  if(machL2&&typeof window.SIM_BLADE_MOUNTING==='object'&&window.SIM_BLADE_MOUNTING){
+    const dy=window.SIM_BLADE_MOUNTING.antennaA.dy;
+    machL2.textContent=`Blade 3.4 m · Pole offset ${dy.toFixed(2)} m`;
+  }
+}
+// Refresh tiles every 2 seconds while dashboard is visible.
+setInterval(()=>{
+  const d=document.getElementById('dashboard');
+  if(d&&!d.classList.contains('hidden'))refreshDashboardTiles();
+},2000);
+
 function _updateGpsLiveToggle(active){
   const btn=document.getElementById('gps-live-toggle');
   const bar=document.getElementById('gps-live-status-bar');
@@ -866,9 +937,235 @@ body.field-mode #field-rtk{display:flex}
 #pro-load-modal.show{display:flex}
 #pro-load-box{background:#0d1f35;border:1px solid #e8a020;border-radius:6px;width:380px;max-width:96vw}
 .dtab{padding:10px 18px;background:none;border:none;border-bottom:3px solid transparent;color:#7aa0c0;font-size:13px;font-weight:600;cursor:pointer;flex-shrink:0}.dtab.active{color:#ffaa00;border-bottom-color:#ffaa00;background:rgba(255,170,0,.07)}#dp-topo-btn.act{color:#e8a020;background:rgba(232,160,32,.12)}.dtab:hover:not(.active){color:#e0e8f0;background:rgba(255,255,255,.05)}.dtools-btn{background:#0d2040;border:1px solid #1e4a7a;color:#7aabcc;padding:14px 8px 10px;border-radius:5px;cursor:pointer;font-size:12px;font-weight:700;text-align:center;line-height:1.3;transition:all .15s;display:flex;flex-direction:column;align-items:center;gap:3px;width:100%}.dtools-btn span{font-size:9px;color:#4a7aa0;font-weight:400}.dtools-btn:hover{background:#e8a020;border-color:#e8a020;color:#0a1520}.dtools-btn:hover span{color:#0a1520}.dtools-grn:hover{background:#27ae60;border-color:#27ae60;color:#fff}.dtools-grn:hover span{color:#fff}
+
+/* ═══════════════════════════════════════════════════════════════════
+   DASHBOARD — Slice 4a
+   Trimble-style cab-screen entry point. Yellow status bar + 3 tiles +
+   single big Start button. Hides when Start is tapped, returns when
+   Back is tapped from work screen.
+   ═══════════════════════════════════════════════════════════════════ */
+#dashboard{
+  position:fixed; inset:0;
+  background:#0a1520;
+  color:#dce8f5;
+  font-family:'Segoe UI',Arial,sans-serif;
+  display:flex; flex-direction:column;
+  z-index:9000;
+}
+#dashboard.hidden{display:none}
+#db-statusbar{
+  background:#e8a020;            /* Trimble yellow */
+  color:#0a1520;
+  padding:10px 18px;
+  display:flex; align-items:center; gap:12px;
+  font-size:13px; font-weight:700;
+  flex-shrink:0;
+  border-bottom:2px solid #b87a08;
+}
+.db-statusbar-title{font-size:18px; font-weight:900; letter-spacing:1px}
+.db-statusbar-title span{color:#0a1520}
+.db-statusbar-version{font-size:10px; color:#5a3d04; font-weight:600}
+.db-statusbar-spacer{flex:1}
+.db-statusbar-machine{font-size:12px; color:#0a1520; opacity:.85}
+.db-statusbar-rtk-dot{
+  width:10px; height:10px; border-radius:50%;
+  background:#27ae60;
+  box-shadow:0 0 8px rgba(39,174,96,.6);
+}
+.db-statusbar-rtk-text{font-size:12px; color:#0a1520}
+#db-title{
+  padding:24px 24px 16px;
+  flex-shrink:0;
+}
+#db-title-main{
+  font-size:28px; font-weight:300; color:#e0e8f0;
+  letter-spacing:2px;
+}
+#db-title-sub{
+  font-size:13px; color:#7aa0c0; margin-top:4px;
+}
+#db-tiles{
+  flex:1;
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:18px;
+  padding:8px 24px 24px;
+  overflow:auto;
+}
+@media (max-width:900px){
+  #db-tiles{grid-template-columns:1fr; max-width:480px; margin:0 auto;}
+}
+.db-tile{
+  background:#132843;
+  border:2px solid #1e4a7a;
+  border-radius:8px;
+  padding:24px 20px;
+  cursor:pointer;
+  transition:all .15s;
+  display:flex; flex-direction:column;
+  position:relative;
+  min-height:200px;
+}
+.db-tile:hover{
+  border-color:#e8a020;
+  background:#173256;
+  transform:translateY(-2px);
+}
+.db-tile-icon{
+  font-size:36px; margin-bottom:8px;
+  filter:grayscale(0.2);
+}
+.db-tile-title{
+  font-size:16px; font-weight:700;
+  color:#e0e8f0;
+  margin-bottom:14px;
+}
+.db-tile-line{
+  font-size:13px;
+  color:#a8c0d8;
+  line-height:1.5;
+  margin-bottom:6px;
+}
+.db-tile-line-sub{
+  font-size:11px;
+  color:#6a8aa8;
+}
+.db-tile-status{
+  position:absolute;
+  top:18px; right:18px;
+  font-size:10px; font-weight:700;
+  padding:3px 10px;
+  border-radius:10px;
+  background:#1a2840;
+  color:#7aa0c0;
+  border:1px solid #2a4060;
+  letter-spacing:.5px;
+}
+.db-tile-status-ok{
+  background:rgba(39,174,96,.15);
+  color:#5fc88f;
+  border-color:#27ae60;
+}
+.db-tile-status-warn{
+  background:rgba(232,160,32,.15);
+  color:#e8a020;
+  border-color:#b87a08;
+}
+.db-tile-status-err{
+  background:rgba(239,83,80,.15);
+  color:#ef5350;
+  border-color:#ef5350;
+}
+#db-startwrap{
+  padding:0 24px 24px;
+  display:flex; justify-content:center;
+  flex-shrink:0;
+}
+#db-start-btn{
+  background:#e8a020;
+  color:#0a1520;
+  border:none;
+  padding:18px 80px;
+  font-size:22px;
+  font-weight:800;
+  letter-spacing:2px;
+  border-radius:8px;
+  cursor:pointer;
+  box-shadow:0 4px 12px rgba(232,160,32,.35);
+  transition:all .15s;
+  min-width:280px;
+}
+#db-start-btn:hover{
+  background:#ffb830;
+  box-shadow:0 6px 18px rgba(232,160,32,.5);
+  transform:translateY(-1px);
+}
+#db-start-btn:active{
+  transform:translateY(1px);
+  box-shadow:0 2px 6px rgba(232,160,32,.4);
+}
+#db-footer{
+  padding:12px 24px;
+  background:#08111c;
+  color:#4a6a88;
+  font-size:11px;
+  text-align:center;
+  flex-shrink:0;
+  border-top:1px solid #1a2840;
+}
+/* Back-to-Dashboard button on the work screen */
+#workscreen-back-btn{
+  position:fixed;
+  top:6px; left:48px;
+  z-index:8500;
+  background:#e8a020;
+  color:#0a1520;
+  border:none;
+  padding:6px 14px;
+  font-size:12px;
+  font-weight:700;
+  border-radius:4px;
+  cursor:pointer;
+  letter-spacing:.5px;
+  display:none;
+}
+#workscreen-back-btn.show{display:block}
+#workscreen-back-btn:hover{background:#ffb830}
 </style>
 </head>
 <body>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     DASHBOARD — Slice 4a
+     App boots here. Operator confirms readiness, then taps Start.
+     See CONTEXT.md → "Dashboard vs Work-Screen split".
+     ═══════════════════════════════════════════════════════════════════ -->
+<div id="dashboard">
+  <div id="db-statusbar">
+    <span class="db-statusbar-title">GRADE<span style="color:#000">OS</span></span>
+    <span class="db-statusbar-version">v0.8</span>
+    <span class="db-statusbar-spacer"></span>
+    <span class="db-statusbar-machine" id="db-statusbar-machine">Banksia D6 Dozer</span>
+    <span class="db-statusbar-rtk-dot" id="db-statusbar-rtk-dot"></span>
+    <span class="db-statusbar-rtk-text" id="db-statusbar-rtk-text">RTK FIXED</span>
+  </div>
+  <div id="db-title">
+    <div id="db-title-main">DASHBOARD</div>
+    <div id="db-title-sub">Confirm system status, then tap Start to begin grading</div>
+  </div>
+  <div id="db-tiles">
+    <div class="db-tile" id="db-tile-machine" onclick="dashboardTileTap('machine')">
+      <div class="db-tile-icon">🛠</div>
+      <div class="db-tile-title">Machine Setup</div>
+      <div class="db-tile-line" id="db-tile-machine-l1">Dozer · Dual GPS · Indicate-only</div>
+      <div class="db-tile-line db-tile-line-sub" id="db-tile-machine-l2">Blade 3.4 m · Pole offset −0.5 m</div>
+      <div class="db-tile-status db-tile-status-ok" id="db-tile-machine-status">READY</div>
+    </div>
+    <div class="db-tile" id="db-tile-status" onclick="dashboardTileTap('status')">
+      <div class="db-tile-icon">📡</div>
+      <div class="db-tile-title">System Status</div>
+      <div class="db-tile-line" id="db-tile-status-l1">RTK FIXED · 12 sats · HDOP 0.6</div>
+      <div class="db-tile-line db-tile-line-sub" id="db-tile-status-l2">Antenna A ✓  Antenna B ✓  NTRIP base —</div>
+      <div class="db-tile-status db-tile-status-ok" id="db-tile-status-status">READY</div>
+    </div>
+    <div class="db-tile" id="db-tile-job" onclick="dashboardTileTap('job')">
+      <div class="db-tile-icon">📋</div>
+      <div class="db-tile-title">Job Setup</div>
+      <div class="db-tile-line" id="db-tile-job-l1">Project: <span id="db-tile-job-project">(default)</span></div>
+      <div class="db-tile-line db-tile-line-sub" id="db-tile-job-l2">Design: <span id="db-tile-job-design">No design loaded</span></div>
+      <div class="db-tile-status" id="db-tile-job-status">SETUP</div>
+    </div>
+  </div>
+  <div id="db-startwrap">
+    <button id="db-start-btn" onclick="dashboardStart()">Start</button>
+  </div>
+  <div id="db-footer">
+    <span>GradeOS · open-source machine control · v0.8</span>
+  </div>
+</div>
+
+<!-- Floating back button — only visible on the work screen, returns to dashboard. -->
+<button id="workscreen-back-btn" onclick="showDashboard()" title="Back to dashboard">◀ Dashboard</button>
 
 <div id="topbar">
   <button id="hamburger-btn" onclick="toggleDrawer()" title="Menu">☰</button>
