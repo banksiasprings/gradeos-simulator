@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GradeOS Simulator v0.9 · SW v137</title>
+<title>GradeOS Simulator v0.9 · SW v138</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <!-- Slice 11.5 — GLTF model loader (Three.js example loaders are global scripts, not modules) -->
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -634,7 +634,10 @@ function cabTogglePlanOrientation(){
 function cabUpdateCompassIcons(){
   const mode=(cabSysState && cabSysState.planOrientationMode) || 'north';
   const pose=window._cabLastPose;
-  const heading=(pose && pose.heading!=null) ? pose.heading : 0;
+  // Slice 14.4 — compass needle uses smoothed heading so it doesn't twitch.
+  const heading=(typeof window._cabSmoothedHeading === 'number')
+    ? window._cabSmoothedHeading
+    : ((pose && pose.heading!=null) ? pose.heading : 0);
   // In Track-up, the world has been rotated by -heading, so geographic
   // north (which was screen-up in N-up) now sits at angle -heading from
   // screen-up. Rotate the SVG by -heading so the N-marker points there.
@@ -723,6 +726,21 @@ function cabScreenUpdate(bladeTarget,bladePose){
   // drawing can read it (the sprite render loop runs separately).
   window._cabLastTarget = bladeTarget || null;
   window._cabLastPose   = bladePose   || null;
+  // Slice 14.4 — Low-pass-filter the heading used for cab rendering rotations
+  // (plan world-transform, plan sprite, compass needle). Simulated GPS noise
+  // shows up as visible wobble in track-up because the grid rotates by the
+  // raw heading every frame. EMA in the wrap-around-safe sense: step toward
+  // the raw value by alpha * shortest-angle-diff. The raw heading on
+  // bladePose is left untouched — cut/fill / blade-target math depends on
+  // precise instantaneous heading, only the cab visuals get the smoothed one.
+  if(bladePose && bladePose.heading != null){
+    const hRaw = bladePose.heading;
+    const hPrev = (typeof window._cabSmoothedHeading === 'number') ? window._cabSmoothedHeading : hRaw;
+    let d = (hRaw - hPrev) % (Math.PI * 2);
+    if(d > Math.PI) d -= Math.PI * 2;
+    else if(d <= -Math.PI) d += Math.PI * 2;
+    window._cabSmoothedHeading = hPrev + 0.15 * d;
+  }
   // LED bars (unchanged from Slice 4b)
   _cabDrawVerticalLEDBar(document.getElementById('cab-led-tipA'),bladeTarget&&bladeTarget.tipA?bladeTarget.tipA.cutFillMm:null);
   _cabDrawVerticalLEDBar(document.getElementById('cab-led-tipB'),bladeTarget&&bladeTarget.tipB?bladeTarget.tipB.cutFillMm:null);
@@ -1278,7 +1296,10 @@ function _cabDrawPaneSprite(paneIdx){
     // while keeping +X (right) on the right.
     if(mode === 'north'){
       const pose = window._cabLastPose;
-      const heading = (pose && pose.heading != null) ? pose.heading : 0;
+      // Slice 14.4 — sprite rotation uses smoothed heading to avoid GPS-noise wobble.
+      const heading = (typeof window._cabSmoothedHeading === 'number')
+        ? window._cabSmoothedHeading
+        : ((pose && pose.heading != null) ? pose.heading : 0);
       ctx.save();
       ctx.translate(cw / 2, ch / 2);
       ctx.rotate(heading);  // canvas rotates clockwise for +ve angles; matches sim heading convention
@@ -1454,7 +1475,10 @@ function _planW2p(cw, ch, pose){
   const cx = cw / 2, cy = ch / 2;
   const mx = pose && pose.centre ? pose.centre.x : 0;
   const mz = pose && pose.centre ? pose.centre.z : 0;
-  const heading = (pose && pose.heading != null) ? pose.heading : 0;
+  // Slice 14.4 — render-only rotation uses smoothed heading; raw still on pose.
+  const heading = (typeof window._cabSmoothedHeading === 'number')
+    ? window._cabSmoothedHeading
+    : ((pose && pose.heading != null) ? pose.heading : 0);
   // Slice 14.2 — Track-up rotation. Sim's machine-forward at heading h is
   // (sin(h), cos(h)) in (X,Z). To rotate that vector to (0,1) — i.e., +Z,
   // which maps to screen-UP via the standard `cy - dz*ppm` mapping — we
