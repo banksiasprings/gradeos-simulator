@@ -361,8 +361,10 @@ Use **blade pose** for "where the blade is" and **blade target** for "where the 
   - **Slice 26 = on-plan vertex drawing (SW v150).** 640×280 plan canvas added to Step 1 with full polyline-editing affordances per C1: tap empty space → append; drag a vertex → reposition (16 px hit, 4 px drag threshold); tap-and-hold ~600 ms → delete (with haptic vibrate); tap a segment → insert vertex at click. Hover state for mouse. Background per C2: 1m/5m/10m grid tiers, "N ↑" indicator, faint amber recorded points, dozer position + heading triangle (uses smoothed heading per Slice 14.4). Auto-fit view bounds polyline + recorded points + dozer with 40 px padding, capped at 40 ppm. Polyline textarea stays as canonical source of truth, moved into a collapsed `<details>` for advanced editing.
   - **Slice 27 = live segment-length + deflection-angle labels (SW v151).** Cyan rounded-pill "X.XX m" labels at each segment midpoint; amber rounded-pill "+12.4°" or "-12.4°" deflection labels at interior vertices (signed: + = right turn, − = left). Deflection threshold 0.1° to skip near-straight bends. C3 decision: deflection from previous segment, not absolute compass bearing. Drawn last so they sit on top of the polyline.
 
-- **Slice 28+ (deferred to next session)**. Remaining slices in the wizard plan:
-  - **28** — On-screen finger-draw section editor with Douglas-Peucker simplification.
+- **Slice 14.5 = Eco performance mode (SW v152).** Adds a third performance tier below Lite for low-end hardware (Pi5, older laptops). Eco uses `buildCleanDozer()` (the primitive box-mesh dozer in `src/sim/render/dozer-model.js`) at 300×225 sprites with antialiasing off — ~95 % cheaper than the GLTF path. Per-mode sprite cache (key suffixed with `-eco` / `-lite` / `-full`) so toggling between modes is instant after first generation. cabSysSetPerfMode now accepts 'eco' as a third option; System Settings shows three radio buttons. Numbered 14.5 because it's a perf-tier follow-up to Slice 8 (Performance Mode toggle) — landed during the wizard work, hence out-of-sequence in commit history but logically a perf slice not a wizard slice.
+
+- **Slice 28+ (in progress this session)**. Remaining slices in the Profile Designer wizard plan (`docs/plans/profile-designer-wizard.md`):
+  - **28** — On-screen finger-draw section editor with Ramer-Douglas-Peucker simplification.
   - **29** — Asymmetric Width A/B in extrusion math.
   - **30** — 3D preview tab on Step 3 with terrain-underneath cut/fill preview.
   - **31** — Templates library (alignment + section, localStorage).

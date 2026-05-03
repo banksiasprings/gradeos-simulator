@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GradeOS Simulator v0.9 · SW v152</title>
+<title>GradeOS Simulator v0.9 · SW v153</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <!-- Slice 11.5 — GLTF model loader (Three.js example loaders are global scripts, not modules) -->
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -1841,9 +1841,67 @@ function cabPDRedrawProfile(){
     ctx.fillStyle='#0a1520'; ctx.font='9px monospace';
     ctx.fillText(`${p.u.toFixed(1)},${p.dy>=0?'+':''}${p.dy.toFixed(2)}`, c.cx+7, c.cy-7);
   });
+  // Slice 28 — render the in-progress finger-draw stroke (semi-transparent
+  // green) on top of the saved profile so the user sees what they're tracing.
+  if(_cabPDDrawStroke && _cabPDDrawStroke.length>1){
+    ctx.strokeStyle='rgba(39, 174, 96, 0.85)';
+    ctx.lineWidth=3;
+    ctx.lineCap='round'; ctx.lineJoin='round';
+    ctx.beginPath();
+    _cabPDDrawStroke.forEach((p,i)=>{
+      const c=cabPDWorldToCanvas(cv,p.u,p.dy);
+      if(i===0)ctx.moveTo(c.cx,c.cy); else ctx.lineTo(c.cx,c.cy);
+    });
+    ctx.stroke();
+  }
   // Vertex count
   const cnt=document.getElementById('cab-pd-vertex-count');
-  if(cnt)cnt.textContent=_cabPDProfile.length+' vertices';
+  if(cnt)cnt.textContent=_cabPDProfile.length+' vertices'+(_cabPDDrawStroke?' · drawing…':'');
+}
+
+// Slice 28 — finger-draw section editor.
+// Two modes for the profile canvas:
+//   'click'  = existing tap-to-add / drag / double-click delete behaviour
+//   'finger' = pointerdown + drag traces a polyline; on release we run
+//              Ramer-Douglas-Peucker (ε ≈ 50 mm) to simplify to a clean
+//              ~5-15 vertex profile. Replaces the existing _cabPDProfile.
+let _cabPDDrawMode='click';
+let _cabPDDrawStroke=null; // {u, dy}[] active during a finger-draw gesture
+
+function cabPDSetDrawMode(mode){
+  if(mode!=='click' && mode!=='finger')return;
+  _cabPDDrawMode=mode;
+  cabActivateRadio('cab-pd-draw-click', mode==='click');
+  cabActivateRadio('cab-pd-draw-finger', mode==='finger');
+}
+
+// Ramer-Douglas-Peucker simplification on a (u, dy) polyline.
+// epsilon in metres (matches u/dy units). 0.05 = 50 mm.
+function _cabPDRDP(points, epsilon){
+  if(points.length<3) return points.slice();
+  const perp = (p, a, b) => {
+    const dx=b.u-a.u, dy=b.dy-a.dy;
+    const l2=dx*dx+dy*dy;
+    if(l2===0) return Math.hypot(p.u-a.u, p.dy-a.dy);
+    let t=((p.u-a.u)*dx + (p.dy-a.dy)*dy)/l2;
+    t=Math.max(0, Math.min(1, t));
+    return Math.hypot(p.u-(a.u+t*dx), p.dy-(a.dy+t*dy));
+  };
+  const rdp = (pts, eps) => {
+    if(pts.length<3) return pts.slice();
+    let maxD=0, idx=0;
+    for(let i=1;i<pts.length-1;i++){
+      const d=perp(pts[i], pts[0], pts[pts.length-1]);
+      if(d>maxD){ maxD=d; idx=i; }
+    }
+    if(maxD>eps){
+      const left=rdp(pts.slice(0,idx+1), eps);
+      const right=rdp(pts.slice(idx), eps);
+      return left.slice(0,-1).concat(right);
+    }
+    return [pts[0], pts[pts.length-1]];
+  };
+  return rdp(points, epsilon);
 }
 
 // Profile canvas interaction: click-add, drag-move, double-click-delete.
@@ -1864,6 +1922,13 @@ function cabPDInitProfileCanvas(){
     const r=cv.getBoundingClientRect();
     const cx=(ev.clientX-r.left)*(cv.width/r.width);
     const cy=(ev.clientY-r.top)*(cv.height/r.height);
+    // Slice 28 — finger-draw mode starts a fresh stroke.
+    if(_cabPDDrawMode==='finger'){
+      const w=cabPDCanvasToWorld(cv,cx,cy);
+      _cabPDDrawStroke=[{u:w.u, dy:w.dy}];
+      cabPDRedrawProfile();
+      return;
+    }
     const idx=findVertex(cx,cy);
     if(idx>=0){
       _cabPDDragIdx=idx;
@@ -1874,16 +1939,44 @@ function cabPDInitProfileCanvas(){
     }
   });
   cv.addEventListener('mousemove',ev=>{
-    if(_cabPDDragIdx===null)return;
     const r=cv.getBoundingClientRect();
     const cx=(ev.clientX-r.left)*(cv.width/r.width);
     const cy=(ev.clientY-r.top)*(cv.height/r.height);
+    // Slice 28 — finger-draw: append to active stroke; throttle to ~10 px
+    // moves so we don't capture every micro-pixel (RDP handles the rest).
+    if(_cabPDDrawStroke){
+      const last=_cabPDDrawStroke[_cabPDDrawStroke.length-1];
+      const lastC=cabPDWorldToCanvas(cv,last.u,last.dy);
+      if(Math.hypot(cx-lastC.cx, cy-lastC.cy) >= 6){
+        const w=cabPDCanvasToWorld(cv,cx,cy);
+        _cabPDDrawStroke.push({u:w.u, dy:w.dy});
+        cabPDRedrawProfile();
+      }
+      return;
+    }
+    if(_cabPDDragIdx===null)return;
     const w=cabPDCanvasToWorld(cv,cx,cy);
     _cabPDProfile[_cabPDDragIdx]={u:cabPDSnap(w.u),dy:cabPDSnap(w.dy)};
     cabPDRedrawProfile();
   });
-  cv.addEventListener('mouseup',()=>{ _cabPDDragIdx=null; });
-  cv.addEventListener('mouseleave',()=>{ _cabPDDragIdx=null; });
+  const finishStroke=()=>{
+    // Slice 28 — finger-draw release: simplify with RDP, sort by u, replace.
+    if(!_cabPDDrawStroke){ _cabPDDragIdx=null; return; }
+    const stroke=_cabPDDrawStroke;
+    _cabPDDrawStroke=null;
+    if(stroke.length<2){ cabPDRedrawProfile(); return; }
+    const eps=0.05; // 50 mm tolerance
+    const simp=_cabPDRDP(stroke, eps);
+    // Profile semantics: u is the lateral offset, increasing left-to-right.
+    // Sort the simplified points by u so we have a single-valued y(u) line.
+    simp.sort((a,b)=>a.u-b.u);
+    _cabPDProfile.length=0;
+    simp.forEach(p=>_cabPDProfile.push({u:cabPDSnap(p.u), dy:cabPDSnap(p.dy)}));
+    cabPDRedrawProfile();
+    if(typeof cabPDUpdateFooter==='function')cabPDUpdateFooter();
+  };
+  cv.addEventListener('mouseup',finishStroke);
+  cv.addEventListener('mouseleave',finishStroke);
   cv.addEventListener('dblclick',ev=>{
     const r=cv.getBoundingClientRect();
     const cx=(ev.clientX-r.left)*(cv.width/r.width);
@@ -1951,6 +2044,8 @@ function cabOpenProfileDesigner(){
   // Slice 25 — reset source pickers to defaults on open.
   if(typeof cabPDStep1SetSource==='function')cabPDStep1SetSource('points');
   if(typeof cabPDStep2SetSource==='function')cabPDStep2SetSource('templates');
+  // Slice 28 — reset finger-draw mode to default ('click').
+  if(typeof cabPDSetDrawMode==='function')cabPDSetDrawMode('click');
   cabPDGotoStep(1);
 }
 
@@ -5084,7 +5179,11 @@ body.cab-led-align-hidden #cab-offsets > .cab-offset-cell:not(.cab-offset-cell-h
 
         <!-- Source-specific input controls -->
         <div class="cab-pd-source-body hidden" data-source="onscreen">
-          <div class="cab-field-hint" style="margin-bottom:6px">Click on the canvas below to add a vertex. Drag to move. Double-click to delete. Centre line (u=0) is the alignment.</div>
+          <div class="cab-field-row">
+            <button class="cab-radio is-active" id="cab-pd-draw-click"  onclick="cabPDSetDrawMode('click')">⊕ Click to add</button>
+            <button class="cab-radio"           id="cab-pd-draw-finger" onclick="cabPDSetDrawMode('finger')">✏️ Finger-draw</button>
+          </div>
+          <div class="cab-field-hint" style="margin-bottom:6px"><b>Click:</b> tap to add a vertex, drag to move, double-tap to delete. <b>Finger-draw:</b> hold and drag to trace the profile in one stroke; on release the system simplifies it to a clean ~5–15 vertex polyline. Centre line (u=0) is the alignment.</div>
         </div>
         <div class="cab-pd-source-body" data-source="templates">
           <div class="cab-field-row">
