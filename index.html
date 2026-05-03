@@ -3,11 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GradeOS Simulator v0.8 · SW v110</title>
+<title>GradeOS Simulator v0.8 · SW v111</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <!-- Slice 1 — blade-pose seam. See CONTEXT.md, ADR-0002. -->
 <script type="module" src="./src/product/guidance/blade-pose.js"></script>
 <script type="module" src="./src/sim/fake-gps/blade-antennas.js"></script>
+<!-- Slice 2 — design surface + blade-target seam. See CONTEXT.md, ADR-0001. -->
+<script type="module" src="./src/product/design/design-surface.js"></script>
+<script type="module" src="./src/product/guidance/blade-target.js"></script>
 <script>
 
 // ── TOOLBAR: 3-BUTTON CONSOLIDATION ─────────────────────────────────────
@@ -3159,12 +3162,19 @@ function updateMachine(dt){
       const _ant2=bladeAntennasFromMachinePos(machinePos,mel2,BH2,_bladeMounting2);
       bladePose2=computeBladePose(_ant2.gps1,_ant2.gps2,_bladeMounting2);
     }
-    // Slice 1: no design comparison. Cut/fill displays show "— No design —".
-    const lMM2=null,rMM2=null,cMM2=null;
-    // Tablet IMU (when active) is a separate sensor concern from blade pose.
-    // For Slice 1 we keep the IMU-fed grade in the tablet path, but cross-slope
-    // is now geometric blade-pose (more trustworthy per ADR-0002).
-    const grade2=liveSensorMode?Math.tan(smoothedBeta*Math.PI/180)*100:null;
+    // ── SLICE 2 SEAM (tablet path) — blade target from pose + design ───────
+    const _toleranceMm2=(typeof guidanceTolerance!=='undefined')?guidanceTolerance*1000:25;
+    let bladeTarget2=null;
+    if(bladePose2&&typeof window.computeBladeTarget==='function'&&window.designSurface){
+      bladeTarget2=window.computeBladeTarget(bladePose2,window.designSurface,{vOffset,toleranceMm:_toleranceMm2});
+    }
+    const lMM2=bladeTarget2&&bladeTarget2.tipA?bladeTarget2.tipA.cutFillMm:null;
+    const rMM2=bladeTarget2&&bladeTarget2.tipB?bladeTarget2.tipB.cutFillMm:null;
+    const cMM2=bladeTarget2&&bladeTarget2.centre?bladeTarget2.centre.cutFillMm:null;
+    // Tablet IMU (when active) overrides design longGrade — operator-visible feedback
+    // of the actual machine attitude. Otherwise use design longGrade from blade-target.
+    const grade2=liveSensorMode?Math.tan(smoothedBeta*Math.PI/180)*100:(bladeTarget2?bladeTarget2.longGrade:null);
+    // Cross-slope is geometric blade-pose only (more trustworthy per ADR-0002).
     const xslope2=bladePose2?bladePose2.crossSlope:null;
     const elevDisp2=bladePose2?bladePose2.centre.y:mel2;
     updateTextRibbon(lMM2,cMM2,rMM2,grade2,elevDisp2,xslope2);
@@ -3280,11 +3290,17 @@ function updateMachine(dt){
     const _ant=bladeAntennasFromMachinePos(machinePos,mel,BH,_bladeMounting);
     bladePose=computeBladePose(_ant.gps1,_ant.gps2,_bladeMounting);
   }
-  // Excavator path is bucket-reach geometry, not blade-tip geometry — Slice 1
-  // intentionally leaves it inline (different sensor model, future slice).
+  // ── SLICE 2 SEAM — blade target from pose + design surface ─────────────
+  // See CONTEXT.md (Slice 2). Pure: pose + design → cut/fill mm + tolerance.
+  const _toleranceMm=(typeof guidanceTolerance!=='undefined')?guidanceTolerance*1000:25;
+  let bladeTarget=null;
+  if(machineType!=='excavator'&&bladePose&&typeof window.computeBladeTarget==='function'&&window.designSurface){
+    bladeTarget=window.computeBladeTarget(bladePose,window.designSurface,{vOffset,toleranceMm:_toleranceMm});
+  }
+  // Excavator path is bucket-reach geometry, not blade-tip geometry — kept inline
+  // (different sensor model, future slice).
   let lMM=null,rMM=null,cMM=null;
   if(machineType==='excavator'){
-    const cDesEx=dElev(machinePos.x,machinePos.z);
     const REACH=4.0,DIG_RAD=1.8;
     const digX=machinePos.x+Math.sin(machinePos.hdg)*REACH;
     const digZ=machinePos.z+Math.cos(machinePos.hdg)*REACH;
@@ -3299,16 +3315,19 @@ function updateMachine(dt){
     const dlD=dElev(dlx,dlz),drD=dElev(drx,drz);
     lMM=dlD!==null?(dlD+vOffset-dlG)*1000:null;
     rMM=drD!==null?(drD+vOffset-drG)*1000:null;
+  }else if(bladeTarget){
+    lMM=bladeTarget.tipA?bladeTarget.tipA.cutFillMm:null;
+    rMM=bladeTarget.tipB?bladeTarget.tipB.cutFillMm:null;
+    cMM=bladeTarget.centre?bladeTarget.centre.cutFillMm:null;
   }
-  // Longitudinal grade requires fore/aft pose data which Slice 1 does not produce.
-  // Display "—" until a future slice adds either a body IMU or fore/aft GPS pair.
-  const grade=null;
+  // Longitudinal grade — design slope along blade-forward (from blade-target).
+  const grade=bladeTarget?bladeTarget.longGrade:null;
   // Cross-slope is geometric blade-pose only — direct from the two GPS antennas.
   const xslope=bladePose?bladePose.crossSlope:null;
   // Centre elevation is pose-derived (mid-blade, world coords).
   const elevDisp=bladePose?bladePose.centre.y:mel;
-  // Blade focus selector still works — it picks which pose tip Y to highlight in future slices.
-  const focusMM=null; // No design = no focus mm yet.
+  // Blade focus selector picks which tip's cut/fill mm to use for the blade animation.
+  const focusMM=bladeFocus==='tipA'?lMM:bladeFocus==='tipB'?rMM:cMM;
   updateTextRibbon(lMM,cMM,rMM,grade,elevDisp,xslope);
   drawLEDBar(lMM,rMM);
   if(splitMode)updateBladePanel(lMM,cMM,rMM,grade,elevDisp,xslope);

@@ -283,9 +283,10 @@ Use **blade pose** for "where the blade is" and **blade target** for "where the 
 - **Workflow B (in-app design) is the canonical happy path.** Workflow A (design-file import) deferred post-v1.0. Workflow C (no design) is a degenerate case of B.
 - **v1.0 = real grading job at Banksia Springs.** Indicate-only on Pi5 + F9P. Single binary acceptance test. Scope cuts above are explicit.
 - **Architecture: incremental vertical-slice extraction, native ES modules, no build step.** Each slice cuts top-to-bottom for one small thing; sim must keep working at every commit.
-- **Slice 1 = blade-pose seam only.** Pure GPS + mounting geometry → BladePose struct → display consumers. Design and terrain explicitly excluded. *Blade pose ≠ blade target* — the latter is a later slice.
+- **Slice 1 = blade-pose seam only.** Pure GPS + mounting geometry → BladePose struct → display consumers. Design and terrain explicitly excluded. *Blade pose ≠ blade target* — the latter is a later slice. **LANDED 2026-05-03 (SW v110, commit `d58df3d`).**
 - **Sensor topology = dual u-blox F9P on poles at blade corners, magnetic mount, Bluetooth to Pi5.** Cross-slope is geometric (tip-to-tip), not IMU-fused. Optional body IMU is post-v1.0 redundant input. (See [ADR-0002](docs/adr/0002-dual-gps-on-blade-corners.md).)
 - **Slice 1 display rule = option (ii): cleanly disable cut/fill display until Slice 2.** Cut/fill mm bars, DES/ACT readouts, tolerance band, on-grade colours show "— No design —" placeholder during Slice 1. Pose-derived values (tip elevations, cross-slope, heading) shown live. Forces the architectural seam to be visible; stops the tangled inline code from running.
+- **Slice 2 = design surface + blade-target seam.** `designSurface.elevAt(x,z)` interface wraps existing `dElev` global. Pure `computeBladeTarget(bladePose, designSurface, options) → BladeTarget` produces the canonical product output (cut/fill mm at each tip, tolerance state, design longGrade). All cut/fill displays restored through the seam. Verified: 1m-above design → 1000.0 mm CUT exact; design = pose.centre.y → ON GRADE green. **LANDED 2026-05-03 (SW v111).**
 
 ---
 
