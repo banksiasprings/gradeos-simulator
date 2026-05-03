@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GradeOS Simulator v0.8 · SW v114</title>
+<title>GradeOS Simulator v0.8 · SW v115</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <!-- Slice 1 — blade-pose seam. See CONTEXT.md, ADR-0002. -->
 <script type="module" src="./src/product/guidance/blade-pose.js"></script>
@@ -323,18 +323,395 @@ function cabScreenUpdate(bladeTarget, bladePose){
   if(sbRtkText)sbRtkText.textContent=rtk;
 }
 
-// Slice 4b — Right-side toolbar tap handlers (stubs for now; Slice 4c wires them)
+// ── Slice 4c — Cab pane state, view-type swap, layout presets ──────────
+// State persisted to localStorage so operator preferences survive reloads.
+const cabPaneState = {
+  layout:'1big2small',
+  panes:{1:'three', 2:'plan', 3:'long'},
+  ribbon:['centerCutFill','crossSlope','longGrade'],
+};
+const _cabOriginalParents=new Map(); // canvas DOM node → original parent
+function _cabRecordOrigParent(canvas){
+  if(canvas&&!_cabOriginalParents.has(canvas)){
+    _cabOriginalParents.set(canvas, canvas.parentElement);
+  }
+}
+function cabGetCanvasForType(type){
+  switch(type){
+    case 'three': return document.querySelector('.three-canvas');
+    case 'plan':  return document.getElementById('plan-canvas');
+    case 'cross': return document.getElementById('xsec-canvas');
+    case 'long':  return document.getElementById('side-profile-canvas');
+  }
+  return null;
+}
+const _CAB_VIEWTYPE_NAMES={three:'3D View',plan:'Plan',cross:'Cross-section',long:'Long Section'};
+function cabRefreshPaneCanvases(){
+  const visiblePaneCount={'1single':1,'2vertical':2,'2horizontal':2,'1big2small':3,'3equal':3}[cabPaneState.layout]||3;
+  // First pass: return canvases that aren't in their assigned pane to their original parents,
+  // so we don't double-place a canvas if multiple panes ask for the same view type.
+  const wantedCanvases=new Set();
+  for(let i=1;i<=visiblePaneCount;i++){
+    const c=cabGetCanvasForType(cabPaneState.panes[i]);
+    if(c)wantedCanvases.add(c);
+  }
+  // Move not-wanted canvases back to original parents.
+  ['three','plan','cross','long'].forEach(t=>{
+    const c=cabGetCanvasForType(t);
+    if(!c)return;
+    if(!wantedCanvases.has(c)&&_cabOriginalParents.has(c)){
+      const orig=_cabOriginalParents.get(c);
+      if(orig&&c.parentElement!==orig)orig.appendChild(c);
+    }
+  });
+  // Second pass: place each pane's canvas.
+  for(let i=1;i<=3;i++){
+    const content=document.getElementById('cab-pane-'+i+'-content');
+    const type=cabPaneState.panes[i];
+    const nameEl=document.getElementById('cab-pane-'+i+'-name');
+    if(nameEl)nameEl.textContent=_CAB_VIEWTYPE_NAMES[type]||type;
+    if(i>visiblePaneCount){
+      // Pane is hidden in this layout — nothing to do (CSS already hides it).
+      continue;
+    }
+    const canvas=cabGetCanvasForType(type);
+    if(canvas&&content&&canvas.parentElement!==content){
+      _cabRecordOrigParent(canvas);
+      // Clear placeholder if any
+      content.querySelectorAll('.cab-pane-empty').forEach(e=>e.remove());
+      content.appendChild(canvas);
+    }else if(!canvas&&content&&content.children.length===0){
+      const ph=document.createElement('div');
+      ph.className='cab-pane-empty';
+      ph.textContent='(canvas not available for '+type+')';
+      content.appendChild(ph);
+    }
+  }
+}
+function cabSetLayout(name){
+  const pane=document.getElementById('cab-centre-pane');
+  if(!pane)return;
+  pane.className=pane.className.replace(/\bcab-layout-\S+/g,'').trim();
+  pane.classList.add('cab-layout-'+name);
+  cabPaneState.layout=name;
+  cabPersistState();
+  cabRefreshPaneCanvases();
+  cabResizeRenderer();
+  cabCloseAllOverlays();
+}
+let _cabPickingPaneIdx=null;
+function cabPaneTapHeader(idx){
+  _cabPickingPaneIdx=idx;
+  const sub=document.getElementById('cab-paneviewtype-subtitle');
+  if(sub)sub.textContent='For pane '+idx+' (currently '+(_CAB_VIEWTYPE_NAMES[cabPaneState.panes[idx]]||cabPaneState.panes[idx])+')';
+  cabOpenOverlay('cab-overlay-paneviewtype');
+}
+function cabSetPaneViewType(type){
+  if(!_cabPickingPaneIdx)return;
+  cabPaneState.panes[_cabPickingPaneIdx]=type;
+  cabPersistState();
+  cabRefreshPaneCanvases();
+  cabResizeRenderer();
+  cabCloseAllOverlays();
+}
+
+// ── Slice 4c — Modal overlay management ────────────────────────────────
+function cabOpenOverlay(id){
+  cabCloseAllOverlays();
+  const el=document.getElementById(id);
+  if(el)el.classList.remove('hidden');
+}
+function cabCloseAllOverlays(event){
+  // Close all overlays. If called from a click event and the click was
+  // inside an .cab-overlay-box, don't close (let the box handle).
+  if(event&&event.target&&event.target.closest&&event.target.closest('.cab-overlay-box'))return;
+  document.querySelectorAll('.cab-overlay').forEach(el=>el.classList.add('hidden'));
+}
+
+// ── Slice 4c — Ribbon catalog (per CONTEXT.md GQ-4) ────────────────────
+const CAB_RIBBON_CATALOG={
+  Guidance:[
+    {key:'leftCutFill',  label:'Cut/Fill Left',  icon:'◀'},
+    {key:'centerCutFill',label:'Cut/Fill Centre',icon:'⚪'},
+    {key:'rightCutFill', label:'Cut/Fill Right', icon:'▶'},
+    {key:'crossSlope',   label:'Cross-slope',    icon:'⤡'},
+    {key:'longGrade',    label:'Long Grade',     icon:'⤴'},
+  ],
+  Position:[
+    {key:'tipAElev',     label:'Tip A Elevation',icon:'L↕'},
+    {key:'tipBElev',     label:'Tip B Elevation',icon:'R↕'},
+    {key:'centreElev',   label:'Centre Elevation',icon:'C↕'},
+    {key:'easting',      label:'Easting',         icon:'E'},
+    {key:'northing',     label:'Northing',        icon:'N'},
+    {key:'heading',      label:'Heading',         icon:'⇡'},
+  ],
+  System:[
+    {key:'rtkFix',       label:'RTK Fix Quality', icon:'📡'},
+    {key:'satCount',     label:'Satellite Count', icon:'🛰'},
+    {key:'hdop',         label:'HDOP',            icon:'#'},
+  ],
+  Time:[
+    {key:'localTime',    label:'Local Time',      icon:'🕐'},
+  ],
+};
+function _cabFindRibbonItem(key){
+  for(const cat of Object.values(CAB_RIBBON_CATALOG)){
+    const f=cat.find(i=>i.key===key);
+    if(f)return f;
+  }
+  return null;
+}
+function _cabComputeReadout(key,bladeTarget,bladePose){
+  const tt=(t)=>t&&t.tipA?t.tipA.cutFillMm:null;
+  const tb=(t)=>t&&t.tipB?t.tipB.cutFillMm:null;
+  const tc=(t)=>t&&t.centre?t.centre.cutFillMm:null;
+  const fmtMm=mm=>{
+    if(mm===null||isNaN(mm))return{text:'—',cls:''};
+    if(Math.abs(mm)<25)return{text:'ON GD',cls:'ongrade'};
+    return{text:(mm>0?'+':'')+mm.toFixed(0)+' mm',cls:mm>0?'cut':'fill'};
+  };
+  const fmtPct=v=>(v===null||isNaN(v))?{text:'—'}:{text:(v>=0?'+':'')+v.toFixed(2)+'%'};
+  const fmtM=v=>(v===null||isNaN(v))?{text:'—'}:{text:v.toFixed(3)+' m'};
+  switch(key){
+    case 'leftCutFill': return fmtMm(tt(bladeTarget));
+    case 'centerCutFill': return fmtMm(tc(bladeTarget));
+    case 'rightCutFill': return fmtMm(tb(bladeTarget));
+    case 'crossSlope': return fmtPct(bladePose?bladePose.crossSlope:null);
+    case 'longGrade': return fmtPct(bladeTarget?bladeTarget.longGrade:null);
+    case 'tipAElev': return fmtM(bladePose?bladePose.tipA.y:null);
+    case 'tipBElev': return fmtM(bladePose?bladePose.tipB.y:null);
+    case 'centreElev': return fmtM(bladePose?bladePose.centre.y:null);
+    case 'easting': return fmtM(typeof machinePos!=='undefined'?machinePos.x:null);
+    case 'northing': return fmtM(typeof machinePos!=='undefined'?machinePos.z:null);
+    case 'heading': {
+      if(typeof machinePos==='undefined')return{text:'—'};
+      const deg=((machinePos.hdg*180/Math.PI)%360+360)%360;
+      return{text:deg.toFixed(0)+'°'};
+    }
+    case 'rtkFix': return{text:(typeof rtkFixType!=='undefined'?rtkFixType:'—')};
+    case 'satCount': return{text:'12'}; // stub — no real sat tracking yet
+    case 'hdop': return{text:'0.6'};    // stub
+    case 'localTime': {
+      const d=new Date();
+      return{text:d.toTimeString().slice(0,5)};
+    }
+  }
+  return{text:'—'};
+}
+function cabRebuildBottomStrip(){
+  const strip=document.getElementById('cab-bottom-strip');
+  if(!strip)return;
+  strip.innerHTML='';
+  cabPaneState.ribbon.forEach((key,i)=>{
+    const item=_cabFindRibbonItem(key);
+    if(!item)return;
+    const div=document.createElement('div');
+    div.className='cab-readout';
+    div.innerHTML=`<span class="cab-readout-icon">${item.icon}</span>
+      <div><div class="cab-readout-label">${item.label}</div>
+      <div class="cab-readout-value" id="cab-readout-v-${i}">—</div></div>`;
+    strip.appendChild(div);
+  });
+}
+
+// ── Slice 4c — Override cabScreenUpdate to use dynamic ribbon ──────────
+const _origCabScreenUpdate=window.cabScreenUpdate;
+function cabScreenUpdate(bladeTarget,bladePose){
+  if(!document.body.classList.contains('cab-mode'))return;
+  // LED bars (unchanged from Slice 4b)
+  _cabDrawVerticalLEDBar(document.getElementById('cab-led-tipA'),bladeTarget&&bladeTarget.tipA?bladeTarget.tipA.cutFillMm:null);
+  _cabDrawVerticalLEDBar(document.getElementById('cab-led-tipB'),bladeTarget&&bladeTarget.tipB?bladeTarget.tipB.cutFillMm:null);
+  _cabDrawHorizontalLEDBar(document.getElementById('cab-led-align'),null);
+  // Dynamic readouts
+  cabPaneState.ribbon.forEach((key,i)=>{
+    const v=_cabComputeReadout(key,bladeTarget,bladePose);
+    const el=document.getElementById('cab-readout-v-'+i);
+    if(el){
+      el.textContent=v.text;
+      el.className='cab-readout-value'+(v.cls?' '+v.cls:'');
+    }
+  });
+  // Top-centre offset numerics
+  const eo=document.getElementById('cab-offset-elev');
+  if(eo&&typeof vOffset!=='undefined')eo.textContent=(vOffset>=0?'+':'')+vOffset.toFixed(3)+' m';
+  const wo=document.getElementById('cab-offset-working');
+  if(wo)wo.textContent='+0.000 m';
+  // Status bar
+  const sbDes=document.getElementById('cab-statusbar-design');
+  if(sbDes){
+    let n='No design';
+    if(typeof designLibrary!=='undefined'&&designLibrary.length>0){
+      const a=designLibrary.find(d=>d.state==='active');
+      n=a?a.name:`${designLibrary.length} design(s)`;
+    }
+    sbDes.textContent=n;
+  }
+  const dot=document.getElementById('cab-statusbar-rtk-dot');
+  const txt=document.getElementById('cab-statusbar-rtk-text');
+  const rtk=(typeof rtkFixType!=='undefined')?rtkFixType:'—';
+  if(dot)dot.style.background=rtk==='RTK FIXED'?'#27ae60':(rtk==='RTK FLOAT'?'#e8a020':'#ef5350');
+  if(txt)txt.textContent=rtk;
+}
+
+// ── Slice 4c — Edit Text Ribbon modal ──────────────────────────────────
+let _cabRibbonDraft=[];
+function cabOpenEditRibbon(){
+  _cabRibbonDraft=[...cabPaneState.ribbon];
+  cabRenderRibbonModal();
+  cabOpenOverlay('cab-overlay-editribbon');
+}
+function cabRenderRibbonModal(){
+  const sel=document.getElementById('cab-ribbon-selected-list');
+  const avail=document.getElementById('cab-ribbon-available-list');
+  if(!sel||!avail)return;
+  // Selected (with reorder + remove buttons)
+  sel.innerHTML='';
+  if(_cabRibbonDraft.length===0){
+    sel.innerHTML='<div class="cab-pane-empty" style="padding:14px">(no readouts selected)</div>';
+  }else{
+    _cabRibbonDraft.forEach((key,i)=>{
+      const item=_cabFindRibbonItem(key);
+      if(!item)return;
+      const row=document.createElement('div');
+      row.className='cab-ribbon-row selected';
+      row.innerHTML=`<span class="cab-ribbon-row-icon">${item.icon}</span>
+        <span class="cab-ribbon-row-label">${item.label}</span>
+        <button class="cab-ribbon-row-action" onclick="cabRibbonMoveUp(${i})" ${i===0?'disabled':''}>▲</button>
+        <button class="cab-ribbon-row-action" onclick="cabRibbonMoveDown(${i})" ${i===_cabRibbonDraft.length-1?'disabled':''}>▼</button>
+        <button class="cab-ribbon-row-action" onclick="cabRibbonRemove(${i})">✕</button>`;
+      sel.appendChild(row);
+    });
+  }
+  // Available (grouped)
+  avail.innerHTML='';
+  Object.entries(CAB_RIBBON_CATALOG).forEach(([cat,items])=>{
+    const h=document.createElement('div');
+    h.className='cab-ribbon-cat-header';
+    h.textContent=cat;
+    avail.appendChild(h);
+    items.forEach(item=>{
+      const inDraft=_cabRibbonDraft.includes(item.key);
+      const row=document.createElement('div');
+      row.className='cab-ribbon-row';
+      const disabled=_cabRibbonDraft.length>=5&&!inDraft;
+      row.innerHTML=`<span class="cab-ribbon-row-icon">${item.icon}</span>
+        <span class="cab-ribbon-row-label">${item.label}</span>
+        <button class="cab-ribbon-row-action" onclick="cabRibbonToggleAvail('${item.key}')" ${disabled?'disabled style="opacity:.4"':''}>${inDraft?'✓ Selected':'+ Add'}</button>`;
+      avail.appendChild(row);
+    });
+  });
+}
+function cabRibbonMoveUp(i){
+  if(i<=0)return;
+  const t=_cabRibbonDraft[i];_cabRibbonDraft[i]=_cabRibbonDraft[i-1];_cabRibbonDraft[i-1]=t;
+  cabRenderRibbonModal();
+}
+function cabRibbonMoveDown(i){
+  if(i>=_cabRibbonDraft.length-1)return;
+  const t=_cabRibbonDraft[i];_cabRibbonDraft[i]=_cabRibbonDraft[i+1];_cabRibbonDraft[i+1]=t;
+  cabRenderRibbonModal();
+}
+function cabRibbonRemove(i){
+  _cabRibbonDraft.splice(i,1);
+  cabRenderRibbonModal();
+}
+function cabRibbonToggleAvail(key){
+  if(_cabRibbonDraft.includes(key)){
+    _cabRibbonDraft=_cabRibbonDraft.filter(k=>k!==key);
+  }else if(_cabRibbonDraft.length<5){
+    _cabRibbonDraft.push(key);
+  }
+  cabRenderRibbonModal();
+}
+function cabRibbonResetDefaults(){
+  _cabRibbonDraft=['centerCutFill','crossSlope','longGrade'];
+  cabRenderRibbonModal();
+}
+function cabRibbonApply(){
+  cabPaneState.ribbon=[..._cabRibbonDraft];
+  cabPersistState();
+  cabRebuildBottomStrip();
+  cabCloseAllOverlays();
+}
+
+// ── Slice 4c — Toolbar wiring (open the right modal/overlay) ───────────
 function cabToolTap(which){
-  console.log('Cab toolbar tap:', which, '— wiring in Slice 4c');
-  // Minimal Slice 4b behaviours so things aren't completely dead:
   if(which==='focus'&&typeof setBladeFocus==='function'){
     const next={center:'tipA',tipA:'tipB',tipB:'center'}[(typeof bladeFocus!=='undefined'?bladeFocus:'center')];
     setBladeFocus(next);
-  }else if(which==='systemsettings'&&typeof openGPSPanel==='function'){
+  }else if(which==='changeview'){
+    cabOpenOverlay('cab-overlay-changeview');
+  }else if(which==='worksettings'){
+    // Stub — Slice 4d will route to a real Work Settings panel.
+    // For now repurpose to Edit Text Ribbon since that's an operator-config we built.
+    cabOpenEditRibbon();
+  }else if(which==='record'){
+    console.log('Record point — wired in a future slice');
+  }else if(which==='overview'){
+    console.log('Overview screen — wired in a future slice');
+  }else if(which==='overlays'){
+    console.log('Overlays — wired in a future slice');
+  }else if(which==='systemsettings'){
     // Temporary route to GPS panel until proper System Settings exists.
     document.body.classList.remove('cab-mode');
     openGPSPanel();
   }
+}
+
+// ── Slice 4c — localStorage persistence ────────────────────────────────
+function cabPersistState(){
+  try{
+    localStorage.setItem('gradeos-cab-state-v1',JSON.stringify({
+      layout:cabPaneState.layout,
+      panes:cabPaneState.panes,
+      ribbon:cabPaneState.ribbon,
+    }));
+  }catch(e){}
+}
+function cabLoadState(){
+  try{
+    const s=localStorage.getItem('gradeos-cab-state-v1');
+    if(s){
+      const o=JSON.parse(s);
+      if(o.layout)cabPaneState.layout=o.layout;
+      if(o.panes)cabPaneState.panes={...cabPaneState.panes,...o.panes};
+      if(Array.isArray(o.ribbon))cabPaneState.ribbon=o.ribbon.slice(0,5);
+    }
+  }catch(e){}
+}
+
+// ── Slice 4c — One-time init (runs after the page is ready) ────────────
+function cabInit(){
+  cabLoadState();
+  // Apply layout class
+  const pane=document.getElementById('cab-centre-pane');
+  if(pane){
+    pane.className=pane.className.replace(/\bcab-layout-\S+/g,'').trim();
+    pane.classList.add('cab-layout-'+cabPaneState.layout);
+  }
+  cabRebuildBottomStrip();
+  // Pane canvas placement only happens once the cab screen is shown
+  // (so the renderer.domElement exists). showCabScreen() triggers it.
+}
+// Override showCabScreen to trigger pane refresh after canvases are ready.
+const _origShowCabScreen=window.showCabScreen;
+function showCabScreen(){
+  const d=document.getElementById('dashboard');
+  const c=document.getElementById('cabscreen');
+  const b=document.getElementById('workscreen-back-btn');
+  if(d)d.classList.add('hidden');
+  if(c)c.classList.remove('hidden');
+  if(b)b.classList.remove('show');
+  document.body.classList.add('cab-mode');
+  // Apply current layout + place canvases.
+  cabRefreshPaneCanvases();
+  requestAnimationFrame(()=>{ cabResizeRenderer(); });
+}
+// Boot init when DOM is ready
+if(document.readyState==='loading'){
+  document.addEventListener('DOMContentLoaded',cabInit);
+}else{
+  cabInit();
 }
 function dashboardTileTap(which){
   // Slice 4a: tiles are informational only. Slice 4b will wire each tile
@@ -1539,6 +1916,237 @@ body.cab-mode #workscreen-back-btn{display:none !important}
 .cab-readout-value.cut{color:#ef5350}
 .cab-readout-value.fill{color:#42a5f5}
 .cab-readout-value.ongrade{color:#66bb6a}
+
+/* ── Slice 4c — Multi-pane centre area ─────────────────────────────── */
+#cab-centre-pane{
+  display:grid;
+  gap:4px;
+  background:#0a1520;
+  padding:4px;
+}
+/* 5 layout presets — change which template applies via class on parent */
+#cab-centre-pane.cab-layout-1single{
+  grid-template-columns:1fr;
+  grid-template-rows:1fr;
+}
+#cab-centre-pane.cab-layout-1single .cab-pane:nth-child(n+2){display:none}
+#cab-centre-pane.cab-layout-2vertical{
+  grid-template-columns:1fr 1fr;
+  grid-template-rows:1fr;
+}
+#cab-centre-pane.cab-layout-2vertical .cab-pane:nth-child(n+3){display:none}
+#cab-centre-pane.cab-layout-2horizontal{
+  grid-template-columns:1fr;
+  grid-template-rows:1fr 1fr;
+}
+#cab-centre-pane.cab-layout-2horizontal .cab-pane:nth-child(n+3){display:none}
+#cab-centre-pane.cab-layout-1big2small{
+  grid-template-columns:2fr 1fr;
+  grid-template-rows:1fr 1fr;
+}
+#cab-centre-pane.cab-layout-1big2small .cab-pane:nth-child(1){grid-row:1 / 3; grid-column:1}
+#cab-centre-pane.cab-layout-1big2small .cab-pane:nth-child(2){grid-row:1; grid-column:2}
+#cab-centre-pane.cab-layout-1big2small .cab-pane:nth-child(3){grid-row:2; grid-column:2}
+#cab-centre-pane.cab-layout-3equal{
+  grid-template-columns:1fr 1fr 1fr;
+  grid-template-rows:1fr;
+}
+.cab-pane{
+  background:#08131f;
+  border:1px solid #1a2840;
+  border-radius:4px;
+  display:flex; flex-direction:column;
+  overflow:hidden;
+  position:relative;
+}
+.cab-pane-header{
+  background:#0d1f35;
+  color:#a8c0d8;
+  font-size:10px; font-weight:700;
+  letter-spacing:1px; text-transform:uppercase;
+  padding:4px 10px;
+  display:flex; align-items:center; justify-content:space-between;
+  cursor:pointer;
+  border-bottom:1px solid #1a2840;
+}
+.cab-pane-header:hover{background:#173256; color:#e0e8f0}
+.cab-pane-swap{font-size:11px; color:#7aa0c0}
+.cab-pane-content{
+  flex:1;
+  position:relative;
+  overflow:hidden;
+}
+/* When the 3D canvas is moved into a pane content, fill it. */
+.cab-pane-content > canvas.three-canvas{
+  width:100% !important;
+  height:100% !important;
+  display:block;
+}
+/* When 2D canvases (plan/xsec/long) are moved into a pane content. */
+.cab-pane-content > canvas{
+  display:block;
+}
+.cab-pane-empty{
+  display:flex; align-items:center; justify-content:center;
+  height:100%; color:#2a4060; font-size:12px;
+}
+
+/* ── Slice 4c — Modal overlays ───────────────────────────────────────── */
+.cab-overlay{
+  position:fixed; inset:0;
+  background:rgba(0,0,0,.65);
+  z-index:8000;
+  display:flex; align-items:center; justify-content:center;
+}
+.cab-overlay.hidden{display:none}
+.cab-overlay-box{
+  background:#132843;
+  border:2px solid #e8a020;
+  border-radius:8px;
+  padding:24px;
+  min-width:320px;
+  max-width:90vw;
+  max-height:85vh;
+  display:flex; flex-direction:column;
+  gap:12px;
+}
+.cab-overlay-box-tall{min-width:480px; min-height:480px}
+.cab-overlay-title{
+  font-size:13px; font-weight:800;
+  color:#e8a020;
+  letter-spacing:2px;
+}
+.cab-overlay-subtitle{
+  font-size:12px; color:#7aa0c0;
+}
+.cab-overlay-footer{
+  display:flex; justify-content:flex-end; gap:10px;
+  padding-top:12px;
+  border-top:1px solid #1a2840;
+  margin-top:auto;
+}
+.cab-btn-apply{
+  background:#e8a020; color:#0a1520;
+  border:none; padding:10px 24px;
+  font-size:13px; font-weight:800;
+  border-radius:5px; cursor:pointer;
+  letter-spacing:.5px;
+}
+.cab-btn-apply:hover{background:#ffb830}
+.cab-btn-cancel{
+  background:transparent; color:#7aa0c0;
+  border:1px solid #1e4a7a;
+  padding:10px 18px; font-size:13px; font-weight:600;
+  border-radius:5px; cursor:pointer;
+}
+.cab-btn-cancel:hover{background:#173256; color:#e0e8f0}
+.cab-btn-secondary{
+  background:#1e4a7a; color:#e0e8f0;
+  border:none; padding:10px 18px; font-size:13px; font-weight:600;
+  border-radius:5px; cursor:pointer;
+}
+.cab-btn-secondary:hover{background:#2a5a8a}
+
+/* Change View overlay grid */
+.cab-changeview-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));
+  gap:14px;
+  padding:8px 0;
+}
+.cab-layout-preset{
+  background:#0d1f35;
+  border:2px solid #1e4a7a;
+  border-radius:6px;
+  padding:14px;
+  cursor:pointer;
+  display:flex; flex-direction:column; align-items:center; gap:10px;
+  transition:all .15s;
+}
+.cab-layout-preset:hover{border-color:#e8a020; background:#173256}
+.cab-layout-preview{
+  width:80px; height:50px;
+  background:#08131f;
+  border:1px solid #2a4060;
+  border-radius:3px;
+  position:relative;
+  overflow:hidden;
+}
+.cab-layout-preview::before, .cab-layout-preview::after{
+  content:''; position:absolute;
+  background:#e8a020;
+}
+.cab-layout-preview-single::before{inset:4px}
+.cab-layout-preview-2v::before{left:4px; top:4px; bottom:4px; width:calc(50% - 6px)}
+.cab-layout-preview-2v::after{right:4px; top:4px; bottom:4px; width:calc(50% - 6px)}
+.cab-layout-preview-2h::before{top:4px; left:4px; right:4px; height:calc(50% - 6px)}
+.cab-layout-preview-2h::after{bottom:4px; left:4px; right:4px; height:calc(50% - 6px)}
+.cab-layout-preview-1b2s::before{left:4px; top:4px; bottom:4px; width:calc(60% - 6px)}
+.cab-layout-preview-1b2s::after{
+  right:4px; top:4px; width:calc(40% - 6px); height:calc(50% - 4px);
+  box-shadow:0 calc(50% + 2px) 0 #e8a020;
+}
+.cab-layout-preview-3eq::before{left:4px; top:4px; bottom:4px; width:calc(33.3% - 5px); box-shadow:calc(33.3% + 2px) 0 0 #e8a020}
+.cab-layout-preview-3eq::after{right:4px; top:4px; bottom:4px; width:calc(33.3% - 5px)}
+.cab-layout-name{font-size:12px; font-weight:700; color:#e0e8f0}
+
+/* Per-pane view-type picker */
+.cab-paneviewtype-grid{
+  display:grid; grid-template-columns:1fr 1fr; gap:10px;
+  padding:8px 0;
+}
+.cab-viewtype-btn{
+  background:#0d1f35;
+  border:2px solid #1e4a7a;
+  color:#e0e8f0;
+  padding:14px 16px;
+  font-size:14px; font-weight:700;
+  border-radius:5px; cursor:pointer;
+  transition:all .15s;
+}
+.cab-viewtype-btn:hover{background:#e8a020; border-color:#e8a020; color:#0a1520}
+
+/* Edit Text Ribbon modal */
+#cab-ribbon-selected, #cab-ribbon-available-list{
+  background:#08131f;
+  border:1px solid #1a2840;
+  border-radius:4px;
+  padding:6px;
+  max-height:30vh;
+  overflow-y:auto;
+}
+.cab-ribbon-section-label{
+  font-size:10px; font-weight:700; color:#7aa0c0;
+  letter-spacing:1.5px; text-transform:uppercase;
+  padding:4px 0;
+}
+.cab-ribbon-row{
+  display:flex; align-items:center; gap:10px;
+  padding:8px 10px;
+  background:#132843;
+  border:1px solid #1e4a7a;
+  border-radius:4px;
+  margin-bottom:4px;
+  cursor:pointer;
+  transition:all .12s;
+}
+.cab-ribbon-row:hover{background:#173256; border-color:#2a5a8a}
+.cab-ribbon-row.selected{background:#1e4a7a; border-color:#e8a020}
+.cab-ribbon-row-icon{font-size:16px; width:24px; text-align:center}
+.cab-ribbon-row-label{flex:1; font-size:13px; color:#e0e8f0}
+.cab-ribbon-row-cat{font-size:10px; color:#7aa0c0; text-transform:uppercase; letter-spacing:1px}
+.cab-ribbon-row-action{
+  background:#0d1f35; color:#e8a020;
+  border:1px solid #2a4060; padding:4px 10px;
+  font-size:11px; font-weight:700;
+  border-radius:3px; cursor:pointer;
+}
+.cab-ribbon-row-action:hover{background:#e8a020; color:#0a1520}
+.cab-ribbon-cat-header{
+  font-size:11px; font-weight:700; color:#e8a020;
+  letter-spacing:1.2px; text-transform:uppercase;
+  padding:8px 4px 4px;
+}
 </style>
 </head>
 <body>
@@ -1628,9 +2236,32 @@ body.cab-mode #workscreen-back-btn{display:none !important}
   <canvas id="cab-led-align" class="cab-led-h"></canvas>
   <!-- Row 4: Three columns — Left LED, Centre Pane, Right LED, plus Right Toolbar -->
   <canvas id="cab-led-tipA" class="cab-led-v"></canvas>
-  <div id="cab-centre-pane">
-    <!-- The 3D canvas (#viewport-managed) gets relocated here on cab-screen activation. -->
-    <div id="cab-centre-placeholder">3D / Plan / Cross-section view</div>
+  <div id="cab-centre-pane" class="cab-layout-1big2small">
+    <!-- Slice 4c: the centre pane is a CSS grid that holds 1, 2, or 3 sub-panes.
+         Each sub-pane shows one view type (3D, Plan, Cross, Long).
+         Layout class on the parent picks how the panes arrange.
+         Existing canvases (3D, plan, xsec, long) are relocated into the active panes. -->
+    <div class="cab-pane" id="cab-pane-1" data-pane-idx="1">
+      <div class="cab-pane-header" onclick="cabPaneTapHeader(1)">
+        <span class="cab-pane-name" id="cab-pane-1-name">3D View</span>
+        <span class="cab-pane-swap">⇅</span>
+      </div>
+      <div class="cab-pane-content" id="cab-pane-1-content"></div>
+    </div>
+    <div class="cab-pane" id="cab-pane-2" data-pane-idx="2">
+      <div class="cab-pane-header" onclick="cabPaneTapHeader(2)">
+        <span class="cab-pane-name" id="cab-pane-2-name">Plan</span>
+        <span class="cab-pane-swap">⇅</span>
+      </div>
+      <div class="cab-pane-content" id="cab-pane-2-content"></div>
+    </div>
+    <div class="cab-pane" id="cab-pane-3" data-pane-idx="3">
+      <div class="cab-pane-header" onclick="cabPaneTapHeader(3)">
+        <span class="cab-pane-name" id="cab-pane-3-name">Long Section</span>
+        <span class="cab-pane-swap">⇅</span>
+      </div>
+      <div class="cab-pane-content" id="cab-pane-3-content"></div>
+    </div>
   </div>
   <canvas id="cab-led-tipB" class="cab-led-v"></canvas>
   <div id="cab-right-toolbar">
@@ -1642,28 +2273,78 @@ body.cab-mode #workscreen-back-btn{display:none !important}
     <button class="cab-tool-btn" id="cab-tool-worksettings" onclick="cabToolTap('worksettings')" title="Work settings">▤</button>
     <button class="cab-tool-btn" id="cab-tool-systemsettings" onclick="cabToolTap('systemsettings')" title="System settings">⚙</button>
   </div>
-  <!-- Row 5: Bottom configurable readout strip (Slice 4b: 3 hardcoded defaults) -->
-  <div id="cab-bottom-strip">
-    <div class="cab-readout">
-      <span class="cab-readout-icon" id="cab-readout-1-icon">⚪</span>
-      <div>
-        <div class="cab-readout-label" id="cab-readout-1-label">Centre Cut/Fill</div>
-        <div class="cab-readout-value" id="cab-readout-1-value">—</div>
-      </div>
+  <!-- Row 5: Bottom configurable readout strip — built dynamically by cabRebuildBottomStrip() -->
+  <div id="cab-bottom-strip"></div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     CAB MODAL OVERLAYS — Slice 4c
+     Change View overlay (5 layout presets), Edit Text Ribbon, Edit
+     Right Toolbar, and the per-pane View-Type picker. All hidden by
+     default; opened from the right toolbar or pane header taps.
+     ═══════════════════════════════════════════════════════════════════ -->
+<div id="cab-overlay-changeview" class="cab-overlay hidden" onclick="cabCloseAllOverlays(event)">
+  <div class="cab-overlay-box" onclick="event.stopPropagation()">
+    <div class="cab-overlay-title">CHANGE VIEW LAYOUT</div>
+    <div class="cab-overlay-subtitle">Pick how the centre area is divided</div>
+    <div class="cab-changeview-grid">
+      <button class="cab-layout-preset" onclick="cabSetLayout('1single')">
+        <div class="cab-layout-preview cab-layout-preview-single"></div>
+        <div class="cab-layout-name">Single</div>
+      </button>
+      <button class="cab-layout-preset" onclick="cabSetLayout('2vertical')">
+        <div class="cab-layout-preview cab-layout-preview-2v"></div>
+        <div class="cab-layout-name">Vertical Split</div>
+      </button>
+      <button class="cab-layout-preset" onclick="cabSetLayout('2horizontal')">
+        <div class="cab-layout-preview cab-layout-preview-2h"></div>
+        <div class="cab-layout-name">Horizontal Split</div>
+      </button>
+      <button class="cab-layout-preset" onclick="cabSetLayout('1big2small')">
+        <div class="cab-layout-preview cab-layout-preview-1b2s"></div>
+        <div class="cab-layout-name">1 Big + 2 Small</div>
+      </button>
+      <button class="cab-layout-preset" onclick="cabSetLayout('3equal')">
+        <div class="cab-layout-preview cab-layout-preview-3eq"></div>
+        <div class="cab-layout-name">3 Equal</div>
+      </button>
     </div>
-    <div class="cab-readout">
-      <span class="cab-readout-icon" id="cab-readout-2-icon">⤡</span>
-      <div>
-        <div class="cab-readout-label" id="cab-readout-2-label">Cross-slope</div>
-        <div class="cab-readout-value" id="cab-readout-2-value">—</div>
-      </div>
+    <div class="cab-overlay-footer">
+      <button class="cab-btn-cancel" onclick="cabCloseAllOverlays()">Close</button>
     </div>
-    <div class="cab-readout">
-      <span class="cab-readout-icon" id="cab-readout-3-icon">⤴</span>
-      <div>
-        <div class="cab-readout-label" id="cab-readout-3-label">Long Grade</div>
-        <div class="cab-readout-value" id="cab-readout-3-value">—</div>
-      </div>
+  </div>
+</div>
+
+<div id="cab-overlay-paneviewtype" class="cab-overlay hidden" onclick="cabCloseAllOverlays(event)">
+  <div class="cab-overlay-box" onclick="event.stopPropagation()">
+    <div class="cab-overlay-title">CHOOSE VIEW TYPE</div>
+    <div class="cab-overlay-subtitle" id="cab-paneviewtype-subtitle">For pane 1</div>
+    <div class="cab-paneviewtype-grid">
+      <button class="cab-viewtype-btn" onclick="cabSetPaneViewType('three')">🌐 3D</button>
+      <button class="cab-viewtype-btn" onclick="cabSetPaneViewType('plan')">🗺 Plan</button>
+      <button class="cab-viewtype-btn" onclick="cabSetPaneViewType('cross')">⌒ Cross-section</button>
+      <button class="cab-viewtype-btn" onclick="cabSetPaneViewType('long')">↗ Long Section</button>
+    </div>
+    <div class="cab-overlay-footer">
+      <button class="cab-btn-cancel" onclick="cabCloseAllOverlays()">Close</button>
+    </div>
+  </div>
+</div>
+
+<div id="cab-overlay-editribbon" class="cab-overlay hidden" onclick="cabCloseAllOverlays(event)">
+  <div class="cab-overlay-box cab-overlay-box-tall" onclick="event.stopPropagation()">
+    <div class="cab-overlay-title">EDIT TEXT RIBBON</div>
+    <div class="cab-overlay-subtitle">Pick up to 5 readouts to show along the bottom of the work screen</div>
+    <div id="cab-ribbon-selected">
+      <div class="cab-ribbon-section-label">Selected (drag to reorder · max 5)</div>
+      <div id="cab-ribbon-selected-list"></div>
+    </div>
+    <div class="cab-ribbon-section-label">Available</div>
+    <div id="cab-ribbon-available-list"></div>
+    <div class="cab-overlay-footer">
+      <button class="cab-btn-cancel" onclick="cabCloseAllOverlays()">Cancel</button>
+      <button class="cab-btn-secondary" onclick="cabRibbonResetDefaults()">Reset Defaults</button>
+      <button class="cab-btn-apply" onclick="cabRibbonApply()">Apply</button>
     </div>
   </div>
 </div>
