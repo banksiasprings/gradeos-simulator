@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GradeOS Simulator v0.9 · SW v153</title>
+<title>GradeOS Simulator v0.9 · SW v154</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <!-- Slice 11.5 — GLTF model loader (Three.js example loaders are global scripts, not modules) -->
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -2046,6 +2046,12 @@ function cabOpenProfileDesigner(){
   if(typeof cabPDStep2SetSource==='function')cabPDStep2SetSource('templates');
   // Slice 28 — reset finger-draw mode to default ('click').
   if(typeof cabPDSetDrawMode==='function')cabPDSetDrawMode('click');
+  // Slice 29 — clear width inputs so they auto-fill from the section on
+  // Step 3 entry (rather than carrying over from a previous wizard run).
+  const wA=document.getElementById('cab-pd-width-a');
+  const wB=document.getElementById('cab-pd-width-b');
+  if(wA)wA.value='0';
+  if(wB)wB.value='0';
   cabPDGotoStep(1);
 }
 
@@ -2559,7 +2565,6 @@ function cabPDClearAlignment(){
 
 function cabPDUpdateSummary(){
   const el=document.getElementById('cab-pd-summary');
-  if(!el)return;
   const pts=cabPDParsePolyline();
   const nProfile=Array.isArray(_cabPDProfile)?_cabPDProfile.length:0;
   // Length of alignment (sum of segment lengths, in metres).
@@ -2568,17 +2573,54 @@ function cabPDUpdateSummary(){
     const dx=pts[i].x-pts[i-1].x, dz=pts[i].z-pts[i-1].z;
     len+=Math.hypot(dx,dz);
   }
-  // Width of section (max u − min u).
-  let width=0;
+  // Section width — native u range AND effective widthA/B if user has set them.
+  let nativeMinU=0, nativeMaxU=0;
   if(nProfile>=2){
-    let umin=Infinity, umax=-Infinity;
-    _cabPDProfile.forEach(v=>{ if(v.u<umin)umin=v.u; if(v.u>umax)umax=v.u; });
-    width=umax-umin;
+    nativeMinU=Math.min.apply(null,_cabPDProfile.map(v=>v.u));
+    nativeMaxU=Math.max.apply(null,_cabPDProfile.map(v=>v.u));
   }
-  el.innerHTML =
-    '<b>Alignment:</b> '+pts.length+' point(s) · '+len.toFixed(2)+' m total<br>'+
-    '<b>Section:</b> '+nProfile+' vertices · '+width.toFixed(2)+' m wide<br>'+
-    '<b>Action:</b> extrude section along alignment, write to design surface.';
+  const nativeA=Math.max(0,-nativeMinU);
+  const nativeB=Math.max(0, nativeMaxU);
+  // Slice 29 — auto-fill width A/B inputs from native section if they're 0
+  // (initial state). User can override afterward.
+  const wAEl=document.getElementById('cab-pd-width-a');
+  const wBEl=document.getElementById('cab-pd-width-b');
+  if(wAEl && (!wAEl.value || wAEl.value==='0')) wAEl.value=nativeA.toFixed(2);
+  if(wBEl && (!wBEl.value || wBEl.value==='0')) wBEl.value=nativeB.toFixed(2);
+  const wA=wAEl?parseFloat(wAEl.value)||0:nativeA;
+  const wB=wBEl?parseFloat(wBEl.value)||0:nativeB;
+  // Detect clipping for the warning hint.
+  const clipL=wA<nativeA-1e-3, clipR=wB<nativeB-1e-3;
+  const extL =wA>nativeA+1e-3, extR=wB>nativeB+1e-3;
+  const hint=document.getElementById('cab-pd-width-hint');
+  if(hint){
+    if(clipL || clipR){
+      hint.innerHTML='⚠ Section is being CLIPPED on the '+(clipL&&clipR?'left and right':clipL?'left':'right')+' — some profile vertices outside the width are discarded.';
+      hint.style.color='#e8a020';
+    } else if(extL || extR){
+      hint.innerHTML='Section is being EXTENDED on the '+(extL&&extR?'left and right':extL?'left':'right')+' with a flat edge at the outermost vertex elevation.';
+      hint.style.color='#7aa0c0';
+    } else {
+      hint.innerHTML='Profile is truncated or extended (with a flat edge) to match. Set both to the section\'s native width to disable.';
+      hint.style.color='#7aa0c0';
+    }
+  }
+  if(el){
+    el.innerHTML =
+      '<b>Alignment:</b> '+pts.length+' point(s) · '+len.toFixed(2)+' m total<br>'+
+      '<b>Section (native):</b> '+nProfile+' vertices · '+(nativeMaxU-nativeMinU).toFixed(2)+' m wide ('+nativeA.toFixed(2)+' L / '+nativeB.toFixed(2)+' R)<br>'+
+      '<b>Effective width:</b> '+wA.toFixed(2)+' m left + '+wB.toFixed(2)+' m right = '+(wA+wB).toFixed(2)+' m total<br>'+
+      '<b>Action:</b> extrude section along alignment, write to design surface.';
+  }
+}
+
+function cabPDResetWidths(){
+  const wAEl=document.getElementById('cab-pd-width-a');
+  const wBEl=document.getElementById('cab-pd-width-b');
+  if(wAEl) wAEl.value='0'; // 0 triggers auto-fill in cabPDUpdateSummary
+  if(wBEl) wBEl.value='0';
+  cabPDUpdateSummary();
+  cabPDUpdateFooter();
 }
 
 // Apply: extrude + write to design[] heightmap + register in designLibrary.
@@ -2596,11 +2638,21 @@ function cabPDApply(){
   // Resolve polyline elevations: per-point provided, else sample terrain.
   const polyline=polyPts.map(p=>({x:p.x,z:p.z}));
   const polylineElev=polyPts.map(p=>(p.elev!=null)?p.elev:gElev(p.x,p.z));
-  const extruded=extrudeProfileAlongPolyline({
+  // Slice 29 — pass user-specified Width A / Width B if set; otherwise the
+  // module falls back to the profile's native u-range.
+  const wAStr=(document.getElementById('cab-pd-width-a')?.value||'').trim();
+  const wBStr=(document.getElementById('cab-pd-width-b')?.value||'').trim();
+  const extrudeArgs={
     profile:[..._cabPDProfile],
     polyline,
     polylineElev,
-  });
+  };
+  if(wAStr) extrudeArgs.widthA=Math.max(0, parseFloat(wAStr)||0);
+  if(wBStr) extrudeArgs.widthB=Math.max(0, parseFloat(wBStr)||0);
+  const extruded=extrudeProfileAlongPolyline(extrudeArgs);
+  if(extruded && extruded.clipped){
+    console.log('[profile-designer] section was clipped to widthA/widthB; some profile vertices discarded.');
+  }
   // Write into the existing design[] grid.
   let written=0;
   for(let gz=0;gz<N;gz++){
@@ -5215,6 +5267,26 @@ body.cab-led-align-hidden #cab-offsets > .cab-offset-cell:not(.cab-offset-cell-h
             <input type="text" class="cab-input" id="cab-pd-name" value="Design 1" oninput="cabPDUpdateFooter()" style="width:280px">
           </div>
           <div class="cab-field-hint">Auto-generated; tap to rename.</div>
+        </div>
+        <!-- Slice 29 — asymmetric width A/B inputs. Defaults derived from
+             the section's native u-range; overrides clip or extend with
+             a flat edge. -->
+        <div class="cab-field">
+          <label class="cab-field-label">Section width</label>
+          <div class="cab-field-row" style="align-items:flex-end;gap:14px">
+            <div>
+              <div style="font-size:10px;color:#7aa0c0;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">⊣ A · left of alignment</div>
+              <input type="number" class="cab-input" id="cab-pd-width-a" step="0.1" min="0" value="0" oninput="cabPDUpdateSummary();cabPDUpdateFooter()" style="width:120px">
+              <span style="color:#7aa0c0;margin-left:4px">m</span>
+            </div>
+            <div>
+              <div style="font-size:10px;color:#7aa0c0;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">B ⊢ · right of alignment</div>
+              <input type="number" class="cab-input" id="cab-pd-width-b" step="0.1" min="0" value="0" oninput="cabPDUpdateSummary();cabPDUpdateFooter()" style="width:120px">
+              <span style="color:#7aa0c0;margin-left:4px">m</span>
+            </div>
+            <button class="cab-btn-secondary" style="padding:6px 12px;font-size:11px" onclick="cabPDResetWidths()">Reset to section</button>
+          </div>
+          <div class="cab-field-hint" id="cab-pd-width-hint">Profile is truncated or extended (with a flat edge) to match. Set both to the section's native width to disable.</div>
         </div>
         <div class="cab-field">
           <label class="cab-field-label">Summary</label>

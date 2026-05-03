@@ -36,8 +36,13 @@
  *   At minimum 2 points. Linear interpolation between vertices.
  * @property {number[]} [polylineElev]  Elevation per polyline vertex (m). If omitted,
  *   ambient terrain elevation is assumed (the consumer fills it in from gElev).
- * @property {number} [maxWidth]        Optional: cap the profile width (m). Vertices
- *   beyond ±maxWidth/2 are clipped at the edge.
+ * @property {number} [maxWidth]        Legacy: cap the symmetric profile width (m).
+ *   Vertices beyond ±maxWidth/2 are clipped at the edge. Superseded by widthA/widthB.
+ * @property {number} [widthA]          Slice 29 — width on the LEFT of the alignment
+ *   (positive value, in metres). Truncates the profile at u = -widthA, or extends
+ *   leftward as a flat segment at the leftmost dy if widthA exceeds |min profile u|.
+ * @property {number} [widthB]          Slice 29 — width on the RIGHT of the alignment.
+ *   Same truncate-or-extend behaviour at u = +widthB.
  */
 
 /**
@@ -60,19 +65,51 @@
  * @returns {ProfileDesignerOutput}
  */
 function extrudeProfileAlongPolyline(input) {
-  const profile = (input.profile || []).slice().sort((a, b) => a.u - b.u);
+  const rawProfile = (input.profile || []).slice().sort((a, b) => a.u - b.u);
   const polyline = input.polyline || [];
   const polyElev = input.polylineElev || [];
-  if (profile.length < 2 || polyline.length < 2) {
+  if (rawProfile.length < 2 || polyline.length < 2) {
     return {
       elevAt: () => null,
       bbox: { minX: 0, maxX: 0, minZ: 0, maxZ: 0 },
+      clipped: false,
       _debug: { reason: 'insufficient input' },
     };
   }
-  const halfWidth = (input.maxWidth != null)
-    ? input.maxWidth / 2
-    : Math.max(Math.abs(profile[0].u), Math.abs(profile[profile.length - 1].u));
+
+  // Slice 29 — Asymmetric Width A / Width B (truncation/extension semantics).
+  // Compute the effective profile by clipping or extending the raw profile to
+  // exactly span [-widthA, +widthB]. Outside that range, no surface (elevAt
+  // returns null). Inside, linear interpolation between the (possibly
+  // truncated/extended) profile vertices.
+  // Default behaviour (widthA/widthB unset) preserves the legacy maxWidth /
+  // intrinsic-bounds semantics.
+  const profileMinU = rawProfile[0].u;
+  const profileMaxU = rawProfile[rawProfile.length - 1].u;
+  const haveAB = (input.widthA != null) || (input.widthB != null);
+  const wA = haveAB ? Math.max(0, (input.widthA != null ? input.widthA : Math.max(0, -profileMinU))) : null;
+  const wB = haveAB ? Math.max(0, (input.widthB != null ? input.widthB : Math.max(0,  profileMaxU))) : null;
+
+  let profile = rawProfile;
+  let didClip = false;
+  if (haveAB) {
+    profile = _clipExtendProfile(rawProfile, -wA, +wB);
+    didClip = profile._didClip;
+    delete profile._didClip;
+  }
+  if (profile.length < 2) {
+    return {
+      elevAt: () => null,
+      bbox: { minX: 0, maxX: 0, minZ: 0, maxZ: 0 },
+      clipped: didClip,
+      _debug: { reason: 'profile collapsed after width clip' },
+    };
+  }
+  const halfWidth = haveAB
+    ? Math.max(wA, wB)
+    : ((input.maxWidth != null)
+        ? input.maxWidth / 2
+        : Math.max(Math.abs(profile[0].u), Math.abs(profile[profile.length - 1].u)));
 
   // Pre-compute polyline segment data: per segment store p0, p1, length.
   const segs = [];
@@ -159,8 +196,48 @@ function extrudeProfileAlongPolyline(input) {
   return {
     elevAt,
     bbox: { minX, maxX, minZ, maxZ },
-    _debug: { segCount: segs.length, profileCount: profile.length, halfWidth },
+    clipped: didClip,
+    _debug: { segCount: segs.length, profileCount: profile.length, halfWidth, widthA: wA, widthB: wB },
   };
+}
+
+/**
+ * Slice 29 helper — clip OR extend a sorted profile to exactly span [uLeft, uRight].
+ * Returns a new profile array. Sets `_didClip = true` if any source vertex was
+ * actually discarded (vs just extending past empty space).
+ */
+function _clipExtendProfile(profile, uLeft, uRight) {
+  if (profile.length === 0) return [];
+  const out = [];
+  let didClip = false;
+  const sampleAt = (u) => {
+    // Linear interp on the SOURCE profile (not the partial out array).
+    if (u <= profile[0].u) return profile[0].dy;
+    if (u >= profile[profile.length - 1].u) return profile[profile.length - 1].dy;
+    for (let i = 0; i < profile.length - 1; i++) {
+      const a = profile[i], b = profile[i + 1];
+      if (u >= a.u && u <= b.u) {
+        const t = (b.u === a.u) ? 0 : (u - a.u) / (b.u - a.u);
+        return a.dy + t * (b.dy - a.dy);
+      }
+    }
+    return profile[profile.length - 1].dy;
+  };
+  // Left edge: insert a vertex AT uLeft. dy = sampled (clip) or leftmost
+  // dy (extend).
+  out.push({ u: uLeft, dy: sampleAt(uLeft) });
+  // Middle: include any source vertices strictly inside (uLeft, uRight).
+  for (const p of profile) {
+    if (p.u > uLeft && p.u < uRight) out.push({ u: p.u, dy: p.dy });
+  }
+  // Right edge: insert a vertex AT uRight.
+  out.push({ u: uRight, dy: sampleAt(uRight) });
+  // Did we discard any source vertices that would otherwise be in range?
+  for (const p of profile) {
+    if (p.u < uLeft || p.u > uRight) { didClip = true; break; }
+  }
+  out._didClip = didClip;
+  return out;
 }
 
 /**
