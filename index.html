@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GradeOS Simulator v0.9 · SW v151</title>
+<title>GradeOS Simulator v0.9 · SW v152</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <!-- Slice 11.5 — GLTF model loader (Three.js example loaders are global scripts, not modules) -->
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -982,7 +982,7 @@ const cabSysState={
   showLEDLeft:true,     // Slice 7 — left tip cut/fill light bar
   showLEDRight:true,    // Slice 7 — right tip cut/fill light bar
   showLEDAlign:true,    // Slice 7 — top alignment light bar
-  perfMode:'lite',      // Slice 8 — 'lite' or 'full'
+  perfMode:'lite',      // Slice 8/28 — 'eco' | 'lite' | 'full'
   planOrientationMode:'north', // Slice 14 — 'north' (N-up) or 'track' (heading-up)
 };
 function cabOpenSystemSettings(){
@@ -1001,7 +1001,9 @@ function cabOpenSystemSettings(){
     cabActivateRadio('cab-sys-incr-'+mm,Math.abs(cabSysState.bumpIncrementM-mm/1000)<1e-5);
   });
   // Slice 8 — perf mode radios
-  cabActivateRadio('cab-sys-perf-lite', cabSysState.perfMode!=='full');
+  // Slice 28 — three-tier perf mode (eco / lite / full).
+  cabActivateRadio('cab-sys-perf-eco',  cabSysState.perfMode==='eco');
+  cabActivateRadio('cab-sys-perf-lite', cabSysState.perfMode==='lite' || (cabSysState.perfMode!=='eco' && cabSysState.perfMode!=='full'));
   cabActivateRadio('cab-sys-perf-full', cabSysState.perfMode==='full');
   // Slice 7 — light bar radios
   cabActivateRadio('cab-sys-led-left-on',  cabSysState.showLEDLeft!==false);
@@ -1079,17 +1081,32 @@ function cabSysSetLED(which,on){
 // possible; pixel ratio + shadow map need a reload to fully re-init meshes
 // (we apply at boot from persisted state).
 function cabSysSetPerfMode(mode){
-  if(mode!=='lite'&&mode!=='full')return;
+  // Slice 28 — added 'eco' as a third tier below 'lite'.
+  if(mode!=='lite'&&mode!=='full'&&mode!=='eco')return;
+  const prevMode=cabSysState.perfMode;
   cabSysState.perfMode=mode;
   window._cabPerfMode=mode;
+  cabActivateRadio('cab-sys-perf-eco', mode==='eco');
   cabActivateRadio('cab-sys-perf-lite',mode==='lite');
   cabActivateRadio('cab-sys-perf-full',mode==='full');
   // Try live-apply (won't reset existing materials / shadows but will affect
-  // future frames).
+  // future frames). Eco shares pixel-ratio + shadow settings with Lite.
   if(typeof renderer!=='undefined'&&renderer){
     renderer.setPixelRatio(mode==='full'?Math.min(window.devicePixelRatio,2):1);
     renderer.shadowMap.enabled=(mode==='full');
     if(typeof cabResizeRenderer==='function')cabResizeRenderer();
+  }
+  // Slice 28 — invalidate sprite cache when toggling between modes that have
+  // different sprite sets (Eco = primitive 300×225; Full/Lite = GLTF 600×450).
+  if(mode!==prevMode && (mode==='eco' || prevMode==='eco') && typeof window.clearDozerSpriteCache==='function'){
+    window.clearDozerSpriteCache();
+    // Trigger re-fetch of sprites in the new mode.
+    if(typeof window.getDozerSprites==='function') window.getDozerSprites();
+    // Redraw cab panes so they pick up the new sprites once ready.
+    if(typeof cabRenderAllPaneSprites==='function'){
+      // Schedule a few redraws as sprites resolve asynchronously.
+      [200,800,1500,3000].forEach(ms=>setTimeout(cabRenderAllPaneSprites,ms));
+    }
   }
   cabPersistState();
 }
@@ -5144,10 +5161,11 @@ body.cab-led-align-hidden #cab-offsets > .cab-offset-cell:not(.cab-offset-cell-h
       <div class="cab-field">
         <label class="cab-field-label">Performance Mode</label>
         <div class="cab-field-row">
+          <button class="cab-radio" id="cab-sys-perf-eco"  onclick="cabSysSetPerfMode('eco')">🌱 Eco</button>
           <button class="cab-radio" id="cab-sys-perf-lite" onclick="cabSysSetPerfMode('lite')">Lite (default)</button>
           <button class="cab-radio" id="cab-sys-perf-full" onclick="cabSysSetPerfMode('full')">Full quality</button>
         </div>
-        <div class="cab-field-hint">Lite caps the render pixel ratio to 1, disables shadow mapping, and slows the refresh on background panels — most operators won't see the difference and the cab UI stays smooth even on modest hardware. Full re-enables retina rendering and shadows. Reload required for full effect on Three.js settings.</div>
+        <div class="cab-field-hint"><b>Eco</b> uses a simpler primitive dozer at half-resolution sprites with no antialiasing — ~10× cheaper to generate, big win on low-end hardware. Visually a boxier yellow dozer, no GLTF textures. <b>Lite</b> caps pixel ratio to 1, disables shadow mapping, and slows background-pane refresh; the GLTF dozer at full sprite resolution. <b>Full</b> re-enables retina rendering + shadows. Switching between Eco and Lite/Full re-generates the sprite cache (one-time hit per mode).</div>
       </div>
       <div class="cab-field">
         <label class="cab-field-label">Light Bars (visible on the work screen)</label>

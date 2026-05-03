@@ -17,7 +17,19 @@
 'use strict';
 
 const DOZER_GLTF_URL = './assets/dozer/scene.gltf';
-const SPRITE_CACHE_KEY = 'gradeos-dozer-sprites-v4'; // Slice 23: ground grid added to non-top views
+// Slice 28 — Eco Mode. Sprites cache per perfMode so toggling Lite ↔ Eco
+// is instant after first generation (no re-render). Mode comes from
+// cabSysState.perfMode ('full' | 'lite' | 'eco'). Eco uses the primitive
+// dozer (buildCleanDozer) at half-resolution with no AA — ~10× cheaper
+// to render and 4× cheaper to draw, with a simpler-looking dozer.
+const SPRITE_CACHE_KEY_BASE = 'gradeos-dozer-sprites-v5';
+function _getSpriteCacheKey(){
+  const mode = (typeof window !== 'undefined' && window.cabSysState && window.cabSysState.perfMode) || 'lite';
+  return SPRITE_CACHE_KEY_BASE + '-' + mode;
+}
+function _isEcoMode(){
+  return (typeof window !== 'undefined' && window.cabSysState && window.cabSysState.perfMode === 'eco');
+}
 
 let _dozerModelGroup = null;     // cached normalised model (THREE.Group)
 let _dozerModelLoading = null;   // Promise<Group> while loading
@@ -37,10 +49,11 @@ function _ensureSpriteRenderer(w, h){
   }
   _spriteCanvas = document.createElement('canvas');
   _spriteCanvas.width = w; _spriteCanvas.height = h;
+  // Slice 28 — antialiasing off in Eco Mode. Free CPU/GPU; minor edge fuzziness.
   _spriteRenderer = new THREE.WebGLRenderer({
     canvas: _spriteCanvas,
     alpha: true,
-    antialias: true,
+    antialias: !_isEcoMode(),
     preserveDrawingBuffer: true,
   });
   _spriteRenderer.setClearColor(0x000000, 0);
@@ -128,7 +141,13 @@ function _getFallbackDozer(){
  */
 function renderDozerSprite(view, w, h){
   if(typeof THREE === 'undefined') return Promise.resolve('');
-  w = w || 600; h = h || 450;
+  // Slice 28 — half-resolution sprites in Eco Mode. 300×225 vs 600×450 is
+  // 4× fewer pixels rendered AND drawn each frame.
+  if(_isEcoMode()){
+    w = w || 300; h = h || 225;
+  } else {
+    w = w || 600; h = h || 450;
+  }
 
   const doRender = (dozer) => {
     const renderer = _ensureSpriteRenderer(w, h);
@@ -238,8 +257,23 @@ function renderDozerSprite(view, w, h){
   };
 
   // Serialise: queue this render after any in-flight one completes.
+  // Slice 28 — Eco Mode skips the GLTF altogether and uses the primitive
+  // dozer mesh (buildCleanDozer in dozer-model.js). ~95 % cheaper. The
+  // primitive is normalised in-place so the cameras see the same axis
+  // conventions as the GLTF.
   const previous = _renderInFlight || Promise.resolve();
-  const next = previous.then(() => loadDozerModel().then(doRender).catch(() => doRender(_getFallbackDozer())));
+  const getModel = () => {
+    if(_isEcoMode()){
+      const m = _getFallbackDozer();
+      if(m){
+        _normaliseDozer(m);
+        return Promise.resolve(m);
+      }
+      return loadDozerModel(); // primitive unavailable, fall back to GLTF
+    }
+    return loadDozerModel();
+  };
+  const next = previous.then(() => getModel().then(doRender).catch(() => doRender(_getFallbackDozer())));
   _renderInFlight = next.catch(() => null); // swallow for chain
   return next;
 }
@@ -251,7 +285,7 @@ function getDozerSprites(){
   const cache = {};
   let restored = false;
   try {
-    const persisted = localStorage.getItem(SPRITE_CACHE_KEY);
+    const persisted = localStorage.getItem(_getSpriteCacheKey());
     if(persisted){
       const obj = JSON.parse(persisted);
       ['side','top','blade','perspective'].forEach(view => {
@@ -281,7 +315,7 @@ function getDozerSprites(){
           ['side','top','blade','perspective'].forEach(v => {
             if(cache[v] && cache[v].src) out[v] = cache[v].src;
           });
-          localStorage.setItem(SPRITE_CACHE_KEY, JSON.stringify(out));
+          localStorage.setItem(_getSpriteCacheKey(), JSON.stringify(out));
         } catch(e){
           // Quota exceeded? Skip persistence.
         }
@@ -298,7 +332,11 @@ function clearDozerSpriteCache(){
   _dozerModelGroup = null;
   _dozerModelLoading = null;
   _dozerModelStatus = 'idle';
-  try { localStorage.removeItem(SPRITE_CACHE_KEY); } catch(e){}
+  // Slice 28 — clear all per-mode sprite caches so a clearDozerSpriteCache()
+  // call wipes whichever mode-cache is active plus any orphans from prior runs.
+  try {
+    ['full','lite','eco'].forEach(m=>localStorage.removeItem(SPRITE_CACHE_KEY_BASE+'-'+m));
+  } catch(e){}
   if(_spriteRenderer){
     _spriteRenderer.dispose();
     _spriteRenderer = null;
