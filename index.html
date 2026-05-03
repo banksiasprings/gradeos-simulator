@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GradeOS Simulator v0.9 · SW v134</title>
+<title>GradeOS Simulator v0.9 · SW v135</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <!-- Slice 11.5 — GLTF model loader (Three.js example loaders are global scripts, not modules) -->
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -1263,18 +1263,35 @@ function _cabDrawPaneSprite(paneIdx){
   // Cross/long views stay machine-relative (sprite always shows the
   // same side of the dozer regardless of heading).
   if(view === 'plan'){
+    // Slice 14.1 — draw the world grid FIRST (behind the dozer) so the
+    // sprite occludes it where the body sits. Steven asked: image on top,
+    // grid hidden underneath.
+    if(typeof _drawPlanGridBackground === 'function'){
+      _drawPlanGridBackground(ctx, cw, ch, window._cabLastPose);
+    }
     const mode = (cabSysState && cabSysState.planOrientationMode) || 'north';
+    // Slice 14.1 — sprite vertical flip. The 'top' sprite is rendered with
+    // forward at IMAGE BOTTOM (a parity quirk of our sim's left-handed
+    // +Z-forward convention vs Three.js's right-handed camera math — looking
+    // straight down can have either forward-up or right-correct, not both).
+    // Flipping the sprite vertically when drawing puts forward at image top
+    // while keeping +X (right) on the right.
     if(mode === 'north'){
       const pose = window._cabLastPose;
       const heading = (pose && pose.heading != null) ? pose.heading : 0;
       ctx.save();
       ctx.translate(cw / 2, ch / 2);
       ctx.rotate(heading);  // canvas rotates clockwise for +ve angles; matches sim heading convention
+      ctx.scale(1, -1);     // Slice 14.1 — forward → image up (see comment above)
       ctx.drawImage(img, -dw/2, -dh/2, dw, dh);
       ctx.restore();
     } else {
-      // Track-up: sprite points up; world rotates around it (handled in _drawPlanOverlay).
-      ctx.drawImage(img, dx, dy, dw, dh);
+      // Track-up: sprite points up always; world rotates around it (handled in _drawPlanOverlay).
+      ctx.save();
+      ctx.translate(cw / 2, ch / 2);
+      ctx.scale(1, -1);     // Slice 14.1 — forward → image up
+      ctx.drawImage(img, -dw/2, -dh/2, dw, dh);
+      ctx.restore();
     }
   } else {
     ctx.drawImage(img, dx, dy, dw, dh);
@@ -1428,48 +1445,41 @@ function _drawLongOverlay(ctx, cw, ch, target){
   ctx.textAlign = 'right';
   ctx.fillText('GRADE: ' + (grade>=0?'+':'') + grade.toFixed(2) + '%', cw - 8, 14);
 }
-function _drawPlanOverlay(ctx, cw, ch, pose){
-  // Slice 14 — TWO orientation modes, controlled by cabSysState.planOrientationMode:
-  //   'north' (N-up): world translates only; dozer sprite rotates with heading.
-  //   'track' (heading-up): world translates AND rotates by -heading; sprite stays upright.
-  // The world->pixel transform `w2p()` encapsulates the mode difference so the
-  // rest of the rendering code is mode-agnostic.
-  // A 1 m grid is drawn underneath everything so motion is visible against
-  // the ground; major lines every 5 m, even bolder every 10 m, with metre labels
-  // on the 5 m lines.
-  if(typeof selectedGuidanceLine === 'undefined') return;
-  if(!pose){ return; }
+// Shared helper: build the world→pixel transform for the plan pane.
+// Lives outside _drawPlanOverlay so the grid background can use it too.
+function _planW2p(cw, ch, pose){
   const mode = (cabSysState && cabSysState.planOrientationMode) || 'north';
   const radiusM = 30;
-  const ppm = Math.min(cw, ch) / (radiusM * 2); // pixels per metre
+  const ppm = Math.min(cw, ch) / (radiusM * 2);
   const cx = cw / 2, cy = ch / 2;
-  const mx = pose.centre ? pose.centre.x : 0;
-  const mz = pose.centre ? pose.centre.z : 0;
-  const heading = (pose.heading != null) ? pose.heading : 0;
-  // World→pixel transform. In track-up we rotate the world by -heading so
-  // the machine's forward direction (its heading vector) maps to screen-up.
+  const mx = pose && pose.centre ? pose.centre.x : 0;
+  const mz = pose && pose.centre ? pose.centre.z : 0;
+  const heading = (pose && pose.heading != null) ? pose.heading : 0;
   const cosNH = Math.cos(-heading), sinNH = Math.sin(-heading);
   const w2p = (wx, wz) => {
     const dx = wx - mx, dz = wz - mz;
     if(mode === 'track'){
-      // Rotate world so machine's heading is up. +Z forward, +X right, screen-up = -y.
       const rx = dx * cosNH - dz * sinNH;
       const rz = dx * sinNH + dz * cosNH;
       return { x: cx + rx * ppm, y: cy - rz * ppm };
     }
     return { x: cx + dx * ppm, y: cy - dz * ppm };
   };
-  // ── 1 m grid (drawn first, sits behind everything) ─────────────────────
-  // Determine which world coordinates are visible. In N-up the visible
-  // window is axis-aligned (radiusM either side of machine); in track-up
-  // it's still a square but rotated, so we need a slightly bigger search
-  // bound. Diagonal radius covers all rotations.
-  const halfM = radiusM;
-  const searchHalf = mode === 'track' ? halfM * Math.SQRT2 + 2 : halfM + 2;
-  const minX = Math.floor(mx - searchHalf);
-  const maxX = Math.ceil (mx + searchHalf);
-  const minZ = Math.floor(mz - searchHalf);
-  const maxZ = Math.ceil (mz + searchHalf);
+  return { mode, radiusM, ppm, cx, cy, mx, mz, heading, w2p };
+}
+
+// Slice 14.1 — Grid is its own pass, drawn BEFORE the sprite so the
+// dozer body occludes it. Plain grid only — no coordinate labels (per
+// Steven's feedback: "all the numbers on the grid can get deleted").
+function _drawPlanGridBackground(ctx, cw, ch, pose){
+  if(!pose) return;
+  const t = _planW2p(cw, ch, pose);
+  const halfM = t.radiusM;
+  const searchHalf = t.mode === 'track' ? halfM * Math.SQRT2 + 2 : halfM + 2;
+  const minX = Math.floor(t.mx - searchHalf);
+  const maxX = Math.ceil (t.mx + searchHalf);
+  const minZ = Math.floor(t.mz - searchHalf);
+  const maxZ = Math.ceil (t.mz + searchHalf);
   // Three line tiers: 1 m (faint), 5 m (medium), 10 m (bold).
   const tier = (n) => (n % 10 === 0) ? 'bold' : (n % 5 === 0) ? 'med' : 'fine';
   const colors = {
@@ -1478,41 +1488,41 @@ function _drawPlanOverlay(ctx, cw, ch, pose){
     bold: 'rgba(150, 185, 220, 0.45)',
   };
   const widths = { fine: 1, med: 1, bold: 1.5 };
-  // Draw vertical lines (constant world X)
+  // Vertical lines (constant world X)
   for(let wx = minX; wx <= maxX; wx++){
-    const t = tier(wx);
-    ctx.strokeStyle = colors[t];
-    ctx.lineWidth = widths[t];
+    const tt = tier(wx);
+    ctx.strokeStyle = colors[tt];
+    ctx.lineWidth = widths[tt];
     ctx.beginPath();
-    const a = w2p(wx, minZ);
-    const b = w2p(wx, maxZ);
+    const a = t.w2p(wx, minZ);
+    const b = t.w2p(wx, maxZ);
     ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
     ctx.stroke();
   }
-  // Draw horizontal lines (constant world Z)
+  // Horizontal lines (constant world Z)
   for(let wz = minZ; wz <= maxZ; wz++){
-    const t = tier(wz);
-    ctx.strokeStyle = colors[t];
-    ctx.lineWidth = widths[t];
+    const tt = tier(wz);
+    ctx.strokeStyle = colors[tt];
+    ctx.lineWidth = widths[tt];
     ctx.beginPath();
-    const a = w2p(minX, wz);
-    const b = w2p(maxX, wz);
+    const a = t.w2p(minX, wz);
+    const b = t.w2p(maxX, wz);
     ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
     ctx.stroke();
   }
-  // Metre labels at 5 m intersections that fall inside the canvas.
-  ctx.fillStyle = 'rgba(150, 185, 220, 0.55)';
-  ctx.font = '9px monospace';
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'top';
-  for(let wx = Math.ceil(minX/5)*5; wx <= maxX; wx += 5){
-    for(let wz = Math.ceil(minZ/5)*5; wz <= maxZ; wz += 5){
-      const pt = w2p(wx, wz);
-      if(pt.x < 4 || pt.x > cw - 30 || pt.y < 4 || pt.y > ch - 12) continue;
-      ctx.fillText(`${wx},${wz}`, pt.x + 2, pt.y + 2);
-    }
-  }
-  ctx.textBaseline = 'alphabetic';
+}
+
+function _drawPlanOverlay(ctx, cw, ch, pose){
+  // Slice 14 / 14.1 — Plan-pane overlay (drawn AFTER the sprite). The grid
+  // moved to _drawPlanGridBackground (called BEFORE the sprite). This
+  // function now draws only the world features that go OVER the dozer:
+  // recorded points, the selected guidance line + offset parallel, and the
+  // scale-legend / mode badge. Two orientation modes are supported via
+  // cabSysState.planOrientationMode ('north' or 'track') — see _planW2p.
+  if(typeof selectedGuidanceLine === 'undefined') return;
+  if(!pose){ return; }
+  const t = _planW2p(cw, ch, pose);
+  const { mode, radiusM, w2p } = t;
   // ── Recorded points (orange dots) ──────────────────────────────────────
   if(window._cabRecordedPoints && window._cabRecordedPoints.length){
     ctx.fillStyle = 'rgba(232, 160, 32, 0.85)';
