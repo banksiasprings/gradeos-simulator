@@ -288,6 +288,63 @@ Use **blade pose** for "where the blade is" and **blade target** for "where the 
 - **Slice 1 display rule = option (ii): cleanly disable cut/fill display until Slice 2.** Cut/fill mm bars, DES/ACT readouts, tolerance band, on-grade colours show "— No design —" placeholder during Slice 1. Pose-derived values (tip elevations, cross-slope, heading) shown live. Forces the architectural seam to be visible; stops the tangled inline code from running.
 - **Slice 2 = design surface + blade-target seam.** `designSurface.elevAt(x,z)` interface wraps existing `dElev` global. Pure `computeBladeTarget(bladePose, designSurface, options) → BladeTarget` produces the canonical product output (cut/fill mm at each tip, tolerance state, design longGrade). All cut/fill displays restored through the seam. Verified: 1m-above design → 1000.0 mm CUT exact; design = pose.centre.y → ON GRADE green. **LANDED 2026-05-03 (SW v111).**
 - **Slice 3 = NMEA bridge.** Three new modules: `nmea-parse.js` (pure $GNGGA parser), `local-frame.js` (lat/lon ↔ local x/z, flat-earth approx for sim, UTM-ready interface), `nmea-stream.js` (sim-shell NMEA byte generator). Update loop now routes through `machinePos → nmeaFromMachinePos → parseSentence → geodeticToLocal → computeBladePose`. Same data path real F9P bytes will take when hardware arrives — only `nmea-stream.js` gets replaced by an NMEA reader. Verified: round-trip lat/lon noise <0.5 mm, altitude exact, pose values match direct path to sub-mm. **LANDED 2026-05-03 (SW v112).**
+
+- **Cab screen topology adopted** (locked 2026-05-03 from Trimble screen-image grilling — 8 reference images analysed). The v1.0 work screen is a real cab-style operator display with this canonical layout:
+  - **Yellow persistent status bar** across the top: project name, design name, RTK FIXED indicator, machine name, hamburger/profile.
+  - **3-edge LED lightbar wrap**: vertical bar on the LEFT = tip-A cut/fill (red CUT / green ON-GRADE / blue FILL); horizontal bar across the TOP = horizontal alignment guidance ("offline" distance to selected line, per the earlier grilling decision); vertical bar on the RIGHT = tip-B cut/fill. Spatial mapping: bar position = direction of error.
+  - **Two elevation-offset numerics** prominent top-centre: `+0.00 -+` (elevation offset memory cycler) and `+0.00 ++` (working surface offset). Both always visible per the two-layer offset model.
+  - **Central view area** = up to 3 configurable simultaneous views (plan, cross-section, long-section, etc. — to be detailed in next grilling pass). Operator picks layout via a "Change View" overlay reachable from any screen.
+  - **Configurable bottom readout strip** with leading-icon labels (cut/fill / alignment / cross-slope / grade / etc.). Readout count auto-adjusts to screen width (3 on small tablets, 4+ on large). Operator picks which readouts via the Edit Text Ribbon UI (Image 2 of references).
+  - **Right-side icon toolbar** for frequent actions (focus toggle, record point, change view, settings, work settings). Always visible.
+  - **Big AUTO/MANUAL toggle button** reserved at the bottom for the auto-blade case — visible/active only when auto-blade is enabled (irrelevant for v1.0 indicate-only, but the space and pattern are reserved so the future feature drops in cleanly).
+  - **Reference images**: 8 Trimble Earthworks screenshots captured this session. The wrap-3-edges + big-bottom-numbers + yellow-status-bar archetype was consistent across all of them.
+
+- **Dashboard vs Work-Screen split adopted** (locked 2026-05-03):
+  - **Boot lands on the Dashboard** — not directly on the work screen. Operator must consciously confirm system readiness before grading.
+  - **Three tiles on the Dashboard** (no Licenses tile — GradeOS is open-source so feature-tier gating is irrelevant):
+    - **Machine Setup** — mounting calibration, blade-edge length A/B, antenna model, machine type.
+    - **System Status** — RTK fix state per antenna, satellite counts, NTRIP base health, warnings.
+    - **Job Setup** — Project / Design / Guidance Surface selectors per the project hierarchy.
+  - **Single big "Start" button** at the bottom of the dashboard transitions into the work screen.
+  - **"Back" / exit on the work screen returns to dashboard** — clean exit, no app restart required. Useful for switching designs mid-day.
+  - Tile count can grow later if needed; three is the v1.0 baseline.
+
+- **Multi-view layouts adopted** (locked 2026-05-03):
+  - **4 view types in v1.0**: Plan, Cross-section, Long-section, 3D. (Cut/Fill bar view + Text Grid view deferred to v1.1 — they're poor-vision/sunlight accessibility features, important but not blocking.)
+  - **5 layout presets**: Single, Vertical split (L+R), Horizontal split (T+B), 1-big + 2-small (one big pane + two small stacked), 3 equal columns.
+  - **Default layout: "1-big + 2-small"** with **Plan dominant** (big), Cross-section and Long-section as the two small panes. Matches Steven's stated preference.
+  - **"Change View" overlay** reached from a button in the right-side toolbar. Single tap → grid of layout previews → tap one → applied immediately, no confirm dialog.
+  - **Per-pane view-type swap** by tapping the pane header → menu of available view types → tap to swap.
+  - Switching is non-destructive — the operator can freely experiment without losing state.
+
+- **Overview Screen adopted** (locked 2026-05-03 from Steven's addition):
+  - Separate screen, distinct from the work screen — accessible from the work screen via a toolbar button (e.g. "🌐 Overview" or similar).
+  - **Purpose**: bird's-eye 3D view of the entire site, showing the machine icon in context relative to the full design plan. Operator can pan/zoom freely.
+  - **Why it's separate from the in-work-screen "3D" view-type**: the work-screen 3D view is *machine-following* and zoomed close (for tight grading). The Overview screen is *site-centric* and zoomed wide (for orientation — "where am I in the paddock?", "what does the whole job look like from above?").
+  - Single tap returns to the work screen with the previous layout intact.
+  - Implementation: builds on the existing `THREE.js` scene — the central 3D rendering survives the sim demotion and gets repurposed for this Overview Screen.
+
+- **Configurable text ribbon adopted** (locked 2026-05-03):
+  - **Default 3 readouts**, **maximum 5**. (Steven: "I don't think you'd ever really need more than that.")
+  - **Default 3** (left to right): **Centre Cut/Fill mm** (the precise number — centre LED bar is now alignment per GQ-1, so centre cut/fill is text-only) / **Cross-slope %** / **Long Grade %**.
+  - **Big catalog** — operator picks from a large grouped list. Categories:
+    - **Guidance**: Cut/Fill L/C/R (mm), Cross-slope %, Long Grade %, DES Elevation, ACT Elevation, Tolerance state.
+    - **Position**: Tip A Elevation (raw m), Tip B Elevation (raw m), Centre Elevation, Easting, Northing, Heading, Speed.
+    - **Alignment** (when a guidance line is selected): Offline distance, Chainage / Station, Slope to next point.
+    - **System**: RTK fix quality (overall + per-antenna A/B), Satellite count (per antenna), HDOP, Horizontal accuracy estimate, Vertical accuracy estimate, NTRIP age (seconds since last RTCM update).
+    - **Time**: Local time, UTC time, Engine hours (from a hidden onboard timer).
+    - **Volume / Productivity** (placeholder for v1.0 — most need machine bus integration that's out of scope; ship the items as "—" when no data, build out post-v1.0).
+  - **Edit Text Ribbon UI** = modal screen matching Trimble's pattern (Image 2): selected items in a "Selected" section at the top with drag-to-reorder; available items grouped by category below; each item has a checkbox and a small `(i)` info button explaining what it shows; bottom buttons Cancel / Deselect All / Apply.
+  - **Per-item leading icon** in the bottom strip tells the operator at-a-glance what the readout means (cut/fill arrow / alignment line / cross-slope angle / etc.).
+
+- **Right-side icon toolbar adopted, configurable, tap-only** (locked 2026-05-03):
+  - **Default 7 icons** (top to bottom): Focus / Record Point / Change View / Overview / Overlays / Work Settings / System Settings.
+  - **Configurable like the text ribbon** — operator picks which icons appear, in what order, via an Edit Right Toolbar UI parallel to Edit Text Ribbon. Same pattern, same UX.
+  - **Tap-only** — no touch-and-hold. Steven finds touch-and-hold annoying. Every icon has ONE behaviour:
+    - **Action icons** (Focus, Record Point) → tap performs the action immediately (Focus = cycle to next, Record Point = capture with auto-suffix).
+    - **Config icons** (Change View, Overview, Overlays, Work Settings, System Settings) → tap opens the corresponding screen / overlay.
+  - **Toolbar is hideable** — System Settings has a "Show right toolbar" toggle for operators who don't want it. Default ON.
+  - **No reserved slot for Auto Mode** — when auto-blade is engaged, the AUTO indicator appears as a contextual overlay (banner / corner badge / wherever it makes most sense visually). When disengaged, it's invisible. The toolbar layout doesn't shift to accommodate it.
 - **Centre LED bar = horizontal alignment guidance, NOT centre cut/fill** (locked 2026-05-03 from Trimble grill). The centre bar shows the perpendicular "offline" distance from the blade focus to a selected guidance line. The line can be any of: a polyline drawn in-app, a design line (e.g. edge of a flat pad or slope), or an imported alignment centreline. Green = focus on the line (within tolerance), amber = off the line. The current behaviour (centre cut/fill in centre bar) is a divergence from industry convention and is wrong; centre cut/fill belongs in a text-item or DES/ACT readout instead. Implementation lives in a future slice (post-Slice 3 hardware bring-up). Concept: `selectedGuidanceLine` is a new product-layer entity; `computeBladeTarget` (or a sibling) computes `offlineDistance` from blade pose to that line.
 
 - **Vertical guidance modes adopted in full** (locked 2026-05-03). The operator picks ONE per task from: Right / Centre / Left / Linked-to-Focus / 2-Points. The mode selects the *primary* cut/fill value driving the LED bar, on-grade colour, buzzer, and blade-focus animation. Other tip values stay computed and shown as smaller reference readouts. Mode lives in `BladeTargetOptions.verticalGuidanceMode`. `BladeTarget` gains a `primary: TipTarget` derived from the mode. Implementation in a future slice.
@@ -340,14 +397,23 @@ Use **blade pose** for "where the blade is" and **blade target** for "where the 
   - **(g) RTK fix-quality coloured display + tolerance/accuracy gate** — adopted with critical safety addition. Tolerance presets per work type (rough ±100 mm / medium / fine ±20 mm, editable). When RTK accuracy from F9P exceeds the active tolerance, the cut/fill display **blanks out with a warning** ("RTK not accurate enough for this tolerance — change settings or wait for FIX") rather than showing false-precision. Loss of signal blanks display entirely. **The system must refuse to display cut/fill it can't actually back up with positioning.**
   - **(h) Single-antenna degraded mode + IMU-per-head redundancy** — adopted. Each F9P unit on the blade carries an onboard IMU. When both antennas are online and FIXED: use pure geometric cross-slope (per ADR-0002 — IMU ignored, no bouncy-IMU problem). When one antenna is lost: fall back to the surviving antenna's IMU for cross-slope, with a visible "DEGRADED MODE — bulking-grade accuracy only" banner. Updates the spec in ADR-0002 to allow IMUs in the F9P units; the IMU-bounce concern only applied to using IMU as the *primary* cross-slope source, which we still don't.
 
-- **Line-based design generation modes adopted** (locked 2026-05-03 — building on drive-your-design):
-  - **Flat Pad** (existing) — single elevation across an area.
-  - **Slope** — single cross-slope plane attached to a captured line. Use Trimble terminology.
-  - **Dual Slope** — two-plane surface attached to a captured line, with mirrored OR independent left/right angles. Covers crown and dam shapes from one mode.
-  - **Profile Designer** — new feature Steven specifically wants. Take a captured polyline (drive-your-design with N>2 points), smooth/optimise it under operator-set constraints: maximum grade %, maximum cut depth, maximum fill depth. Output: a smoothed design alignment that becomes the guidance surface. Especially useful for drain channels (positive-fall constraint), roads (max grade limit), and irrigation alignments. **Implementation: focused Slice in its own right** — needs constraint-solver math + UI for the constraint sliders.
-  - **Defaults: lines and surfaces extend to infinity.** No Point A/B extension or Surface Width parameters in the default UI. Width / alignment / extensions available as **advanced options** for the cases that need them (roads, irrigation bays where the design is bounded).
-  - **Trimble terminology adopted** (Slope, Dual Slope, Surface Width, Point A/B Extensions, mirrored vs unique slopes) — industry-standard, anyone coming from another system recognises it.
+- **Line-based design generation modes adopted, with major v1.0 simplification** (locked + revised 2026-05-03):
+  - **v1.0 ships THREE core design tools** that cover essentially all owner-operator work:
+    1. **Flat Pad** — single elevation across an area.
+    2. **Slope** — single cross-slope plane (start point + direction + grade + cross-slope).
+    3. **Profile Designer** — the universal tool: draw a 2D cross-section profile on a grid + select/draw a polyline alignment + extrude the profile along the polyline = design surface.
+  - **Profile Designer subsumes** Crown, Dam, Batter, Irrigation Bay, Profile, and existing line-based tools. The math is the same in all of them (2D profile extruded along a polyline); having separate dialogs for each is unnecessary fragmentation. ONE tool with a good profile editor + polyline picker covers all of them.
+  - **Why this matters**: Steven's stated experience — "if we can make a really good Profile Designer, I think that's gonna pretty much do nearly everything we need to do." This collapses the existing 9-tool design library down to 3 well-built tools.
+  - **Profile Designer concept**:
+    - **Profile editor**: a grid where the operator draws/edits a 2D cross-section by placing and dragging vertices. Snaps to grid resolution scaling with zoom. Shows the profile as a closed/open polyline. Configurable max grade per segment.
+    - **Polyline alignment**: selected from captured points (drive-your-design), drawn on the plan view, or imported. The polyline is the centreline along which the profile gets extruded.
+    - **Extrude**: profile is swept along the polyline, perpendicular to the local heading. Output is the design surface.
+    - **Constraints** (per the earlier grilling): operator sets maximum grade %, max cut depth, max fill depth. The system either flags violations or smooths the polyline to satisfy constraints (post-v1.0 — start with simple flagging).
+  - **Defaults**: extrusion extends to infinity along the polyline by default; no surface-width or point-A/B extension parameters in the default UI. Available as advanced options for bounded designs.
+  - **Trimble terminology adopted** for technical fields (Slope, Cross-slope, Mainfall) but the GradeOS tool catalog stays simpler.
   - **Implementation pattern**: each tool accepts input points either by clicking on screen OR by selecting from captured points (drive-your-design output). Same downstream maths.
+
+- **Existing 9-tool catalog deprecation note**: Crown, Dam, Batter, Irrigation Bay, Profile, Best-Fit, Section, Align tools currently present in the codebase will be progressively retired or absorbed into Profile Designer. Best-Fit is a math optimiser (different concept — find flattest plane minimising cut/fill); it stays as a separate utility but may move into Slope as an "auto-fit grade" advanced option. Align stays as the alignment-creation tool that feeds Profile Designer's polyline picker.
 
 - **Point capture & organisation adopted** (locked 2026-05-03):
   - **Auto-suffix tap capture**: tap once with name "Manhole" → next taps create "Manhole 1, Manhole 2, ..." with no further prompts. Fast-path workflow — no form-fill per point. "Always Prompt" toggle for when the operator wants to set name/code on each capture.
