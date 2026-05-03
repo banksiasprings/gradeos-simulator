@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GradeOS Simulator v0.8 · SW v120</title>
+<title>GradeOS Simulator v0.8 · SW v121</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <!-- Slice 1 — blade-pose seam. See CONTEXT.md, ADR-0002. -->
 <script type="module" src="./src/product/guidance/blade-pose.js"></script>
@@ -856,7 +856,7 @@ function cabRebuildRightToolbar(){
   });
 }
 
-// ── Slice 4d/4e — System Settings (units, mounting, toolbar, increment) ─
+// ── Slice 4d/4e/7 — System Settings (units, mounting, toolbar, light bars) ─
 const cabSysState={
   units:'metric',
   showRightToolbar:true,
@@ -864,6 +864,9 @@ const cabSysState={
   antennaB_dy:-0.5,
   defaultToleranceM:0.025,
   bumpIncrementM:0.010, // Slice 4e — default ±10 mm per +/- tap
+  showLEDLeft:true,     // Slice 7 — left tip cut/fill light bar
+  showLEDRight:true,    // Slice 7 — right tip cut/fill light bar
+  showLEDAlign:true,    // Slice 7 — top alignment light bar
 };
 function cabOpenSystemSettings(){
   // Populate fields from current state
@@ -880,6 +883,13 @@ function cabOpenSystemSettings(){
   [5,10,20,50,100].forEach(mm=>{
     cabActivateRadio('cab-sys-incr-'+mm,Math.abs(cabSysState.bumpIncrementM-mm/1000)<1e-5);
   });
+  // Slice 7 — light bar radios
+  cabActivateRadio('cab-sys-led-left-on',  cabSysState.showLEDLeft!==false);
+  cabActivateRadio('cab-sys-led-left-off', cabSysState.showLEDLeft===false);
+  cabActivateRadio('cab-sys-led-right-on', cabSysState.showLEDRight!==false);
+  cabActivateRadio('cab-sys-led-right-off',cabSysState.showLEDRight===false);
+  cabActivateRadio('cab-sys-led-align-on', cabSysState.showLEDAlign!==false);
+  cabActivateRadio('cab-sys-led-align-off',cabSysState.showLEDAlign===false);
   cabOpenOverlay('cab-overlay-systemsettings');
 }
 // Slice 4e — Set the offset bump increment
@@ -929,6 +939,28 @@ function cabApplyToolbarVisibility(){
     document.body.classList.add('cab-toolbar-hidden');
   }
   cabResizeRenderer();
+}
+// Slice 7 — Light bar visibility toggles. Each bar can be hidden independently.
+function cabSysSetLED(which,on){
+  const map={left:'showLEDLeft',right:'showLEDRight',align:'showLEDAlign'};
+  const cls={left:'cab-led-left-hidden',right:'cab-led-right-hidden',align:'cab-led-align-hidden'};
+  if(!map[which])return;
+  cabSysState[map[which]]=!!on;
+  if(on){document.body.classList.remove(cls[which]);}
+  else{document.body.classList.add(cls[which]);}
+  cabActivateRadio('cab-sys-led-'+which+'-on',on===true);
+  cabActivateRadio('cab-sys-led-'+which+'-off',on===false);
+  cabResizeRenderer();
+  cabPersistState();
+}
+function cabApplyLEDVisibility(){
+  ['left','right','align'].forEach(w=>{
+    const map={left:'showLEDLeft',right:'showLEDRight',align:'showLEDAlign'};
+    const cls={left:'cab-led-left-hidden',right:'cab-led-right-hidden',align:'cab-led-align-hidden'};
+    const on=cabSysState[map[w]]!==false;  // default on
+    if(on)document.body.classList.remove(cls[w]);
+    else document.body.classList.add(cls[w]);
+  });
 }
 function cabSysSetAntenna(side,m){
   if(!isFinite(m)||m<0||m>5)return;
@@ -1466,6 +1498,7 @@ function cabInit(){
   cabRebuildBottomStrip();
   cabRebuildRightToolbar();
   cabApplyToolbarVisibility();
+  cabApplyLEDVisibility();  // Slice 7 — apply persisted light bar toggles
   // Slice 4e — sync the inline increment label to current bumpIncrementM
   const lbl=document.getElementById('cab-offset-incr-label');
   if(lbl)lbl.textContent='(±'+Math.round((cabSysState.bumpIncrementM||0.010)*1000)+' mm)';
@@ -3060,6 +3093,31 @@ body.cab-mode #workscreen-back-btn{display:none !important}
 body.cab-toolbar-hidden #cab-right-toolbar{display:none}
 body.cab-toolbar-hidden #cab-centre-pane{grid-column:2 / 5}
 
+/* Slice 7 — Light bar visibility toggles. Hide individual bars and let the
+   centre pane expand into the freed column / row. */
+body.cab-led-left-hidden #cab-led-tipA{display:none}
+body.cab-led-left-hidden #cab-centre-pane{grid-column:1 / 3}
+body.cab-led-left-hidden #cab-offsets{grid-column:1 / 3}
+body.cab-led-left-hidden #cab-led-align{grid-column:1 / 3}
+body.cab-led-left-hidden #cab-bottom-strip{grid-column:1 / 3}
+body.cab-led-right-hidden #cab-led-tipB{display:none}
+body.cab-led-right-hidden #cab-centre-pane{grid-column:2 / 4}
+body.cab-led-right-hidden #cab-offsets{grid-column:2 / 4}
+body.cab-led-right-hidden #cab-led-align{grid-column:2 / 4}
+body.cab-led-right-hidden #cab-bottom-strip{grid-column:2 / 4}
+/* Both side bars hidden — centre fills cols 1 to 4 (or 1 to 5 if toolbar also hidden). */
+body.cab-led-left-hidden.cab-led-right-hidden #cab-centre-pane{grid-column:1 / 4}
+body.cab-led-left-hidden.cab-led-right-hidden #cab-offsets{grid-column:1 / 4}
+body.cab-led-left-hidden.cab-led-right-hidden #cab-led-align{grid-column:1 / 4}
+body.cab-led-left-hidden.cab-led-right-hidden #cab-bottom-strip{grid-column:1 / 4}
+body.cab-led-left-hidden.cab-led-right-hidden.cab-toolbar-hidden #cab-centre-pane{grid-column:1 / 5}
+body.cab-led-left-hidden.cab-led-right-hidden.cab-toolbar-hidden #cab-offsets{grid-column:1 / 5}
+body.cab-led-left-hidden.cab-led-right-hidden.cab-toolbar-hidden #cab-led-align{grid-column:1 / 5}
+body.cab-led-left-hidden.cab-led-right-hidden.cab-toolbar-hidden #cab-bottom-strip{grid-column:1 / 5}
+/* Top alignment bar hidden — centre pane grows up to fill the row. */
+body.cab-led-align-hidden #cab-led-align{display:none}
+body.cab-led-align-hidden #cab-centre-pane{grid-row:3 / 5}
+
 /* ── Slice 4e — Inline elevation offset buttons (Steven's UX feedback) ─ */
 .cab-offset-controls{
   display:flex; align-items:center; gap:8px;
@@ -3544,6 +3602,25 @@ body.cab-toolbar-hidden #cab-centre-pane{grid-column:2 / 5}
           <button class="cab-radio" id="cab-sys-toolbar-off" onclick="cabSysSetToolbar(false)">Off</button>
         </div>
         <div class="cab-field-hint">Per CONTEXT.md GQ-5 — toolbar is hideable for operators who don't want it.</div>
+      </div>
+      <div class="cab-field">
+        <label class="cab-field-label">Light Bars (visible on the work screen)</label>
+        <div class="cab-field-row">
+          <span class="cab-field-prefix" style="min-width:90px">Left tip cut/fill:</span>
+          <button class="cab-radio" id="cab-sys-led-left-on"  onclick="cabSysSetLED('left',true)">On</button>
+          <button class="cab-radio" id="cab-sys-led-left-off" onclick="cabSysSetLED('left',false)">Off</button>
+        </div>
+        <div class="cab-field-row">
+          <span class="cab-field-prefix" style="min-width:90px">Right tip cut/fill:</span>
+          <button class="cab-radio" id="cab-sys-led-right-on"  onclick="cabSysSetLED('right',true)">On</button>
+          <button class="cab-radio" id="cab-sys-led-right-off" onclick="cabSysSetLED('right',false)">Off</button>
+        </div>
+        <div class="cab-field-row">
+          <span class="cab-field-prefix" style="min-width:90px">Top alignment:</span>
+          <button class="cab-radio" id="cab-sys-led-align-on"  onclick="cabSysSetLED('align',true)">On</button>
+          <button class="cab-radio" id="cab-sys-led-align-off" onclick="cabSysSetLED('align',false)">Off</button>
+        </div>
+        <div class="cab-field-hint">Each bar can be hidden independently. The centre pane area expands to fill freed space. Top alignment bar shows the perpendicular distance from the blade focus to the selected guidance line (Slice 8 lands the line picker; for now it shows '— NO ALIGNMENT LINE —').</div>
       </div>
       <div class="cab-field">
         <label class="cab-field-label">Antenna Mounting (pole height above blade tip)</label>
