@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GradeOS Simulator v0.9 · SW v143</title>
+<title>GradeOS Simulator v0.9 · SW v144</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <!-- Slice 11.5 — GLTF model loader (Three.js example loaders are global scripts, not modules) -->
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -5802,7 +5802,11 @@ function marchCell(gx,gz,v00,v10,v11,v01,e){
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// TERRAIN GENERATORS
+// SIM-SHELL — TERRAIN GENERATORS
+// Procedural Hilly Farm / Mountain / Valley / etc. terrain generators.
+// Sim-shell only — real hardware loads survey data instead.
+// Several types are now dead (irrig_bay / house_pad / road_cut /
+// dam_site lost their callers in Slice 18). Future slice can prune.
 // ═══════════════════════════════════════════════════════════════════
 function genTerrain(type){
   for(let gz=0;gz<=GR;gz++) for(let gx=0;gx<=GR;gx++){
@@ -6601,7 +6605,10 @@ function updateTextRibbon(lmm,cmm,rmm,grade,elev,xslope){
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// MACHINE SIMULATOR
+// SIM-SHELL — MACHINE SIMULATOR (WASD driving, fake kinematics)
+// Drives machinePos via keyboard. Replaced on real hardware by NMEA
+// stream from the F9P. Out of scope for v1.0 product. Kept for now so
+// the cab UI is testable in dev. See CONTEXT.md "3D simulator demoted".
 // ═══════════════════════════════════════════════════════════════════
 const keys={};
 document.addEventListener('keydown',e=>{
@@ -7367,7 +7374,9 @@ function doRedo(){
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// TERRAIN MODIFICATION TOOLS (Smooth / Raise / Lower)
+// SIM-SHELL — TERRAIN MODIFICATION TOOLS (Smooth / Raise / Lower)
+// Lets the developer reshape simulated terrain at design time. No
+// equivalent on real hardware (terrain is whatever it is). Sim-only.
 // ═══════════════════════════════════════════════════════════════════
 function applyTerrainSmooth(p1,p2){
   const g1=w2g(Math.min(p1.x,p2.x),Math.min(p1.z,p2.z));
@@ -9280,7 +9289,8 @@ function _cabShouldRender3D(){
 loop(0);
 
 // ═══════════════════════════════════════════════════════════════════
-// SCREENSHOT CAPTURE
+// SIM-SHELL — SCREENSHOT CAPTURE
+// Saves the 3D viewport as PNG. Demo / docs aid only.
 // ═══════════════════════════════════════════════════════════════════
 function captureScreenshot(){
   // Force a fresh render then capture the canvas
@@ -9295,7 +9305,11 @@ function captureScreenshot(){
 
 
 // ═══════════════════════════════════════════════════════════════════
-// AUTO-STEER
+// SIM-SHELL — AUTO-STEER
+// Boustrophedon scan-pattern driver — sim drives the dozer in parallel
+// strips. Strictly sim-only; v1.0 product is indicate-only with the
+// human at the controls. Out of scope per CONTEXT.md. Kept for dev
+// testing of strip-pass coverage; retire alongside WASD when ready.
 // ═══════════════════════════════════════════════════════════════════
 function toggleAutoSteer(){
   autoSteer=!autoSteer;
@@ -9816,7 +9830,7 @@ updateRTKDisplay();
 setInterval(updateRTKDisplay,7000);
 
 // ═══════════════════════════════════════════════════════════════════
-// TABLET DEMO MODE — uses device GPS, compass and IMU as the machine
+// SIM-SHELL — TABLET DEMO MODE — uses device GPS, compass and IMU as the machine
 // ═══════════════════════════════════════════════════════════════════
 var tabletDemoActive=false;
 var tabletGPSOrigin=null;   // {lat,lng} — first GPS fix becomes scene centre
