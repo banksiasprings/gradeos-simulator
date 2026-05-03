@@ -17,7 +17,7 @@
 'use strict';
 
 const DOZER_GLTF_URL = './assets/dozer/scene.gltf';
-const SPRITE_CACHE_KEY = 'gradeos-dozer-sprites-v3'; // Slice 22: cross-section is now rear view
+const SPRITE_CACHE_KEY = 'gradeos-dozer-sprites-v4'; // Slice 23: ground grid added to non-top views
 
 let _dozerModelGroup = null;     // cached normalised model (THREE.Group)
 let _dozerModelLoading = null;   // Promise<Group> while loading
@@ -142,6 +142,22 @@ function renderDozerSprite(view, w, h){
     const back = new THREE.DirectionalLight(0xffffff, 0.35);
     back.position.set(0, 4, -6); scene.add(back);
     if(dozer) scene.add(dozer);
+
+    // Slice 23 — ground grid baked into the sprite for perspective / side /
+    // blade views. Provides a visible scale reference under the dozer in
+    // the cab's 3D / Long / Cross panes. The plan ('top') view skips this
+    // because the cab plan pane draws its own world grid in 2D — baking
+    // a grid into that sprite would double-up.
+    if(view !== 'top'){
+      const gridSize = 20;       // metres edge-to-edge
+      const gridDivs = 20;       // 1 m squares
+      const grid = new THREE.GridHelper(gridSize, gridDivs, 0x668aaa, 0x2a4a6a);
+      // y=0 ground plane (most dozer GLTFs have their tracks resting at y=0).
+      grid.position.y = 0.005;   // tiny lift to avoid z-fighting with track bottoms
+      grid.material.transparent = true;
+      grid.material.opacity = 0.55;
+      scene.add(grid);
+    }
 
     // Slice 11.7 — Determine model's long axis ('x' or 'z'). Cameras place
     // the side / blade views relative to that so they show what the names

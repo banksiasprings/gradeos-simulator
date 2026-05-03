@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GradeOS Simulator v0.9 · SW v145</title>
+<title>GradeOS Simulator v0.9 · SW v146</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <!-- Slice 11.5 — GLTF model loader (Three.js example loaders are global scripts, not modules) -->
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -554,23 +554,18 @@ function cabRebuildBottomStrip(){
   }
 }
 
-// ── Slice 4e — Per-pane zoom controls ────────────────────────────────
+// ── Slice 4e / 23 — Per-pane zoom controls ──────────────────────────
+// Slice 23: zoom now applies uniformly to ALL view types (3D / Plan /
+// Cross / Long). The cab uses static sprites (Slice 11), so zoom is a
+// pure 2D scale factor on the sprite + the world transform — no live
+// orbit camera in cab mode. Stored in cabPaneZoom; consumed by
+// _cabDrawPaneSprite (sprite scale) and _planW2p (ppm multiplier).
 const cabPaneZoom={1:1,2:1,3:1};  // zoom multiplier per pane (1 = neutral)
 function cabPaneZoomIn(idx){ cabPaneZoomBy(idx,1.25); }
 function cabPaneZoomOut(idx){ cabPaneZoomBy(idx,1/1.25); }
 function cabPaneZoomBy(idx,factor){
-  const type=cabPaneState.panes[idx];
-  cabPaneZoom[idx]=Math.max(0.25,Math.min(8,cabPaneZoom[idx]*factor));
-  if(type==='three'){
-    // For 3D: zoom = adjust orbit radius. Smaller r = closer.
-    // factor>1 means "zoom in" so r should shrink.
-    if(typeof orb!=='undefined'&&orb){
-      orb.r=Math.max(8,Math.min(220,orb.r/factor));
-    }
-  }
-  // Plan/Cross/Long use existing draw functions with their own scale; our
-  // zoom multiplier is stored for future hookup — nothing visible yet for
-  // these panes in Slice 4e (advisory only).
+  cabPaneZoom[idx]=Math.max(0.25,Math.min(8,(cabPaneZoom[idx]||1)*factor));
+  if(typeof cabRenderAllPaneSprites==='function')cabRenderAllPaneSprites();
 }
 function cabAddZoomControlsToPanes(){
   // Add a +/- overlay to each pane's content area (idempotent — replaces any existing).
@@ -581,10 +576,9 @@ function cabAddZoomControlsToPanes(){
     content.querySelectorAll('.cab-pane-zoom').forEach(z=>z.remove());
     const wrap=document.createElement('div');
     wrap.className='cab-pane-zoom';
-    const type=cabPaneState.panes[i];
-    const zoomable=(type==='three'); // Only 3D wired in Slice 4e
-    wrap.innerHTML=`<button class="cab-pane-zoom-btn" onclick="cabPaneZoomIn(${i})" ${zoomable?'':'disabled title=\'Zoom for this view type lands in a future slice\''}>+</button>
-      <button class="cab-pane-zoom-btn" onclick="cabPaneZoomOut(${i})" ${zoomable?'':'disabled'}>−</button>`;
+    // Slice 23 — zoom enabled for all view types.
+    wrap.innerHTML=`<button class="cab-pane-zoom-btn" onclick="cabPaneZoomIn(${i})">+</button>
+      <button class="cab-pane-zoom-btn" onclick="cabPaneZoomOut(${i})">−</button>`;
     content.appendChild(wrap);
   }
   // Slice 4f — also (re)attach pinch + wheel zoom listeners on each pane content.
@@ -670,10 +664,7 @@ function cabAttachPinchZoom(){
     content.addEventListener('pointercancel',ev=>_cabPinchPointerUp(i,ev,content));
     // Wheel for trackpad/mouse zoom (desktop fallback).
     content.addEventListener('wheel',ev=>{
-      // Only handle if 3D pane (others not yet zoomable). Avoid intercepting
-      // wheel events on the right toolbar / overlays.
-      const type=cabPaneState.panes[i];
-      if(type!=='three')return;
+      // Slice 23 — wheel zoom enabled for all view types.
       ev.preventDefault();
       const factor=ev.deltaY<0?1.12:1/1.12;
       cabPaneZoomBy(i,factor);
@@ -1267,10 +1258,13 @@ function _cabDrawPaneSprite(paneIdx){
   const sprites = window.getDozerSprites();
   const img = sprites[spriteName];
   if(!img || !img.complete || img.naturalWidth === 0) return;
+  // Slice 23 — per-pane zoom factor multiplies the letterbox scale (and
+  // the world transform's ppm in the plan view, via _planW2p).
+  const zoom = (cabPaneZoom && cabPaneZoom[paneIdx]) || 1;
   // Letterbox-fit the sprite into the canvas, preserving aspect ratio.
   const cw = cv.width, ch = cv.height;
   const iw = img.naturalWidth, ih = img.naturalHeight;
-  const s = Math.min(cw / iw, ch / ih);
+  const s = Math.min(cw / iw, ch / ih) * zoom;
   const dw = iw * s, dh = ih * s;
   const dx = (cw - dw) / 2, dy = (ch - dh) / 2;
   // Slice 13 — for the top/plan view, rotate the sprite to match the
@@ -1285,7 +1279,7 @@ function _cabDrawPaneSprite(paneIdx){
     // sprite occludes it where the body sits. Steven asked: image on top,
     // grid hidden underneath.
     if(typeof _drawPlanGridBackground === 'function'){
-      _drawPlanGridBackground(ctx, cw, ch, window._cabLastPose);
+      _drawPlanGridBackground(ctx, cw, ch, window._cabLastPose, zoom);
     }
     const mode = (cabSysState && cabSysState.planOrientationMode) || 'north';
     // Slice 14.1 — sprite vertical flip. The 'top' sprite is rendered with
@@ -1318,7 +1312,8 @@ function _cabDrawPaneSprite(paneIdx){
     ctx.drawImage(img, dx, dy, dw, dh);
   }
   // Slice 12 — draw live cut/fill / alignment overlays on top of the sprite.
-  _cabDrawPaneOverlay(ctx, view, cw, ch);
+  // Slice 23 — pass paneIdx through so the overlay can read cabPaneZoom.
+  _cabDrawPaneOverlay(ctx, view, cw, ch, paneIdx);
 }
 
 // ── Slice 12 — Per-pane live overlays ──────────────────────────────────
@@ -1329,11 +1324,13 @@ function _cabDrawPaneSprite(paneIdx){
 //   plan   — alignment line + recorded points + heading arrow
 //   three  — minimal cut/fill colour ring at the (centre) blade tip
 const _CAB_TOLERANCE_MM_DEFAULT = 25;
-function _cabDrawPaneOverlay(ctx, view, cw, ch){
+function _cabDrawPaneOverlay(ctx, view, cw, ch, paneIdx){
   const target = window._cabLastTarget;
   const pose   = window._cabLastPose;
+  // Slice 23 — pass per-pane zoom into the plan overlay.
+  const zoom = (paneIdx && cabPaneZoom && cabPaneZoom[paneIdx]) || 1;
   if(view === 'plan'){
-    _drawPlanOverlay(ctx, cw, ch, pose);
+    _drawPlanOverlay(ctx, cw, ch, pose, zoom);
   } else if(view === 'cross'){
     _drawCrossOverlay(ctx, cw, ch, target);
   } else if(view === 'long'){
@@ -1468,10 +1465,13 @@ function _drawLongOverlay(ctx, cw, ch, target){
 }
 // Shared helper: build the world→pixel transform for the plan pane.
 // Lives outside _drawPlanOverlay so the grid background can use it too.
-function _planW2p(cw, ch, pose){
+// Slice 23 — accepts a zoom factor (default 1). zoom > 1 = zoomed in
+// (ppm increases, things appear bigger, search bound shrinks).
+function _planW2p(cw, ch, pose, zoom){
+  zoom = zoom || 1;
   const mode = (cabSysState && cabSysState.planOrientationMode) || 'north';
-  const radiusM = 30;
-  const ppm = Math.min(cw, ch) / (radiusM * 2);
+  const radiusM = 30 / zoom;
+  const ppm = (Math.min(cw, ch) / (60)) * zoom;  // 60 = 2 * 30 (default radius);  ppm scales with zoom
   const cx = cw / 2, cy = ch / 2;
   const mx = pose && pose.centre ? pose.centre.x : 0;
   const mz = pose && pose.centre ? pose.centre.z : 0;
@@ -1501,9 +1501,10 @@ function _planW2p(cw, ch, pose){
 // Slice 14.1 — Grid is its own pass, drawn BEFORE the sprite so the
 // dozer body occludes it. Plain grid only — no coordinate labels (per
 // Steven's feedback: "all the numbers on the grid can get deleted").
-function _drawPlanGridBackground(ctx, cw, ch, pose){
+// Slice 23 — accepts zoom factor.
+function _drawPlanGridBackground(ctx, cw, ch, pose, zoom){
   if(!pose) return;
-  const t = _planW2p(cw, ch, pose);
+  const t = _planW2p(cw, ch, pose, zoom);
   const halfM = t.radiusM;
   const searchHalf = t.mode === 'track' ? halfM * Math.SQRT2 + 2 : halfM + 2;
   const minX = Math.floor(t.mx - searchHalf);
@@ -1542,16 +1543,17 @@ function _drawPlanGridBackground(ctx, cw, ch, pose){
   }
 }
 
-function _drawPlanOverlay(ctx, cw, ch, pose){
+function _drawPlanOverlay(ctx, cw, ch, pose, zoom){
   // Slice 14 / 14.1 — Plan-pane overlay (drawn AFTER the sprite). The grid
   // moved to _drawPlanGridBackground (called BEFORE the sprite). This
   // function now draws only the world features that go OVER the dozer:
   // recorded points, the selected guidance line + offset parallel, and the
   // scale-legend / mode badge. Two orientation modes are supported via
   // cabSysState.planOrientationMode ('north' or 'track') — see _planW2p.
+  // Slice 23 — accepts zoom factor.
   if(typeof selectedGuidanceLine === 'undefined') return;
   if(!pose){ return; }
-  const t = _planW2p(cw, ch, pose);
+  const t = _planW2p(cw, ch, pose, zoom);
   const { mode, radiusM, w2p } = t;
   // ── Recorded points (orange dots) ──────────────────────────────────────
   if(window._cabRecordedPoints && window._cabRecordedPoints.length){
