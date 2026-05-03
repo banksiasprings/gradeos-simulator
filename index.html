@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GradeOS Simulator v0.8 · SW v116</title>
+<title>GradeOS Simulator v0.8 · SW v117</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <!-- Slice 1 — blade-pose seam. See CONTEXT.md, ADR-0002. -->
 <script type="module" src="./src/product/guidance/blade-pose.js"></script>
@@ -347,6 +347,8 @@ function cabGetCanvasForType(type){
 }
 const _CAB_VIEWTYPE_NAMES={three:'3D View',plan:'Plan',cross:'Cross-section',long:'Long Section'};
 function cabRefreshPaneCanvases(){
+  // Slice 4e — also refresh zoom controls when panes change
+  setTimeout(cabAddZoomControlsToPanes, 0);
   const visiblePaneCount={'1single':1,'2vertical':2,'2horizontal':2,'1big2small':3,'3equal':3}[cabPaneState.layout]||3;
   // First pass: return canvases that aren't in their assigned pane to their original parents,
   // so we don't double-place a canvas if multiple panes ask for the same view type.
@@ -507,11 +509,58 @@ function cabRebuildBottomStrip(){
     if(!item)return;
     const div=document.createElement('div');
     div.className='cab-readout';
+    div.title='Tap to edit text ribbon'; // Slice 4e — discoverability
+    div.style.cursor='pointer';
+    div.onclick=cabOpenEditRibbon;
     div.innerHTML=`<span class="cab-readout-icon">${item.icon}</span>
       <div><div class="cab-readout-label">${item.label}</div>
       <div class="cab-readout-value" id="cab-readout-v-${i}">—</div></div>`;
     strip.appendChild(div);
   });
+  // Also: if no readouts at all, show a single "Edit Text Ribbon" button so it's reachable.
+  if(cabPaneState.ribbon.length===0){
+    const placeholder=document.createElement('div');
+    placeholder.className='cab-readout';
+    placeholder.style.cursor='pointer';
+    placeholder.onclick=cabOpenEditRibbon;
+    placeholder.innerHTML='<div style="text-align:center;color:#7aa0c0;font-size:12px;width:100%">≡ Tap to add readouts</div>';
+    strip.appendChild(placeholder);
+  }
+}
+
+// ── Slice 4e — Per-pane zoom controls ────────────────────────────────
+const cabPaneZoom={1:1,2:1,3:1};  // zoom multiplier per pane (1 = neutral)
+function cabPaneZoomIn(idx){ cabPaneZoomBy(idx,1.25); }
+function cabPaneZoomOut(idx){ cabPaneZoomBy(idx,1/1.25); }
+function cabPaneZoomBy(idx,factor){
+  const type=cabPaneState.panes[idx];
+  cabPaneZoom[idx]=Math.max(0.25,Math.min(8,cabPaneZoom[idx]*factor));
+  if(type==='three'){
+    // For 3D: zoom = adjust orbit radius. Smaller r = closer.
+    // factor>1 means "zoom in" so r should shrink.
+    if(typeof orb!=='undefined'&&orb){
+      orb.r=Math.max(8,Math.min(220,orb.r/factor));
+    }
+  }
+  // Plan/Cross/Long use existing draw functions with their own scale; our
+  // zoom multiplier is stored for future hookup — nothing visible yet for
+  // these panes in Slice 4e (advisory only).
+}
+function cabAddZoomControlsToPanes(){
+  // Add a +/- overlay to each pane's content area (idempotent — replaces any existing).
+  for(let i=1;i<=3;i++){
+    const content=document.getElementById('cab-pane-'+i+'-content');
+    if(!content)continue;
+    // Remove old zoom controls if present
+    content.querySelectorAll('.cab-pane-zoom').forEach(z=>z.remove());
+    const wrap=document.createElement('div');
+    wrap.className='cab-pane-zoom';
+    const type=cabPaneState.panes[i];
+    const zoomable=(type==='three'); // Only 3D wired in Slice 4e
+    wrap.innerHTML=`<button class="cab-pane-zoom-btn" onclick="cabPaneZoomIn(${i})" ${zoomable?'':'disabled title=\'Zoom for this view type lands in a future slice\''}>+</button>
+      <button class="cab-pane-zoom-btn" onclick="cabPaneZoomOut(${i})" ${zoomable?'':'disabled'}>−</button>`;
+    content.appendChild(wrap);
+  }
 }
 
 // ── Slice 4c — Override cabScreenUpdate to use dynamic ribbon ──────────
@@ -735,13 +784,14 @@ function cabRebuildRightToolbar(){
   });
 }
 
-// ── Slice 4d — System Settings (units, mounting, toolbar visibility) ───
+// ── Slice 4d/4e — System Settings (units, mounting, toolbar, increment) ─
 const cabSysState={
   units:'metric',
   showRightToolbar:true,
   antennaA_dy:-0.5,    // Pole height: blade-tip Y offset down to antenna (dy is negative)
   antennaB_dy:-0.5,
   defaultToleranceM:0.025,
+  bumpIncrementM:0.010, // Slice 4e — default ±10 mm per +/- tap
 };
 function cabOpenSystemSettings(){
   // Populate fields from current state
@@ -754,7 +804,29 @@ function cabOpenSystemSettings(){
   if(b)b.value=Math.abs(cabSysState.antennaB_dy).toFixed(2);
   const t=document.getElementById('cab-sys-default-tol');
   if(t)t.value=cabSysState.defaultToleranceM.toFixed(3);
+  // Slice 4e — increment radios
+  [5,10,20,50,100].forEach(mm=>{
+    cabActivateRadio('cab-sys-incr-'+mm,Math.abs(cabSysState.bumpIncrementM-mm/1000)<1e-5);
+  });
   cabOpenOverlay('cab-overlay-systemsettings');
+}
+// Slice 4e — Set the offset bump increment
+function cabSysSetIncrement(m){
+  if(!isFinite(m)||m<=0||m>1)return;
+  cabSysState.bumpIncrementM=m;
+  [5,10,20,50,100].forEach(mm=>{
+    cabActivateRadio('cab-sys-incr-'+mm,Math.abs(m-mm/1000)<1e-5);
+  });
+  // Update the inline label on the cab screen so operator sees the active increment.
+  const lbl=document.getElementById('cab-offset-incr-label');
+  if(lbl)lbl.textContent='(±'+Math.round(m*1000)+' mm)';
+  cabPersistState();
+}
+// Slice 4e — Inline +/- bump from the cab screen
+function cabBumpOffset(direction){
+  const cur=(typeof vOffset!=='undefined')?vOffset:0;
+  const step=cabSysState.bumpIncrementM||0.010;
+  cabWorkSetOffset(cur+direction*step);
 }
 function cabSysSetUnits(u){
   cabSysState.units=u;
@@ -940,6 +1012,9 @@ function cabInit(){
   cabRebuildBottomStrip();
   cabRebuildRightToolbar();
   cabApplyToolbarVisibility();
+  // Slice 4e — sync the inline increment label to current bumpIncrementM
+  const lbl=document.getElementById('cab-offset-incr-label');
+  if(lbl)lbl.textContent='(±'+Math.round((cabSysState.bumpIncrementM||0.010)*1000)+' mm)';
 }
 if(document.readyState==='loading'){
   document.addEventListener('DOMContentLoaded',cabInit);
@@ -2514,6 +2589,62 @@ body.cab-mode #workscreen-back-btn{display:none !important}
 /* Toolbar hidden — body class set when System Settings → Show Right Toolbar = Off */
 body.cab-toolbar-hidden #cab-right-toolbar{display:none}
 body.cab-toolbar-hidden #cab-centre-pane{grid-column:2 / 5}
+
+/* ── Slice 4e — Inline elevation offset buttons (Steven's UX feedback) ─ */
+.cab-offset-controls{
+  display:flex; align-items:center; gap:8px;
+  margin-top:1px;
+}
+.cab-offset-btn{
+  background:#e8a020;
+  color:#0a1520;
+  border:none;
+  width:36px; height:30px;
+  font-size:18px; font-weight:900;
+  border-radius:4px;
+  cursor:pointer;
+  transition:all .1s;
+  box-shadow:0 2px 4px rgba(232,160,32,.3);
+}
+.cab-offset-btn:hover{background:#ffb830}
+.cab-offset-btn:active{transform:translateY(1px); box-shadow:0 1px 2px rgba(232,160,32,.4)}
+.cab-offset-btn-down{background:#42a5f5; box-shadow:0 2px 4px rgba(66,165,245,.3)}
+.cab-offset-btn-down:hover{background:#5fb3ff}
+.cab-offset-btn-up{background:#ef5350; box-shadow:0 2px 4px rgba(239,83,80,.3)}
+.cab-offset-btn-up:hover{background:#ff6464}
+.cab-offset-value{cursor:pointer; user-select:none; padding:2px 6px; border-radius:3px}
+.cab-offset-value:hover{background:rgba(232,160,32,.1)}
+.cab-offset-value-static{cursor:default}
+.cab-offset-value-static:hover{background:none}
+#cab-offset-incr-label{
+  font-size:9px; color:#5a7a98;
+  font-weight:400; letter-spacing:.5px;
+  margin-left:4px;
+}
+
+/* ── Slice 4e — Per-pane zoom controls (bottom-right of each pane) ──── */
+.cab-pane-zoom{
+  position:absolute;
+  bottom:6px; right:6px;
+  display:flex; flex-direction:column; gap:2px;
+  z-index:10;
+  pointer-events:auto;
+}
+.cab-pane-zoom-btn{
+  background:rgba(13,31,53,.85);
+  color:#e0e8f0;
+  border:1px solid #1e4a7a;
+  width:30px; height:24px;
+  font-size:14px; font-weight:700;
+  border-radius:3px;
+  cursor:pointer;
+  display:flex; align-items:center; justify-content:center;
+  transition:all .12s;
+  backdrop-filter:blur(4px);
+}
+.cab-pane-zoom-btn:hover{background:#e8a020; color:#0a1520; border-color:#e8a020}
+.cab-pane-zoom-btn:disabled{opacity:.35; cursor:not-allowed}
+.cab-pane-zoom-btn:disabled:hover{background:rgba(13,31,53,.85); color:#e0e8f0; border-color:#1e4a7a}
 </style>
 </head>
 <body>
@@ -2588,15 +2719,19 @@ body.cab-toolbar-hidden #cab-centre-pane{grid-column:2 / 5}
     <span class="cab-statusbar-sep">·</span>
     <span id="cab-statusbar-machine">Banksia D6 Dozer</span>
   </div>
-  <!-- Row 2: Two top-centre offset numerics -->
+  <!-- Row 2: Top-centre offset numerics with inline ±increment buttons (Slice 4e) -->
   <div id="cab-offsets">
     <div class="cab-offset-cell">
-      <div class="cab-offset-label">ELEV OFFSET</div>
-      <div class="cab-offset-value" id="cab-offset-elev">+0.00 m</div>
+      <div class="cab-offset-label">ELEV OFFSET <span id="cab-offset-incr-label">(±10 mm)</span></div>
+      <div class="cab-offset-controls">
+        <button class="cab-offset-btn cab-offset-btn-down" onclick="cabBumpOffset(-1)" title="Decrement elevation offset by current step">−</button>
+        <div class="cab-offset-value" id="cab-offset-elev" onclick="cabWorkSetOffset(0)" title="Tap to zero">+0.000 m</div>
+        <button class="cab-offset-btn cab-offset-btn-up" onclick="cabBumpOffset(1)" title="Increment elevation offset by current step">+</button>
+      </div>
     </div>
     <div class="cab-offset-cell">
       <div class="cab-offset-label">WORKING SURFACE</div>
-      <div class="cab-offset-value" id="cab-offset-working">+0.00 m</div>
+      <div class="cab-offset-value cab-offset-value-static" id="cab-offset-working">+0.000 m</div>
     </div>
   </div>
   <!-- Row 3: Top horizontal LED bar = alignment guidance -->
@@ -2844,6 +2979,25 @@ body.cab-toolbar-hidden #cab-centre-pane{grid-column:2 / 5}
           <span class="cab-field-prefix">m (half-band)</span>
         </div>
         <div class="cab-field-hint">Tolerance used at boot. Operator can override per-task in Work Settings.</div>
+      </div>
+      <div class="cab-field">
+        <label class="cab-field-label">Elevation-Offset Bump Increment</label>
+        <div class="cab-field-row">
+          <button class="cab-radio" id="cab-sys-incr-5"   onclick="cabSysSetIncrement(0.005)">±5 mm</button>
+          <button class="cab-radio" id="cab-sys-incr-10"  onclick="cabSysSetIncrement(0.010)">±10 mm</button>
+          <button class="cab-radio" id="cab-sys-incr-20"  onclick="cabSysSetIncrement(0.020)">±20 mm</button>
+          <button class="cab-radio" id="cab-sys-incr-50"  onclick="cabSysSetIncrement(0.050)">±50 mm</button>
+          <button class="cab-radio" id="cab-sys-incr-100" onclick="cabSysSetIncrement(0.100)">±100 mm</button>
+        </div>
+        <div class="cab-field-hint">How much each tap of the +/− offset buttons (top of work screen) bumps the elevation offset.</div>
+      </div>
+      <div class="cab-field">
+        <label class="cab-field-label">Customise Display</label>
+        <div class="cab-field-row">
+          <button class="cab-btn-secondary" onclick="cabCloseAllOverlays();cabOpenEditRibbon()">≡ Edit Text Ribbon</button>
+          <button class="cab-btn-secondary" onclick="cabCloseAllOverlays();cabOpenEditToolbar()">▤ Edit Right Toolbar</button>
+        </div>
+        <div class="cab-field-hint">Pick which readouts appear along the bottom and which icons appear in the right-side toolbar.</div>
       </div>
       <div class="cab-field">
         <label class="cab-field-label">RTK / NTRIP Source</label>
