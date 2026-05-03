@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GradeOS Simulator v0.9 · SW v124</title>
+<title>GradeOS Simulator v0.9 · SW v125</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <!-- Slice 1 — blade-pose seam. See CONTEXT.md, ADR-0002. -->
 <script type="module" src="./src/product/guidance/blade-pose.js"></script>
@@ -3278,6 +3278,11 @@ body.cab-led-left-hidden.cab-led-right-hidden.cab-toolbar-hidden #cab-bottom-str
 /* Top alignment bar hidden — centre pane grows up to fill the row. */
 body.cab-led-align-hidden #cab-led-align{display:none}
 body.cab-led-align-hidden #cab-centre-pane{grid-row:3 / 5}
+/* Slice 9.5 — hide the H-Align Offset cell when the top alignment LED bar
+   is hidden (they're conceptually paired — no point setting an offset
+   for guidance you've turned off). The remaining 2 cells reflow. */
+body.cab-led-align-hidden .cab-offset-cell-halign{display:none}
+body.cab-led-align-hidden #cab-offsets{grid-template-columns:1fr 1fr}
 
 /* ── Slice 4e — Inline elevation offset buttons (Steven's UX feedback) ─ */
 .cab-offset-controls{
@@ -3452,8 +3457,9 @@ body.cab-led-align-hidden #cab-centre-pane{grid-row:3 / 5}
         <button class="cab-offset-btn cab-offset-btn-up" onclick="cabBumpWorking(1)" title="Increment working surface offset by current step">+</button>
       </div>
     </div>
-    <!-- Slice 9 — Horizontal alignment offset (perpendicular to selected guidance line) -->
-    <div class="cab-offset-cell">
+    <!-- Slice 9 — Horizontal alignment offset (perpendicular to selected guidance line).
+         Hides automatically when the top alignment LED bar is hidden (Slice 9.5). -->
+    <div class="cab-offset-cell cab-offset-cell-halign">
       <div class="cab-offset-label">H-ALIGN OFFSET <span id="cab-offset-halign-incr-label" style="font-size:9px;color:#5a7a98;font-weight:400">(±10 mm)</span></div>
       <div class="cab-offset-controls">
         <button class="cab-offset-btn cab-offset-btn-down" onclick="cabBumpHAlign(-1)" title="Move target line left of current">←</button>
@@ -8976,14 +8982,15 @@ function _cabShouldRender3D(){
   if(!tc) return false;
   // Out of cab mode → assume visible.
   if(!document.body.classList.contains('cab-mode')) return true;
-  // In cab mode → only render if the canvas is inside a pane content
-  // (i.e. a pane has 3D selected) AND that pane is visible.
-  const parent = tc.parentElement;
-  if(!parent || !parent.id || !parent.id.startsWith('cab-pane-')) return false;
-  const paneIdx = parseInt(parent.id.match(/cab-pane-(\d+)-content/) ? RegExp.$1 : '0', 10);
-  if(!paneIdx) return false;
-  const visiblePaneCount = {'1single':1,'2vertical':2,'2horizontal':2,'1big2small':3,'3equal':3}[cabPaneState.layout] || 3;
-  return paneIdx <= visiblePaneCount;
+  // In cab mode: render if any visible pane is set to 'three' view type.
+  // This handles the canvas-not-yet-relocated race (we render anyway so
+  // the operator never sees a blank pane while waiting for relocation).
+  const layout = cabPaneState && cabPaneState.layout || '1big2small';
+  const visiblePaneCount = {'1single':1,'2vertical':2,'2horizontal':2,'1big2small':3,'3equal':3}[layout] || 3;
+  for(let i = 1; i <= visiblePaneCount; i++){
+    if(cabPaneState && cabPaneState.panes && cabPaneState.panes[i] === 'three') return true;
+  }
+  return false;
 }
 loop(0);
 
@@ -10309,7 +10316,10 @@ function initGuidanceCanvases(){
 let _gradeTrendBuf=[];  // rolling buffer of long-grade values for trend arrow (last 3 cycles)
 
 function updateGuidanceScreens(){
-  if(!guidanceScreenActive) return;
+  // Slice 9.5 (bug fix) — also fire in cab mode. The relocated canvases
+  // (plan-canvas / xsec-canvas / side-profile-canvas) need updating
+  // whether or not the legacy guidance screen is active.
+  if(!guidanceScreenActive && !document.body.classList.contains('cab-mode')) return;
   
   // Get current blade measurements
   const perpX = Math.cos(machinePos.hdg), perpZ = -Math.sin(machinePos.hdg);
@@ -11579,8 +11589,9 @@ function buildProfileDesignSurface(){
 }
 
 // Call updateGuidanceScreens in the main loop (10Hz = 100ms; 20Hz is too fast for guidance-only updates)
+// Slice 9.5 — also fire in cab mode so the relocated plan/cross/long canvases get drawn.
 setInterval(() => {
-  if(guidanceScreenActive){
+  if(guidanceScreenActive || document.body.classList.contains('cab-mode')){
     updateGuidanceScreens();
   }
 }, 100);
