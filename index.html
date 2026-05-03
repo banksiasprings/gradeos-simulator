@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GradeOS Simulator v0.8 · SW v119</title>
+<title>GradeOS Simulator v0.8 · SW v120</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <!-- Slice 1 — blade-pose seam. See CONTEXT.md, ADR-0002. -->
 <script type="module" src="./src/product/guidance/blade-pose.js"></script>
@@ -15,6 +15,8 @@
 <script type="module" src="./src/product/positioning/nmea-parse.js"></script>
 <script type="module" src="./src/product/positioning/local-frame.js"></script>
 <script type="module" src="./src/sim/fake-gps/nmea-stream.js"></script>
+<!-- Slice 6 — Profile Designer: universal line-based design tool. See CONTEXT.md GQ-6. -->
+<script type="module" src="./src/product/design/profile-designer.js"></script>
 <script>
 
 // ── TOOLBAR: 3-BUTTON CONSOLIDATION ─────────────────────────────────────
@@ -754,16 +756,17 @@ function cabRibbonApply(){
 
 // ── Slice 4d — Toolbar catalog + Edit Right Toolbar modal ──────────────
 const CAB_TOOLBAR_CATALOG=[
-  {key:'focus',          label:'Blade Focus',      icon:'●'},
-  {key:'record',         label:'Record Point',     icon:'📍'},
-  {key:'changeview',     label:'Change View',      icon:'⊞'},
-  {key:'overview',       label:'Overview Screen',  icon:'🌐'},
-  {key:'overlays',       label:'Overlays',         icon:'👁'},
-  {key:'editribbon',     label:'Edit Text Ribbon', icon:'≡'},
-  {key:'worksettings',   label:'Work Settings',    icon:'▤'},
-  {key:'systemsettings', label:'System Settings',  icon:'⚙'},
+  {key:'focus',          label:'Blade Focus',       icon:'●'},
+  {key:'record',         label:'Record Point',      icon:'📍'},
+  {key:'changeview',     label:'Change View',       icon:'⊞'},
+  {key:'overview',       label:'Overview Screen',   icon:'🌐'},
+  {key:'overlays',       label:'Overlays',          icon:'👁'},
+  {key:'profile',        label:'Profile Designer',  icon:'⌒'},  // Slice 6
+  {key:'editribbon',     label:'Edit Text Ribbon',  icon:'≡'},
+  {key:'worksettings',   label:'Work Settings',     icon:'▤'},
+  {key:'systemsettings', label:'System Settings',   icon:'⚙'},
 ];
-const CAB_TOOLBAR_DEFAULT=['focus','record','changeview','overview','overlays','worksettings','systemsettings'];
+const CAB_TOOLBAR_DEFAULT=['focus','record','changeview','overview','profile','worksettings','systemsettings'];
 let _cabToolbarDraft=[];
 function cabOpenEditToolbar(){
   _cabToolbarDraft=[...cabPaneState.toolbar];
@@ -886,9 +889,12 @@ function cabSysSetIncrement(m){
   [5,10,20,50,100].forEach(mm=>{
     cabActivateRadio('cab-sys-incr-'+mm,Math.abs(m-mm/1000)<1e-5);
   });
-  // Update the inline label on the cab screen so operator sees the active increment.
+  // Update inline labels on the cab screen so operator sees the active increment
+  // (both elevation and working-surface buttons share the same step).
   const lbl=document.getElementById('cab-offset-incr-label');
   if(lbl)lbl.textContent='(±'+Math.round(m*1000)+' mm)';
+  const lblWs=document.getElementById('cab-offset-ws-incr-label');
+  if(lblWs)lblWs.textContent='(±'+Math.round(m*1000)+' mm)';
   cabPersistState();
 }
 // Slice 4e — Inline +/- bump from the cab screen
@@ -896,6 +902,13 @@ function cabBumpOffset(direction){
   const cur=(typeof vOffset!=='undefined')?vOffset:0;
   const step=cabSysState.bumpIncrementM||0.010;
   cabWorkSetOffset(cur+direction*step);
+}
+// Slice 6 (Steven request) — same +/- pattern for Working Surface Offset.
+// Uses the same bumpIncrementM as elevation offset; Steven can change in System Settings.
+function cabBumpWorking(direction){
+  const cur=(typeof workingSurfaceOffset!=='undefined')?workingSurfaceOffset:0;
+  const step=cabSysState.bumpIncrementM||0.010;
+  cabWorkSetWorking(cur+direction*step);
 }
 function cabSysSetUnits(u){
   cabSysState.units=u;
@@ -1029,6 +1042,246 @@ function cabActivateRadio(id,on){
   else el.classList.remove('active');
 }
 
+// ── Slice 6 — Profile Designer ─────────────────────────────────────────
+// Universal line-based design tool: draw a 2D cross-section profile, pick
+// a polyline alignment, sweep, write the result into the existing design[]
+// heightmap. See src/product/design/profile-designer.js for the math.
+
+// Profile state — array of {u, dy} vertices in metres (u perpendicular,
+// dy elevation delta from polyline).
+let _cabPDProfile=[];
+let _cabPDPolySource='recorded'; // 'recorded' or 'manual'
+
+const _CAB_PD_PROFILE_PRESETS={
+  flat:    {u:[ -3,  3], dy:[0, 0]},
+  crown:   {u:[-3.5, 0, 3.5], dy:[-0.05, 0.10, -0.05]},      // road crown 100mm peak, 50mm edge drop
+  vdrain:  {u:[-1.5, 0, 1.5], dy:[0, -0.30, 0]},             // 300mm deep V
+  trap:    {u:[-2.5, -0.5, 0.5, 2.5], dy:[0, -0.50, -0.50, 0]}, // 1m wide flat bottom, 500mm deep, 1:2 sides
+  batter:  {u:[0, 2, 5], dy:[0, 0, -1.5]},                   // 2m flat top + 3m batter dropping 1.5m
+  dam:     {u:[-8, -2, 2, 5], dy:[-1.5, 0, 0, -2.5]},        // 4m crest, 6m gentle upstream, 3m steep downstream
+};
+
+function cabPDLoadPreset(name){
+  const p=_CAB_PD_PROFILE_PRESETS[name];
+  if(!p)return;
+  _cabPDProfile=p.u.map((u,i)=>({u,dy:p.dy[i]}));
+  ['flat','crown','vdrain','trap','batter','dam'].forEach(k=>{
+    cabActivateRadio('cab-pd-preset-'+k,k===name);
+  });
+  cabPDRedrawProfile();
+}
+function cabPDClearProfile(){
+  _cabPDProfile=[];
+  ['flat','crown','vdrain','trap','batter','dam'].forEach(k=>cabActivateRadio('cab-pd-preset-'+k,false));
+  cabPDRedrawProfile();
+}
+
+// Profile canvas — draws the current vertices on an X (perpendicular) by Y (elevation) grid.
+// Centre line marks the polyline (u=0, dy=0). Snap to 100 mm grid.
+function cabPDCanvasToWorld(cv,cx,cy){
+  // Centre = u=0, dy=0. 1m = 30 px.
+  const w=cv.width, h=cv.height, scale=30;
+  return { u: (cx - w/2) / scale, dy: -(cy - h*0.6) / scale };
+}
+function cabPDWorldToCanvas(cv,u,dy){
+  const w=cv.width, h=cv.height, scale=30;
+  return { cx: w/2 + u*scale, cy: h*0.6 - dy*scale };
+}
+function cabPDSnap(v){ return Math.round(v*10)/10; }  // 100 mm grid
+
+function cabPDRedrawProfile(){
+  const cv=document.getElementById('cab-pd-profile-canvas');
+  if(!cv)return;
+  const ctx=cv.getContext('2d');
+  const w=cv.width, h=cv.height;
+  ctx.fillStyle='#08131f'; ctx.fillRect(0,0,w,h);
+  // Grid (100 mm = 3 px → too dense; use 500 mm = 15 px)
+  const scale=30;
+  ctx.strokeStyle='#162840'; ctx.lineWidth=1;
+  for(let u=-Math.floor(w/scale/2);u<=Math.floor(w/scale/2);u+=0.5){
+    const x=w/2+u*scale;
+    ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke();
+  }
+  for(let dy=-2;dy<=2;dy+=0.5){
+    const y=h*0.6-dy*scale;
+    ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke();
+  }
+  // Centre line (u=0, alignment) and zero (dy=0, polyline elevation)
+  ctx.strokeStyle='#e8a020'; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.moveTo(w/2,0); ctx.lineTo(w/2,h); ctx.stroke();
+  ctx.strokeStyle='#27ae60'; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.moveTo(0,h*0.6); ctx.lineTo(w,h*0.6); ctx.stroke();
+  // Labels
+  ctx.fillStyle='#5a7a98'; ctx.font='10px monospace';
+  ctx.fillText('alignment ▼', w/2-32, 12);
+  ctx.fillText('polyline elev →', 4, h*0.6-3);
+  // Profile polyline (sorted by u)
+  const sorted=[..._cabPDProfile].sort((a,b)=>a.u-b.u);
+  if(sorted.length>=2){
+    ctx.strokeStyle='#e0e8f0'; ctx.lineWidth=2.5;
+    ctx.beginPath();
+    sorted.forEach((p,i)=>{
+      const c=cabPDWorldToCanvas(cv,p.u,p.dy);
+      if(i===0)ctx.moveTo(c.cx,c.cy);
+      else ctx.lineTo(c.cx,c.cy);
+    });
+    ctx.stroke();
+  }
+  // Vertices
+  sorted.forEach((p)=>{
+    const c=cabPDWorldToCanvas(cv,p.u,p.dy);
+    ctx.fillStyle='#e8a020';
+    ctx.beginPath(); ctx.arc(c.cx,c.cy,5,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='#0a1520'; ctx.font='9px monospace';
+    ctx.fillText(`${p.u.toFixed(1)},${p.dy>=0?'+':''}${p.dy.toFixed(2)}`, c.cx+7, c.cy-7);
+  });
+  // Vertex count
+  const cnt=document.getElementById('cab-pd-vertex-count');
+  if(cnt)cnt.textContent=_cabPDProfile.length+' vertices';
+}
+
+// Profile canvas interaction: click-add, drag-move, double-click-delete.
+let _cabPDDragIdx=null;
+function cabPDInitProfileCanvas(){
+  const cv=document.getElementById('cab-pd-profile-canvas');
+  if(!cv||cv.dataset.pdInit==='1')return;
+  cv.dataset.pdInit='1';
+  const findVertex=(cx,cy)=>{
+    for(let i=0;i<_cabPDProfile.length;i++){
+      const p=_cabPDProfile[i];
+      const c=cabPDWorldToCanvas(cv,p.u,p.dy);
+      if(Math.hypot(cx-c.cx,cy-c.cy)<10)return i;
+    }
+    return -1;
+  };
+  cv.addEventListener('mousedown',ev=>{
+    const r=cv.getBoundingClientRect();
+    const cx=(ev.clientX-r.left)*(cv.width/r.width);
+    const cy=(ev.clientY-r.top)*(cv.height/r.height);
+    const idx=findVertex(cx,cy);
+    if(idx>=0){
+      _cabPDDragIdx=idx;
+    }else{
+      const w=cabPDCanvasToWorld(cv,cx,cy);
+      _cabPDProfile.push({u:cabPDSnap(w.u),dy:cabPDSnap(w.dy)});
+      cabPDRedrawProfile();
+    }
+  });
+  cv.addEventListener('mousemove',ev=>{
+    if(_cabPDDragIdx===null)return;
+    const r=cv.getBoundingClientRect();
+    const cx=(ev.clientX-r.left)*(cv.width/r.width);
+    const cy=(ev.clientY-r.top)*(cv.height/r.height);
+    const w=cabPDCanvasToWorld(cv,cx,cy);
+    _cabPDProfile[_cabPDDragIdx]={u:cabPDSnap(w.u),dy:cabPDSnap(w.dy)};
+    cabPDRedrawProfile();
+  });
+  cv.addEventListener('mouseup',()=>{ _cabPDDragIdx=null; });
+  cv.addEventListener('mouseleave',()=>{ _cabPDDragIdx=null; });
+  cv.addEventListener('dblclick',ev=>{
+    const r=cv.getBoundingClientRect();
+    const cx=(ev.clientX-r.left)*(cv.width/r.width);
+    const cy=(ev.clientY-r.top)*(cv.height/r.height);
+    const idx=findVertex(cx,cy);
+    if(idx>=0){ _cabPDProfile.splice(idx,1); cabPDRedrawProfile(); }
+  });
+}
+
+// Polyline source picker.
+function cabPDSetPolySource(src){
+  _cabPDPolySource=src;
+  cabActivateRadio('cab-pd-poly-recorded',src==='recorded');
+  cabActivateRadio('cab-pd-poly-manual',src==='manual');
+  const ta=document.getElementById('cab-pd-polyline');
+  const hint=document.getElementById('cab-pd-poly-hint');
+  if(src==='recorded'){
+    const pts=window._cabRecordedPoints||[];
+    if(pts.length>=2){
+      ta.value=pts.map(p=>`${p.x.toFixed(2)},${p.z.toFixed(2)},${p.y.toFixed(3)}`).join('\n');
+    }else{
+      ta.value='# Need at least 2 recorded points (use 📍 Record Point in the toolbar).\n# Drive to a corner, tap record, drive to the next corner, tap record, etc.';
+    }
+    if(hint)hint.textContent=`Loaded ${pts.length} recorded point(s). Edit/reorder above. Format: x,z[,elev].`;
+  }else{
+    if(!ta.value||ta.value.startsWith('#'))ta.value='-30,-10\n30,10';
+    if(hint)hint.textContent='Manual entry. One point per line. Format: x,z (elev from terrain) or x,z,elev (3 columns).';
+  }
+}
+function cabPDParsePolyline(){
+  const ta=document.getElementById('cab-pd-polyline');
+  if(!ta)return [];
+  const pts=[];
+  ta.value.split(/\n/).forEach(line=>{
+    const t=line.trim();
+    if(!t||t.startsWith('#'))return;
+    const parts=t.split(/[\s,]+/).map(parseFloat);
+    if(parts.length>=2&&isFinite(parts[0])&&isFinite(parts[1])){
+      const p={x:parts[0],z:parts[1]};
+      if(parts.length>=3&&isFinite(parts[2]))p.elev=parts[2];
+      pts.push(p);
+    }
+  });
+  return pts;
+}
+
+function cabOpenProfileDesigner(){
+  cabOpenOverlay('cab-overlay-profile');
+  cabPDInitProfileCanvas();
+  if(_cabPDProfile.length===0)cabPDLoadPreset('crown');
+  if(_cabPDPolySource==='recorded')cabPDSetPolySource('recorded');
+  else cabPDSetPolySource('manual');
+  cabPDRedrawProfile();
+}
+
+// Apply: extrude + write to design[] heightmap + register in designLibrary.
+function cabPDApply(){
+  if(typeof extrudeProfileAlongPolyline!=='function'){
+    alert('Profile Designer module not loaded.'); return;
+  }
+  if(_cabPDProfile.length<2){
+    alert('Profile needs at least 2 vertices. Pick a preset or click on the canvas to add points.'); return;
+  }
+  const polyPts=cabPDParsePolyline();
+  if(polyPts.length<2){
+    alert('Polyline needs at least 2 points.'); return;
+  }
+  // Resolve polyline elevations: per-point provided, else sample terrain.
+  const polyline=polyPts.map(p=>({x:p.x,z:p.z}));
+  const polylineElev=polyPts.map(p=>(p.elev!=null)?p.elev:gElev(p.x,p.z));
+  const extruded=extrudeProfileAlongPolyline({
+    profile:[..._cabPDProfile],
+    polyline,
+    polylineElev,
+  });
+  // Write into the existing design[] grid.
+  let written=0;
+  for(let gz=0;gz<N;gz++){
+    for(let gx=0;gx<N;gx++){
+      const wx=(gx-GR/2)*CS, wz=(gz-GR/2)*CS;
+      const e=extruded.elevAt(wx,wz);
+      if(e!==null){
+        design[gi(gx,gz)]=e;
+        hasD[gi(gx,gz)]=1;
+        written++;
+      }
+    }
+  }
+  if(written===0){
+    alert('Resulting design has no coverage on the grid. Check the polyline coordinates and profile width.');
+    return;
+  }
+  // Register in designLibrary so it shows up in Job Setup / dashboard tile.
+  const name=document.getElementById('cab-pd-name').value||'Profile Design';
+  if(typeof _registerDesign==='function'){
+    _registerDesign(name,'profile');
+  }else{
+    designCount=Math.max(designCount,1);
+  }
+  if(typeof rebuildDesMesh==='function')rebuildDesMesh();
+  cabFlashStatus(`Applied: ${name} (${written} cells)`);
+  cabCloseAllOverlays();
+}
+
 // ── Slice 4f — System Status modal (opener + live refresh) ────────────
 function cabOpenSystemStatus(){
   cabRefreshSystemStatus();
@@ -1137,6 +1390,8 @@ function cabToolTap(which){
     cabOpenSystemSettings();
   }else if(which==='record'){
     cabRecordPoint();  // Slice 4f
+  }else if(which==='profile'){
+    cabOpenProfileDesigner();  // Slice 6
   }else if(which==='overview'){
     console.log('Overview screen — wired in a future slice');
   }else if(which==='overlays'){
@@ -1214,6 +1469,8 @@ function cabInit(){
   // Slice 4e — sync the inline increment label to current bumpIncrementM
   const lbl=document.getElementById('cab-offset-incr-label');
   if(lbl)lbl.textContent='(±'+Math.round((cabSysState.bumpIncrementM||0.010)*1000)+' mm)';
+  const lblWs=document.getElementById('cab-offset-ws-incr-label');
+  if(lblWs)lblWs.textContent='(±'+Math.round((cabSysState.bumpIncrementM||0.010)*1000)+' mm)';
 }
 if(document.readyState==='loading'){
   document.addEventListener('DOMContentLoaded',cabInit);
@@ -2829,6 +3086,8 @@ body.cab-toolbar-hidden #cab-centre-pane{grid-column:2 / 5}
 .cab-offset-value:hover{background:rgba(232,160,32,.1)}
 .cab-offset-value-static{cursor:default}
 .cab-offset-value-static:hover{background:none}
+.cab-offset-cell-tappable{cursor:pointer; padding:4px 8px; border-radius:4px; transition:background .12s}
+.cab-offset-cell-tappable:hover{background:rgba(232,160,32,.1)}
 #cab-offset-incr-label{
   font-size:9px; color:#5a7a98;
   font-weight:400; letter-spacing:.5px;
@@ -2967,8 +3226,12 @@ body.cab-toolbar-hidden #cab-centre-pane{grid-column:2 / 5}
       </div>
     </div>
     <div class="cab-offset-cell">
-      <div class="cab-offset-label">WORKING SURFACE <span style="font-size:9px;color:#5a7a98;font-weight:400">(tap to set)</span></div>
-      <div class="cab-offset-value" id="cab-offset-working" onclick="cabOpenWorkSettings()" title="Tap to open Work Settings to set the working surface offset">+0.000 m</div>
+      <div class="cab-offset-label">WORKING SURFACE <span id="cab-offset-ws-incr-label" style="font-size:9px;color:#5a7a98;font-weight:400">(±10 mm)</span></div>
+      <div class="cab-offset-controls">
+        <button class="cab-offset-btn cab-offset-btn-down" onclick="cabBumpWorking(-1)" title="Decrement working surface offset by current step">−</button>
+        <div class="cab-offset-value" id="cab-offset-working" onclick="cabWorkSetWorking(0)" title="Tap to zero">+0.000 m</div>
+        <button class="cab-offset-btn cab-offset-btn-up" onclick="cabBumpWorking(1)" title="Increment working surface offset by current step">+</button>
+      </div>
     </div>
   </div>
   <!-- Row 3: Top horizontal LED bar = alignment guidance -->
@@ -3211,6 +3474,52 @@ body.cab-toolbar-hidden #cab-centre-pane{grid-column:2 / 5}
     </div>
     <div class="cab-overlay-footer">
       <button class="cab-btn-cancel" onclick="cabCloseAllOverlays()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Profile Designer — Slice 6 -->
+<div id="cab-overlay-profile" class="cab-overlay hidden" onclick="cabCloseAllOverlays(event)">
+  <div class="cab-overlay-box cab-overlay-box-tall" onclick="event.stopPropagation()" style="min-width:680px">
+    <div class="cab-overlay-title">PROFILE DESIGNER</div>
+    <div class="cab-overlay-subtitle">Draw a 2D cross-section, pick a polyline, extrude. Subsumes Crown / Dam / Batter / Channel / Profile / etc.</div>
+    <div class="cab-form" style="max-height:62vh">
+      <div class="cab-field">
+        <label class="cab-field-label">1. Cross-section profile</label>
+        <div class="cab-field-row">
+          <button class="cab-radio" id="cab-pd-preset-flat"     onclick="cabPDLoadPreset('flat')">Flat</button>
+          <button class="cab-radio" id="cab-pd-preset-crown"    onclick="cabPDLoadPreset('crown')">Crown (road)</button>
+          <button class="cab-radio" id="cab-pd-preset-vdrain"   onclick="cabPDLoadPreset('vdrain')">V-drain</button>
+          <button class="cab-radio" id="cab-pd-preset-trap"     onclick="cabPDLoadPreset('trap')">Trapezoidal channel</button>
+          <button class="cab-radio" id="cab-pd-preset-batter"   onclick="cabPDLoadPreset('batter')">Batter</button>
+          <button class="cab-radio" id="cab-pd-preset-dam"      onclick="cabPDLoadPreset('dam')">Dam</button>
+        </div>
+        <canvas id="cab-pd-profile-canvas" width="600" height="180" style="background:#08131f;border:1px solid #1a2840;border-radius:4px;margin-top:6px;display:block;cursor:crosshair"></canvas>
+        <div class="cab-field-hint">Click to add a vertex · Drag to move · Double-click to delete · Snaps to 100 mm grid · Centre line is the alignment.</div>
+        <div class="cab-field-row" style="margin-top:6px">
+          <button class="cab-btn-secondary" onclick="cabPDClearProfile()">Clear vertices</button>
+          <span class="cab-field-prefix" id="cab-pd-vertex-count">0 vertices</span>
+        </div>
+      </div>
+      <div class="cab-field">
+        <label class="cab-field-label">2. Alignment polyline</label>
+        <div class="cab-field-row">
+          <button class="cab-radio" id="cab-pd-poly-recorded" onclick="cabPDSetPolySource('recorded')">Use recorded points</button>
+          <button class="cab-radio" id="cab-pd-poly-manual"   onclick="cabPDSetPolySource('manual')">Manual entry</button>
+        </div>
+        <textarea id="cab-pd-polyline" rows="4" style="width:100%;background:#08131f;border:1px solid #1a2840;color:#dce8f5;font-family:'Menlo',monospace;font-size:12px;padding:6px;border-radius:3px;margin-top:6px" placeholder="Format: x1,z1 (one per line). Z-elevation taken from terrain unless 3 columns: x1,z1,elev1"></textarea>
+        <div class="cab-field-hint" id="cab-pd-poly-hint">Polyline ordered along travel direction. Profile sweeps perpendicular to local heading. Min 2 points.</div>
+      </div>
+      <div class="cab-field">
+        <label class="cab-field-label">3. Save as</label>
+        <div class="cab-field-row">
+          <input type="text" class="cab-input" id="cab-pd-name" value="Profile Design 1" style="width:240px">
+        </div>
+      </div>
+    </div>
+    <div class="cab-overlay-footer">
+      <button class="cab-btn-cancel" onclick="cabCloseAllOverlays()">Cancel</button>
+      <button class="cab-btn-apply" onclick="cabPDApply()">Apply Design</button>
     </div>
   </div>
 </div>

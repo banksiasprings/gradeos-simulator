@@ -1,4 +1,4 @@
-const CACHE = 'gradeos-v119';
+const CACHE = 'gradeos-v120';
 const ASSETS = [
   './',
   './index.html',
@@ -9,6 +9,7 @@ const ASSETS = [
   './src/product/positioning/nmea-parse.js',
   './src/product/positioning/local-frame.js',
   './src/sim/fake-gps/nmea-stream.js',
+  './src/product/design/profile-designer.js',
 ];
 
 self.addEventListener('install', e => {
