@@ -17,7 +17,7 @@
 'use strict';
 
 const DOZER_GLTF_URL = './assets/dozer/scene.gltf';
-const SPRITE_CACHE_KEY = 'gradeos-dozer-sprites-v2'; // bumped: new lighting + cameras + tip marker
+const SPRITE_CACHE_KEY = 'gradeos-dozer-sprites-v3'; // Slice 22: cross-section is now rear view
 
 let _dozerModelGroup = null;     // cached normalised model (THREE.Group)
 let _dozerModelLoading = null;   // Promise<Group> while loading
@@ -192,11 +192,16 @@ function renderDozerSprite(view, w, h){
       else                   camera.up.set(0, 0, -1);
       camera.lookAt(0, 0, 0);
     } else if(view === 'blade'){
-      // Blade view = look at the dozer head-on with blade facing camera.
+      // Slice 22 — cross-section pane shows the REAR view of the dozer
+      // (was front-on / blade-facing-camera). The operator's natural
+      // cross-section reference is looking out the back of the cab toward
+      // the blade with the cab in foreground; the rear view places the
+      // back of the dozer in the foreground, blade in the distance.
+      // Camera moved to the -forward side of the dozer.
       const halfH = 2.6;
       camera = new THREE.OrthographicCamera(-halfH*aspect, halfH*aspect, halfH, -halfH, 0.1, 100);
-      if(lengthAxis === 'x'){ camera.position.set(15, 1.7, 0); camera.lookAt(0, 1.7, 0); }
-      else                  { camera.position.set(0, 1.7, 15); camera.lookAt(0, 1.7, 0); }
+      if(lengthAxis === 'x'){ camera.position.set(-15, 1.7, 0); camera.lookAt(0, 1.7, 0); }
+      else                  { camera.position.set(0, 1.7, -15); camera.lookAt(0, 1.7, 0); }
     } else {
       camera = new THREE.PerspectiveCamera(35, aspect, 0.1, 100);
       camera.position.set(8, 5, 8); camera.lookAt(0, 1.5, 0);

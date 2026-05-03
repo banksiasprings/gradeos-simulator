@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GradeOS Simulator v0.9 · SW v144</title>
+<title>GradeOS Simulator v0.9 · SW v145</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <!-- Slice 11.5 — GLTF model loader (Three.js example loaders are global scripts, not modules) -->
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -59,7 +59,7 @@ function switchDesignTab(tab){
     const div=document.createElement('div');
     div.id='dtab-tools-content';
     div.style.cssText='padding:16px;overflow-y:auto;flex:1';
-    div.innerHTML=`<button class='drawer-btn' id='dp-topo-tools-btn' onclick='toggleTerrain()' style='width:100%;margin-bottom:16px;font-size:13px;padding:12px;display:flex;align-items:center;gap:10px' title='Tap to cycle: Off → Active → Reference'><span id='dp-topo-tools-led' style='display:inline-block;width:11px;height:11px;border-radius:50%;background:#cc3333;box-shadow:0 0 6px rgba(204,51,51,0.6);flex-shrink:0'></span><span style='flex:1'>🏔 Topo</span><span id='dp-topo-tools-label' style='font-size:11px;font-weight:700;color:#cc3333'>OFF</span></button><div style='font-size:10px;color:#4a7aa0;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px'>Quick Design Tools</div><div style='display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:18px'><button class='dtools-btn' onclick='setTool("flat");closeDesignPanel()'>⬛ Flat Pad<span>Level area</span></button><button class='dtools-btn' onclick='setTool("slope");closeDesignPanel()'>◥ Single Slope<span>Grade in one direction</span></button><button class='dtools-btn' onclick='setTool("batter");closeDesignPanel()'>⛰ Batter<span>Slope from crest line</span></button><button class='dtools-btn' onclick='setTool("irrig");closeDesignPanel()'>💧 Irrig Bay<span>Auto-balance cut/fill</span></button><button class='dtools-btn' onclick='setTool("bestfit");closeDesignPanel()'>📐 Min Earthworks<span>Fit flattest grade</span></button><button class='dtools-btn' onclick='setTool("section");closeDesignPanel()'>✂ Cross-Section<span>Profile cut view</span></button></div><div style='font-size:10px;color:#4a7aa0;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px'>Tin Line Design</div><div style='display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:18px'><button class='dtools-btn' onclick='switchDesignTab("profile")'>📐 Profile Designer<span>Cross-section template</span></button><button class='dtools-btn' onclick='switchDesignTab("align")'>🛣 Alignment Designer<span>Spline + vertical grade</span></button></div>`;
+    div.innerHTML=`<div style='font-size:10px;color:#4a7aa0;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px'>Quick Design Tools</div><div style='display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:18px'><button class='dtools-btn' onclick='setTool("flat");closeDesignPanel()'>⬛ Flat Pad<span>Level area</span></button><button class='dtools-btn' onclick='setTool("slope");closeDesignPanel()'>◥ Single Slope<span>Grade in one direction</span></button><button class='dtools-btn' onclick='setTool("batter");closeDesignPanel()'>⛰ Batter<span>Slope from crest line</span></button><button class='dtools-btn' onclick='setTool("irrig");closeDesignPanel()'>💧 Irrig Bay<span>Auto-balance cut/fill</span></button><button class='dtools-btn' onclick='setTool("bestfit");closeDesignPanel()'>📐 Min Earthworks<span>Fit flattest grade</span></button><button class='dtools-btn' onclick='setTool("section");closeDesignPanel()'>✂ Cross-Section<span>Profile cut view</span></button></div><div style='font-size:10px;color:#4a7aa0;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px'>Tin Line Design</div><div style='display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:18px'><button class='dtools-btn' onclick='switchDesignTab("profile")'>📐 Profile Designer<span>Cross-section template</span></button><button class='dtools-btn' onclick='switchDesignTab("align")'>🛣 Alignment Designer<span>Spline + vertical grade</span></button></div>`;
     content.appendChild(div);
   } else {
     const el=document.getElementById(map[tab]);
@@ -4533,7 +4533,6 @@ body.cab-led-align-hidden #cab-offsets > .cab-offset-cell:not(.cab-offset-cell-h
     <button class="tb" onclick="genTerrain('embankment')">Embankment</button>
     <button class="tb" onclick="genTerrain('cut_hill')">Cut Hill</button>
     <button class="tb" onclick="genTerrain('irrig_bay')">Irrig Bay</button>
-    <button class="tb" onclick="genTerrain('drone')">🚁 Drone DEM</button>
     <button class="tb" onclick="genTerrain('road_cut')" title="Road construction: undulating terrain with cut/fill corridor">🛣 Road Cut</button>
     <button class="tb" onclick="genTerrain('house_pad')" title="Residential development: hillside with gully — multiple house pads needed">🏠 House Pad</button>
   </div>
@@ -4559,10 +4558,8 @@ body.cab-led-align-hidden #cab-offsets > .cab-offset-cell:not(.cab-offset-cell-h
 
   <div class="toolbar-group tg">
     <span class="tg-label">Display</span>
-    <button class="tb" id="b-terrain" onclick="toggleTerrain()" title="Show/hide terrain surface — turn off to see only your active design">🏔 Terrain</button>
     <button class="tb act" id="b-cf" onclick="toggleCutFill()">🎨 Cut/Fill</button>
     <button class="tb act" id="b-ctr" onclick="toggleContours()">〰 Contours</button>
-    <button class="tb" id="b-survey" onclick="toggleSurvey()" title="Show survey coverage">📡 Survey</button>
     <button class="tb" id="b-split" onclick="toggleSplit()" title="Split screen blade view">⧉ Split</button>
     <button class="tb act" id="b-cutsim" onclick="toggleCutSim()" title="Live blade cuts terrain as you drive">🔪 Cut Sim</button>
     <button class="tb" id="b-flow" onclick="toggleFlow()" title="Show stormwater drainage flow paths (D8 algorithm)">💧 Flow</button>
@@ -4572,8 +4569,6 @@ body.cab-led-align-hidden #cab-offsets > .cab-offset-cell:not(.cab-offset-cell-h
     <button class="tb" id="b-garrows" onclick="toggleGradeArrows()" title="Grade arrows — show design surface slope direction and grade %">↗ Grade</button>
     <button class="tb" id="b-ctrlab" onclick="toggleContourLabels()" title="Contour elevation labels — show elevation numbers on major contours">🏷 Labels</button>
     <button class="tb" id="b-daylight" onclick="toggleDaylight()" title="Daylight line — shows cut/fill boundary where design meets existing ground">📍 Daylight</button>
-    <button class="tb" id="b-passcount" onclick="togglePassCount()" title="Pass count overlay — heat map of machine coverage intensity">🔥 Passes</button>
-    <button class="tb" id="b-stripplan" onclick="toggleStripPlan()" title="Grade strip planner — optimal grading sequence based on design surface gradient">📋 Strips</button>
     <button class="tb blu" onclick="openJobReport()" title="Generate earthwork job report">📊 Report</button>
   </div>
 
@@ -4649,7 +4644,6 @@ body.cab-led-align-hidden #cab-offsets > .cab-offset-cell:not(.cab-offset-cell-h
         <button class="drawer-btn" onclick="genTerrain('embankment')">Embankment</button>
         <button class="drawer-btn" onclick="genTerrain('cut_hill')">Cut Hill</button>
         <button class="drawer-btn" onclick="genTerrain('irrig_bay')">Irrig Bay</button>
-        <button class="drawer-btn" onclick="genTerrain('drone')">Drone DEM</button>
         <button class="drawer-btn" onclick="genTerrain('road_cut')">Road Cut</button>
         <button class="drawer-btn" onclick="genTerrain('house_pad')">House Pad</button>
       </div>
@@ -4670,7 +4664,6 @@ body.cab-led-align-hidden #cab-offsets > .cab-offset-cell:not(.cab-offset-cell-h
         <div style="font-size:9px;color:#4a7aa0;text-transform:uppercase;letter-spacing:1px;padding:6px 4px 4px">Display</div>
         <button class="drawer-btn" data-mirror="b-cf" onclick="toggleCutFill();syncDrawerMirrors()">Cut/Fill</button>
         <button class="drawer-btn" data-mirror="b-ctr" onclick="toggleContours();syncDrawerMirrors()">Contours</button>
-        <button class="drawer-btn" data-mirror="b-survey" onclick="toggleSurvey();syncDrawerMirrors()">Survey</button>
         <button class="drawer-btn" data-mirror="b-split" onclick="toggleSplit();syncDrawerMirrors()">Split</button>
         <button class="drawer-btn" data-mirror="b-cutsim" onclick="toggleCutSim();syncDrawerMirrors()">Cut Sim</button>
         <button class="drawer-btn" data-mirror="b-flow" onclick="toggleFlow();syncDrawerMirrors()">Flow</button>
@@ -5869,19 +5862,6 @@ function genTerrain(type){
         - Math.max(0,0.65-Math.abs(x+0.15)*3.8)*1.1  // natural gully — drainage line
         + Math.sin(x*Math.PI*8+z*7)*0.06             // surface micro-texture
         + (Math.random()-.5)*0.15;
-    }else if(type==='drone'){
-      // Drone DEM: realistic photogrammetry-derived terrain
-      // High-resolution natural landform with micro-relief and drainage features
-      e = 2.5                                        // base elevation reference
-        + x*1.8 + z*0.6                              // regional trend (NW-SE fall)
-        + Math.sin(x*Math.PI*1.6+0.5)*1.4            // main ridge line
-        + Math.cos(z*Math.PI*2.2+0.8)*1.1            // cross undulation
-        + Math.sin((x+z)*Math.PI*0.9)*0.6            // diagonal swells
-        - Math.max(0,0.9-Math.abs(x*2-0.7)*3.5)*1.4  // natural drainage channel (N-S)
-        - Math.max(0,0.7-Math.abs(z*2-0.9)*4)*0.8    // secondary drain (E-W)
-        + Math.sin(x*Math.PI*7+z*5)*0.07             // photogrammetry micro-relief
-        + Math.cos(z*Math.PI*8+x*6)*0.05             // texture noise
-        + (Math.random()-.5)*0.025;                  // point cloud noise ±25mm
     }
     ground[gi(gx,gz)]=e;
   }
@@ -5893,14 +5873,6 @@ function genTerrain(type){
   const sc=document.getElementById('st-cut');if(sc)sc.textContent='0.0m³';
   const pd=document.getElementById('st-prod');if(pd)pd.style.display='none';
   rebuildTerrMesh();clearDesign();genContours();buildFlowLines();buildSlopeWarn();buildTolMesh();buildStakes();buildDaylightMesh();buildPassCountMesh();
-  // Drone terrain: auto-fill survey coverage (simulating photogrammetry)
-  if(type==='drone'){
-    surveyGrid.fill(1);surveyPointCount=N*N;
-    if(!showSurvey){showSurvey=true;document.getElementById('b-survey').classList.add('act');document.getElementById('survey-legend').style.display='block';}
-    rebuildSurveyMesh();
-    // Slice 17 — scout-stats element gone; route the drone status to st-hint instead.
-    document.getElementById('st-hint').textContent='🚁 Drone DEM imported · 100% coverage · 2,847 images · GSD 2.1 cm/px · RMS ±18mm';
-  }
   // Compute and display elevation range
   const minElev=Math.min(...ground);
   const maxElev=Math.max(...ground);
@@ -13526,7 +13498,6 @@ function alignBuildDesign(){
     <button class="dtab" id="dtab-designs" onclick="switchDesignTab('designs')">📋 Designs</button>
     <button class="dtab" id="dtab-profile" onclick="switchDesignTab('profile')">📐 Profile</button>
     <button class="dtab" id="dtab-align" onclick="switchDesignTab('align')">🛣 Align</button>
-    <button id="dp-topo-btn" onclick="toggleTerrain()" style="padding:10px 14px;background:none;border:none;border-left:1px solid #1e4a7a;color:#7aabcc;font-size:12px;cursor:pointer;line-height:1;white-space:nowrap;flex-shrink:0;display:flex;align-items:center;gap:6px;transition:all .15s" title="Tap to cycle: Off → Active → Reference"><span id="dp-topo-led" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#cc3333;box-shadow:0 0 5px rgba(204,51,51,0.6);flex-shrink:0"></span>🏔 Topo <span id="dp-topo-label" style="font-size:10px;font-weight:700;color:#cc3333">OFF</span></button>
     <button onclick="closeDesignPanel()" style="margin-left:auto;padding:10px 18px;background:none;border:none;color:#aaa;font-size:20px;cursor:pointer;line-height:1;flex-shrink:0">✕</button>
   </div>
   <div id="dtab-content" style="flex:1;overflow:auto;position:relative;display:flex;flex-direction:column"></div>
