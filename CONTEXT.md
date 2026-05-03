@@ -287,6 +287,105 @@ Use **blade pose** for "where the blade is" and **blade target** for "where the 
 - **Sensor topology = dual u-blox F9P on poles at blade corners, magnetic mount, Bluetooth to Pi5.** Cross-slope is geometric (tip-to-tip), not IMU-fused. Optional body IMU is post-v1.0 redundant input. (See [ADR-0002](docs/adr/0002-dual-gps-on-blade-corners.md).)
 - **Slice 1 display rule = option (ii): cleanly disable cut/fill display until Slice 2.** Cut/fill mm bars, DES/ACT readouts, tolerance band, on-grade colours show "— No design —" placeholder during Slice 1. Pose-derived values (tip elevations, cross-slope, heading) shown live. Forces the architectural seam to be visible; stops the tangled inline code from running.
 - **Slice 2 = design surface + blade-target seam.** `designSurface.elevAt(x,z)` interface wraps existing `dElev` global. Pure `computeBladeTarget(bladePose, designSurface, options) → BladeTarget` produces the canonical product output (cut/fill mm at each tip, tolerance state, design longGrade). All cut/fill displays restored through the seam. Verified: 1m-above design → 1000.0 mm CUT exact; design = pose.centre.y → ON GRADE green. **LANDED 2026-05-03 (SW v111).**
+- **Centre LED bar = horizontal alignment guidance, NOT centre cut/fill** (locked 2026-05-03 from Trimble grill). The centre bar shows the perpendicular "offline" distance from the blade focus to a selected guidance line. The line can be any of: a polyline drawn in-app, a design line (e.g. edge of a flat pad or slope), or an imported alignment centreline. Green = focus on the line (within tolerance), amber = off the line. The current behaviour (centre cut/fill in centre bar) is a divergence from industry convention and is wrong; centre cut/fill belongs in a text-item or DES/ACT readout instead. Implementation lives in a future slice (post-Slice 3 hardware bring-up). Concept: `selectedGuidanceLine` is a new product-layer entity; `computeBladeTarget` (or a sibling) computes `offlineDistance` from blade pose to that line.
+
+- **Vertical guidance modes adopted in full** (locked 2026-05-03). The operator picks ONE per task from: Right / Centre / Left / Linked-to-Focus / 2-Points. The mode selects the *primary* cut/fill value driving the LED bar, on-grade colour, buzzer, and blade-focus animation. Other tip values stay computed and shown as smaller reference readouts. Mode lives in `BladeTargetOptions.verticalGuidanceMode`. `BladeTarget` gains a `primary: TipTarget` derived from the mode. Implementation in a future slice.
+
+- **Tip inset default 0.2 m** (locked 2026-05-03). Cut/fill is measured at points inset from the absolute blade tips by 0.2 m. Protects against bad readings from worn / damaged tips. Configurable per machine via mounting calibration: `mounting.tipInsetA / tipInsetB`. The blade-pose math is unchanged (still produces the absolute tip positions); the inset is applied downstream in `computeBladeTarget` when sampling the design at the guidance points.
+
+- **Overcut Protection adopted** (locked 2026-05-03). When enabled, `computeBladeTarget` samples the design at multiple points along the cutting edge (not just the guidance points) and reports the worst overcut. Cut/fill output adjusts to prevent overcut. With 2-Points mode: only tips are checked. With other modes: the entire cutting edge is checked. Lives as a `BladeTargetOptions.overcutProtection: bool` toggle. `BladeTarget` gains an `overcut: { detected, worstMm, locationXZ }` field.
+
+- **Geoid + single-point site calibration adopted for v1.0** (locked 2026-05-03). Without these, RTK elevations are wrong by ~30 m at Banksia Springs latitude.
+  - **Geoid**: ship with **AUSGEOID2020** (or equivalent regional file) bundled. RTK ellipsoidal Z → orthometric Z conversion happens in a `src/product/positioning/geoid.js` module between the F9P bridge and the BladePose computation. No user setup needed for AU users. International users add their geoid file later. Public-domain files are fine.
+  - **Single-point benchmark site calibration**: operator drives to a known benchmark, types in the known absolute Z (e.g. `95.247 m AHD`), system computes one elevation offset constant. Lat/long offsets handled by trusting F9P's absolute position with UTM zone selected at site setup.
+  - **Multi-point calibration (3+ benchmarks with rotation/scale fit) deferred** — adequate for one-paddock farms; not needed for the canonical user.
+
+- **NTRIP architecture for v1.0** (locked 2026-05-03 — see ADR-0003):
+  - **Base station**: 1× F9P + GNSS antenna at a fixed location near the farmhouse (Steven's existing setup).
+  - **Base internet**: connected to internet (Starlink, LTE, or fixed broadband at the farmhouse). Runs NTRIP caster (RTKLIB `str2str` or equivalent) — open-source tooling Steven already has.
+  - **Rover side (machine)**: Pi5 has Starlink Mini onboard. Pi5 acts as NTRIP CLIENT — subscribes to the base's RTCM stream, forwards corrections via Bluetooth to both blade-mounted F9P units.
+  - **Total F9P count for v1.0**: 3 units (2 on blade + 1 base). +1 for pogo-stick rover when added.
+  - **GradeOS does NOT bundle a caster** — Steven sets that up himself with existing open-source tools. We DO bundle a setup how-to.
+
+- **Drive-your-design (blade-focus point capture) adopted** (locked 2026-05-03 — *the* canonical owner-operator workflow). Every design tool that takes click-points (Flat Pad, Slope, Crown, Dam, Irrigation Bay, Profile, Align) gains a "Capture from blade focus" mode. Each tap stores the current blade-focus position as a design point. The points feed the same downstream design generation as today's click-on-screen flow — the input source changes, the design tool maths don't.
+  - Steven's example workflow: drive to corner → tap capture → drive to next corner → tap → repeat → tap "Make Flat Pad" → done. 5-minute workflow vs. office-survey-then-transfer-to-cab.
+  - 1 point → flat pad.
+  - 2 points → slope with a line; each side configurable angle (road / drain / batter — angled separately).
+  - N points → polyline (irrigation bay boundary, drain alignment, dam crest).
+  - Default capture source: **blade focus tip** (sub-mm precision when operator drives accurately). Selectable to centre for area-defining work.
+  - Implementation: future slice. The capture-point button consumes the live `BladePose` from Slice 1 — no new architecture, just UI and a new design-input adapter.
+
+- **3D simulator demoted to 3D visualization** (locked 2026-05-03 — major scope cut). The 3D *interactive simulator* (drive the machine with WASD, fake-GPS noise model, terrain generators, scenarios, auto-steer, fleet mode, camera modes, dozer silhouettes, pitch card, demo content) is **out of scope for v1.0 and will be retired**. What stays is a **3D visualization** showing only:
+  - The machine position (from real GPS or stubbed numbers).
+  - The design surfaces, captured points, and alignments.
+  - **No terrain.** Operator never used the topo/map terrain — finds it confusing and annoying.
+  - **No driving.** No keyboard controls, no fake GPS noise, no scenarios, no fleet, no auto-steer.
+  - **Use case:** purely a visualization of "where is my machine relative to my design," useful when laying out an in-app design and wanting to see it in space.
+
+  **Testing approach without the 3D sim:** product-layer modules tested via direct inputs — feed in `bladePose` and `designSurface` values, assert on `BladeTarget` outputs. This is exactly how Slices 1+2 were verified (via Preview MCP `eval`, never by visually driving the dozer). Cleaner, faster, deterministic.
+
+  **Implications:**
+  - Most of the polish work in `index.html` from Rounds A-D and v104-v109 (terrain generators, machine kinematics, camera modes, dozer photos, demo scenarios, fleet mode, auto-steer, pitch card) becomes **legacy code** — kept temporarily, retired progressively as new slices land.
+  - `index.html` should split into `simulator.html` (the demoted demo) and a new `cab.html` (operator screen + product modules + minimal pose stub) — or the existing file shrinks dramatically as legacy is removed. Decision deferred to a cleanup slice.
+  - Slice 3 (F9P NMEA bridge) becomes more important — it provides the *real* data source that replaces the fake-GPS generator, removing the last reason to keep the sim driving.
+
+- **Rapid-fire decisions from the Trimble grilling** (locked 2026-05-03):
+  - **(a) Audio buzzer on grade** — adopted, **default OFF**. Steven finds it annoying; some operators like it. Toggle in System Settings.
+  - **(b) System Settings vs Work Settings split** — adopted. System Settings = persistent calibration (units, tolerance, mounting, RTK source) hidden behind icon. Work Settings = per-task (elevation offset, blade focus, vertical guidance mode, record-point) easy access from work screen.
+  - **(c) Configurable text ribbon** — adopted. Operator picks/orders the ribbon items. Sensible defaults shipped; reorder/customise enabled v1.0.
+  - **(d) Multiple guidance views (up to 3 simultaneous)** — adopted. v1.0 baseline: plan + cross-section + long-section. Operator picks layout (which view gets the half/third screen). 3D view stays as a sim-only option, not on the real cab screen.
+  - **(e) Cutting edge length per side (A and B values)** — adopted. Two numbers in mounting calibration; handles asymmetric wear and rotated blade configurations.
+  - **(f) Blade-wear periodic reminder** — adopted as a **time-based reminder** (every N hours, prompt "check and update blade-edge length"). NOT auto-detection. Configurable interval. Reason: operators forget to update wear length → GPS calibration drifts silently → grade is "way off" until someone notices.
+  - **(g) RTK fix-quality coloured display + tolerance/accuracy gate** — adopted with critical safety addition. Tolerance presets per work type (rough ±100 mm / medium / fine ±20 mm, editable). When RTK accuracy from F9P exceeds the active tolerance, the cut/fill display **blanks out with a warning** ("RTK not accurate enough for this tolerance — change settings or wait for FIX") rather than showing false-precision. Loss of signal blanks display entirely. **The system must refuse to display cut/fill it can't actually back up with positioning.**
+  - **(h) Single-antenna degraded mode + IMU-per-head redundancy** — adopted. Each F9P unit on the blade carries an onboard IMU. When both antennas are online and FIXED: use pure geometric cross-slope (per ADR-0002 — IMU ignored, no bouncy-IMU problem). When one antenna is lost: fall back to the surviving antenna's IMU for cross-slope, with a visible "DEGRADED MODE — bulking-grade accuracy only" banner. Updates the spec in ADR-0002 to allow IMUs in the F9P units; the IMU-bounce concern only applied to using IMU as the *primary* cross-slope source, which we still don't.
+
+- **Line-based design generation modes adopted** (locked 2026-05-03 — building on drive-your-design):
+  - **Flat Pad** (existing) — single elevation across an area.
+  - **Slope** — single cross-slope plane attached to a captured line. Use Trimble terminology.
+  - **Dual Slope** — two-plane surface attached to a captured line, with mirrored OR independent left/right angles. Covers crown and dam shapes from one mode.
+  - **Profile Designer** — new feature Steven specifically wants. Take a captured polyline (drive-your-design with N>2 points), smooth/optimise it under operator-set constraints: maximum grade %, maximum cut depth, maximum fill depth. Output: a smoothed design alignment that becomes the guidance surface. Especially useful for drain channels (positive-fall constraint), roads (max grade limit), and irrigation alignments. **Implementation: focused Slice in its own right** — needs constraint-solver math + UI for the constraint sliders.
+  - **Defaults: lines and surfaces extend to infinity.** No Point A/B extension or Surface Width parameters in the default UI. Width / alignment / extensions available as **advanced options** for the cases that need them (roads, irrigation bays where the design is bounded).
+  - **Trimble terminology adopted** (Slope, Dual Slope, Surface Width, Point A/B Extensions, mirrored vs unique slopes) — industry-standard, anyone coming from another system recognises it.
+  - **Implementation pattern**: each tool accepts input points either by clicking on screen OR by selecting from captured points (drive-your-design output). Same downstream maths.
+
+- **Point capture & organisation adopted** (locked 2026-05-03):
+  - **Auto-suffix tap capture**: tap once with name "Manhole" → next taps create "Manhole 1, Manhole 2, ..." with no further prompts. Fast-path workflow — no form-fill per point. "Always Prompt" toggle for when the operator wants to set name/code on each capture.
+  - **Measured Data containers**: lightweight grouping of captured points. Auto-created per session by default (e.g. `2026-05-03 14:32 South Paddock`). Operator can rename later. Containers prevent the "500 unnamed points in one global pool by year 2" problem.
+  - **Navigate To Point**: pick a saved point from the manager → system shows direction, horizontal distance, and vertical depth to drive there. Useful for finding marked features (yesterday's dam-wall corner). Work screen border turns blue while in nav mode; tap icon to exit.
+  - **Skipped for v1.0**: Office vs Field point distinction (everything is the user's data, single storage), Code field (adds form complexity owner-operators don't need), `.deleted` audit-trail archive of removed points (Trimble does this for compliance — not relevant here).
+  - Implementation: future slice. Builds on `BladePose` (capture source) and the new Project layer (point storage scoped to a Project).
+
+- **Pogo-stick / handheld GPS survey rover adopted** (locked 2026-05-03). A **third F9P unit** mounted on a vertical handheld pole ("pogo stick"), Bluetooth-paired to the Pi5 alongside the two blade antennas. The operator can step out of the cab and walk the site, capturing design points on foot — saves diesel, reaches spots the dozer can't (paddock corners, fence-tight spots, around obstacles).
+  - Same capture workflow as blade-focus but with the pogo stick as the GPS source instead of the blade.
+  - Same BladePose-style geometry but for one antenna only (a "handheld pose" — single point with a known mounting offset = pole length to ground).
+  - Hardware: extends ADR-0002's dual-GPS spec to N-antenna. Pi5 must support 3 simultaneous Bluetooth F9P streams. Approximate added hardware cost: $200 for the third F9P + $50 for the pole and magnetic-mount.
+  - Calibration: the pogo stick has its own mounting offset (typically 1.8 m pole top → ground tip).
+  - **Whether v1.0 or v1.1 depends on hardware availability** — if Steven has the third F9P at v1.0 build time, ship together; otherwise blade-focus capture goes in v1.0 and pogo-stick is v1.1.
+  - Architectural seam: a `gpsSource` registry — multiple F9P units register; UI shows which one is "active for capture" at any time; `computeBladePose` consumes the two blade antennas, `computeHandheldPose` consumes the pogo stick.
+
+- **Project / Design / Surface hierarchy adopted** (locked 2026-05-03). v1.0 grows the data model from a flat `designLibrary[]` to:
+  ```
+  Project (the site, e.g. "Banksia North Paddock")
+    ├── Design (a saved target — flat pad, irrigation bay, dam, etc.)
+    │     ├── Guidance Surface (the one being actively graded — exactly one at a time)
+    │     └── Reference Surface(s) (up to 2 — shown on cross-section / profile views as
+    │                               context, NOT graded to)
+    └── (Avoidance zones deferred post-v1.0)
+  ```
+  - **Project selector** in UI (dropdown). Switching projects filters the design list to that project's designs. No cross-project leakage.
+  - **Reference surfaces** are designs marked as "show on cross/profile only" via a toggle. They render as outlines on those views so the operator can see "where I started + where I'm going" at the same time. Pure display layer, no math change to `computeBladeTarget`.
+  - **Avoidance zones** explicitly out of v1.0 (Steven uses them rarely). Post-v1.0 add-on; would be polygons stored on the Project that flag a warning when the blade enters them.
+  - **Storage migration:** existing flat `designLibrary[]` content lands inside a single default Project on first load (back-compat).
+  - Implementation: candidate for Slice 5 (after F9P + display redesign + offset rework).
+
+- **Two-layer offset model adopted** (locked 2026-05-03). High importance — Steven uses this constantly. v1.0 ships:
+  - **Elevation Offset** (per-pass shift) — what the current `vOffset` represents; renamed in code to `elevationOffset` for clarity. Has its own memory presets, cycled via inc/dec.
+  - **Working Surface Offset** (bulk target shift) — separate setting for "I'm targeting a surface N mm offset from design until I say otherwise" (subgrade prep, base-build workflows). Has its own value, NOT the same memories as elevation offset.
+  - Combined target: `target_z = designElev + workingSurfaceOffset + elevationOffset`.
+  - Workflow example: working surface offset = −300 mm (subgrade); operator bulk-cuts down with elevation offset = 0 (at working surface); then builds back up by setting elevation offset memory to +50, +100, +150 ... +300 (back at design).
+  - Default offset direction: **vertical**. Perpendicular is a post-v1.0 opt-in toggle (`offsetMode: 'vertical' | 'perpendicular'`) for sloped designs (dam batters, crowned shoulders, irrigation bay sidewalls).
+  - Implementation lives in a future slice (Slice 4 candidate — directly extends `BladeTargetOptions` and `computeBladeTarget`, no new modules required).
+  - **Updated v1.0 in-scope list:** the "v-offset (±500 mm)" entry above is now superseded by "elevation offset + working surface offset + memory presets, vertical mode."
 
 ---
 

@@ -49,6 +49,14 @@ mounting = {
 
 A body-mounted IMU may be added as a *redundant* sensor for sanity-checking the pose or as an RTK-loss fallback. It is **not** the primary cross-slope source. The two GPS antennas are.
 
+### IMU-per-blade-antenna for single-antenna degraded mode (added 2026-05-03)
+
+Each F9P unit on the blade may carry an onboard IMU (most F9P-class boards include one). The IMU is **only used in degraded mode**, when its partner antenna has been lost (FLOAT, disconnected, or no fix). When both antennas are FIXED, geometric cross-slope from the two GPS positions remains the authoritative source — IMU is ignored.
+
+This dodges the bouncy-IMU concern in this ADR's Positive section: that concern was about using IMU as the *primary* cross-slope source on a vibrating blade. As a fallback only used when geometric cross-slope is already unavailable, IMU's accuracy is sufficient for the bulking-grade work that's all that's reasonable in degraded mode anyway.
+
+Operator UI must show a clear "DEGRADED MODE — bulking-grade accuracy only" banner whenever IMU-fallback cross-slope is in use.
+
 ## Consequences
 
 ### Positive
