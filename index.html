@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GradeOS Simulator v0.9 · SW v131</title>
+<title>GradeOS Simulator v0.9 · SW v132</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <!-- Slice 11.5 — GLTF model loader (Three.js example loaders are global scripts, not modules) -->
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -808,11 +808,12 @@ const CAB_TOOLBAR_CATALOG=[
   {key:'overlays',       label:'Overlays',          icon:'👁'},
   {key:'profile',        label:'Profile Designer',  icon:'⌒'},  // Slice 6
   {key:'selectline',     label:'Select Guidance Line', icon:'╱'}, // Slice 9
+  {key:'designs',        label:'Designs Panel',     icon:'📐'},  // Slice 13 — opens legacy design panel
   {key:'editribbon',     label:'Edit Text Ribbon',  icon:'≡'},
   {key:'worksettings',   label:'Work Settings',     icon:'▤'},
   {key:'systemsettings', label:'System Settings',   icon:'⚙'},
 ];
-const CAB_TOOLBAR_DEFAULT=['focus','record','changeview','overview','profile','selectline','worksettings','systemsettings'];
+const CAB_TOOLBAR_DEFAULT=['focus','record','designs','changeview','overview','selectline','worksettings','systemsettings'];
 let _cabToolbarDraft=[];
 function cabOpenEditToolbar(){
   _cabToolbarDraft=[...cabPaneState.toolbar];
@@ -1194,7 +1195,22 @@ function _cabDrawPaneSprite(paneIdx){
   const s = Math.min(cw / iw, ch / ih);
   const dw = iw * s, dh = ih * s;
   const dx = (cw - dw) / 2, dy = (ch - dh) / 2;
-  ctx.drawImage(img, dx, dy, dw, dh);
+  // Slice 13 — for the top/plan view, rotate the sprite to match the
+  // machine's heading. The dozer image IS the heading indicator —
+  // operator sees the dozer rotate as they steer, no separate icon needed.
+  // Cross/long views stay machine-relative (sprite always shows the
+  // same side of the dozer regardless of heading).
+  if(view === 'plan'){
+    const pose = window._cabLastPose;
+    const heading = (pose && pose.heading != null) ? pose.heading : 0;
+    ctx.save();
+    ctx.translate(cw / 2, ch / 2);
+    ctx.rotate(heading);  // canvas rotates clockwise for +ve angles; matches sim heading convention
+    ctx.drawImage(img, -dw/2, -dh/2, dw, dh);
+    ctx.restore();
+  } else {
+    ctx.drawImage(img, dx, dy, dw, dh);
+  }
   // Slice 12 — draw live cut/fill / alignment overlays on top of the sprite.
   _cabDrawPaneOverlay(ctx, view, cw, ch);
 }
@@ -1241,6 +1257,11 @@ function _cabCmmLabel(cmm){
   return (cmm>0?'+':'') + cmm.toFixed(0) + ' mm';
 }
 function _drawCrossOverlay(ctx, cw, ch, target){
+  // Slice 13 — only draw the design line / tolerance band when an actual
+  // design is loaded AND has data at the blade. Otherwise the green band
+  // is visually dishonest (suggests a target exists when none does).
+  const hasDesign = !!(target && (target.tipA || target.tipB || target.centre));
+  if(!hasDesign) return;
   // Cross-section: design line horizontal in the middle, tolerance band,
   // blade-tip indicator above/below depending on cut/fill. Shows centre,
   // tipA, tipB.
@@ -1258,13 +1279,6 @@ function _drawCrossOverlay(ctx, cw, ch, target){
   ctx.moveTo(0, designY); ctx.lineTo(cw, designY);
   ctx.stroke();
   ctx.setLineDash([]);
-  if(!target){
-    ctx.fillStyle = 'rgba(122, 160, 192, 0.7)';
-    ctx.font = 'bold 13px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText('— NO DESIGN —', cw/2, designY - tolPx - 10);
-    return;
-  }
   // Three tips: A on left, centre middle, B on right
   const tips = [
     { tip: target.tipA,   x: cw * 0.22, label: 'L' },
@@ -1297,6 +1311,9 @@ function _drawCrossOverlay(ctx, cw, ch, target){
   });
 }
 function _drawLongOverlay(ctx, cw, ch, target){
+  // Slice 13 — gate overlay on actual design presence.
+  const hasDesign = !!(target && (target.tipA || target.tipB || target.centre));
+  if(!hasDesign) return;
   // Long-section: design grade line slanted by longGrade %, centre tip
   // indicator above/below. Shows the operator how the design grade
   // changes as they move forward.
@@ -1321,13 +1338,6 @@ function _drawLongOverlay(ctx, cw, ch, target){
   ctx.lineTo(cw, designY - slopeRisePx/2);
   ctx.stroke();
   ctx.setLineDash([]);
-  if(!target){
-    ctx.fillStyle = 'rgba(122, 160, 192, 0.7)';
-    ctx.font = 'bold 13px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText('— NO DESIGN —', cw/2, designY - tolPx - 10);
-    return;
-  }
   // Centre cut/fill indicator at midspan
   if(target.centre){
     const cmm = target.centre.cutFillMm;
@@ -1351,25 +1361,41 @@ function _drawLongOverlay(ctx, cw, ch, target){
   ctx.fillText('GRADE: ' + (grade>=0?'+':'') + grade.toFixed(2) + '%', cw - 8, 14);
 }
 function _drawPlanOverlay(ctx, cw, ch, pose){
-  // Plan: draw the alignment polyline (if selected), recorded points,
-  // heading arrow at machine. Reads selectedGuidanceLine from globals.
+  // Slice 13 — the dozer SPRITE is now the heading indicator (it rotates
+  // with the machine). We no longer draw a separate yellow icon. We DO
+  // still draw the alignment polyline and recorded points, transformed
+  // into the sprite's rotated reference frame so they appear to slide
+  // past as the machine moves and turns.
   if(typeof selectedGuidanceLine === 'undefined') return;
-  // World coords visible in this pane: ±radius around the machine.
+  if(!pose){ return; }
+  // The sprite was drawn with: translate(cw/2, ch/2) + rotate(heading).
+  // To overlay world points onto the same image space, we apply the
+  // same transform here: machine at origin, world rotated by heading.
   const radiusM = 30;
   const ppm = Math.min(cw, ch) / (radiusM * 2); // pixels per metre
   const cx = cw / 2, cy = ch / 2;
-  if(!pose){ return; }
   const mx = pose.centre ? pose.centre.x : 0;
   const mz = pose.centre ? pose.centre.z : 0;
-  const w2pX = (wx) => cx + (wx - mx) * ppm;
-  const w2pY = (wz) => cy - (wz - mz) * ppm; // image Y inverted
+  // Convert (worldX, worldZ) to pane pixels in machine-centric, heading-up frame.
+  const heading = pose.heading || 0;
+  const cosH = Math.cos(heading), sinH = Math.sin(heading);
+  const w2p = (wx, wz) => {
+    // Translate so machine is origin.
+    const dx = wx - mx, dz = wz - mz;
+    // Rotate world so machine's heading points up in image. Sim convention:
+    // heading=0 → +Z forward → +Z should be up (-Y) in image. Then a heading
+    // increases clockwise from above. We rotate world by -heading.
+    const rx = dx * cosH - dz * sinH;
+    const rz = dx * sinH + dz * cosH;
+    return { x: cx + rx * ppm, y: cy - rz * ppm };
+  };
   // Recorded points (orange dots)
   if(window._cabRecordedPoints && window._cabRecordedPoints.length){
     ctx.fillStyle = 'rgba(232, 160, 32, 0.85)';
     window._cabRecordedPoints.forEach(p => {
-      const x = w2pX(p.x), y = w2pY(p.z);
-      if(x < 0 || x > cw || y < 0 || y > ch) return;
-      ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI*2); ctx.fill();
+      const pt = w2p(p.x, p.z);
+      if(pt.x < 0 || pt.x > cw || pt.y < 0 || pt.y > ch) return;
+      ctx.beginPath(); ctx.arc(pt.x, pt.y, 3, 0, Math.PI*2); ctx.fill();
     });
   }
   // Selected guidance line (cyan polyline)
@@ -1378,13 +1404,12 @@ function _drawPlanOverlay(ctx, cw, ch, pose){
     ctx.lineWidth = 2.5;
     ctx.beginPath();
     selectedGuidanceLine.points.forEach((p, i) => {
-      const x = w2pX(p.x), y = w2pY(p.z);
-      if(i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      const pt = w2p(p.x, p.z);
+      if(i === 0) ctx.moveTo(pt.x, pt.y); else ctx.lineTo(pt.x, pt.y);
     });
     ctx.stroke();
-    // Apply horizontal alignment offset visualisation: a parallel line
+    // Horizontal alignment offset parallel line
     if(typeof horizontalAlignmentOffset === 'number' && Math.abs(horizontalAlignmentOffset) > 1e-6){
-      // Compute offset endpoints (perpendicular to line tangent at each segment)
       const off = horizontalAlignmentOffset;
       ctx.strokeStyle = 'rgba(232, 160, 32, 0.85)';
       ctx.setLineDash([6, 4]);
@@ -1396,31 +1421,17 @@ function _drawPlanOverlay(ctx, cw, ch, pose){
         const len = Math.hypot(dx, dz);
         if(len < 1e-6) continue;
         const ux = dx/len, uz = dz/len;
-        // Right-perpendicular = (uz, -ux)
         const px0 = p0.x + uz * off, pz0 = p0.z - ux * off;
         const px1 = p1.x + uz * off, pz1 = p1.z - ux * off;
-        if(i === 0) ctx.moveTo(w2pX(px0), w2pY(pz0));
-        ctx.lineTo(w2pX(px1), w2pY(pz1));
+        const pt0 = w2p(px0, pz0);
+        const pt1 = w2p(px1, pz1);
+        if(i === 0) ctx.moveTo(pt0.x, pt0.y);
+        ctx.lineTo(pt1.x, pt1.y);
       }
       ctx.stroke();
       ctx.setLineDash([]);
     }
   }
-  // Machine indicator (centre, with heading arrow)
-  ctx.save();
-  ctx.translate(cx, cy);
-  ctx.rotate(-pose.heading); // pose.heading: 0 = +Z forward (up in image)
-  // Body rect
-  ctx.fillStyle = 'rgba(232, 160, 32, 0.95)';
-  ctx.fillRect(-6, -8, 12, 16);
-  // Heading arrow (forward triangle)
-  ctx.beginPath();
-  ctx.moveTo(0, -14);
-  ctx.lineTo(-4, -8);
-  ctx.lineTo(4, -8);
-  ctx.closePath();
-  ctx.fill();
-  ctx.restore();
   // Scale legend (bottom-left)
   ctx.fillStyle = 'rgba(122, 160, 192, 0.7)';
   ctx.font = 'bold 10px monospace';
@@ -1907,6 +1918,11 @@ function cabToolTap(which){
     cabRecordPoint();  // Slice 4f
   }else if(which==='profile'){
     cabOpenProfileDesigner();  // Slice 6
+  }else if(which==='designs'){
+    // Slice 13 — open legacy Designs panel above the cab. The panel's
+    // inherent z-index puts it above the cab UI; the operator can close
+    // it back to the cab.
+    if(typeof openDesignPanel === 'function') openDesignPanel('designs');
   }else if(which==='selectline'){
     cabOpenSelectLine();  // Slice 9
   }else if(which==='overview'){
@@ -3377,6 +3393,9 @@ body.cab-mode .three-canvas{
   display:block;
   background:#0a1520;
 }
+/* Slice 13 — when the legacy Designs panel is opened from cab mode it
+   needs to sit above the cab overlay (cab is z:7500). */
+body.cab-mode #design-panel{ z-index: 9100 !important; }
 
 /* ── Slice 4c — Modal overlays ───────────────────────────────────────── */
 .cab-overlay{
