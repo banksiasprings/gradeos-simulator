@@ -1,1 +1,3 @@
 .claude/
+# Slice 11.5 — symlinked model assets live outside the repo.
+assets/
