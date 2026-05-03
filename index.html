@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GradeOS Simulator v0.9 · SW v135</title>
+<title>GradeOS Simulator v0.9 · SW v136</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <!-- Slice 11.5 — GLTF model loader (Three.js example loaders are global scripts, not modules) -->
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -1455,12 +1455,18 @@ function _planW2p(cw, ch, pose){
   const mx = pose && pose.centre ? pose.centre.x : 0;
   const mz = pose && pose.centre ? pose.centre.z : 0;
   const heading = (pose && pose.heading != null) ? pose.heading : 0;
-  const cosNH = Math.cos(-heading), sinNH = Math.sin(-heading);
+  // Slice 14.2 — Track-up rotation. Sim's machine-forward at heading h is
+  // (sin(h), cos(h)) in (X,Z). To rotate that vector to (0,1) — i.e., +Z,
+  // which maps to screen-UP via the standard `cy - dz*ppm` mapping — we
+  // need to apply rotation by +h (CCW). The earlier code applied -h, which
+  // sent forward to screen-DOWN. The dozer always pointing up but the world
+  // turning the wrong way under it was the symptom Steven reported.
+  const cosH = Math.cos(heading), sinH = Math.sin(heading);
   const w2p = (wx, wz) => {
     const dx = wx - mx, dz = wz - mz;
     if(mode === 'track'){
-      const rx = dx * cosNH - dz * sinNH;
-      const rz = dx * sinNH + dz * cosNH;
+      const rx = dx * cosH - dz * sinH;
+      const rz = dx * sinH + dz * cosH;
       return { x: cx + rx * ppm, y: cy - rz * ppm };
     }
     return { x: cx + dx * ppm, y: cy - dz * ppm };
