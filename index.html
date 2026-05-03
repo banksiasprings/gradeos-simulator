@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GradeOS Simulator v0.9 · SW v148</title>
+<title>GradeOS Simulator v0.9 · SW v149</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <!-- Slice 11.5 — GLTF model loader (Three.js example loaders are global scripts, not modules) -->
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -1929,6 +1929,9 @@ function cabOpenProfileDesigner(){
             ? (designLibrary.length+1) : 1;
     nameField.value='Design '+n;
   }
+  // Slice 25 — reset source pickers to defaults on open.
+  if(typeof cabPDStep1SetSource==='function')cabPDStep1SetSource('points');
+  if(typeof cabPDStep2SetSource==='function')cabPDStep2SetSource('templates');
   cabPDGotoStep(1);
 }
 
@@ -1997,6 +2000,87 @@ function cabPDUpdateFooter(){
     next.textContent='✓ Apply Design';
     next.disabled=!cabPDStepValid(3);
   }
+}
+
+// ── Slice 25 — Source-picker tiles for Step 1 + Step 2 ───────────────
+let _cabPDStep1Source='points';
+let _cabPDStep2Source='templates';
+
+function cabPDStep1SetSource(src){
+  _cabPDStep1Source=src;
+  // Update tile selection within Step 1 only.
+  document.querySelectorAll('#cab-pd-pane-1 .cab-wizard-tile').forEach(t=>{
+    t.classList.toggle('is-active', t.dataset.source===src);
+  });
+  // Toggle source-body visibility within Step 1 only.
+  document.querySelectorAll('#cab-pd-pane-1 .cab-pd-source-body').forEach(b=>{
+    b.classList.toggle('hidden', b.dataset.source!==src);
+  });
+  // Side-effects per source.
+  if(src==='points'){
+    // Default to recorded-points loader on Points selection.
+    if(_cabPDPolySource!=='manual') cabPDSetPolySource('recorded');
+  } else if(src==='focus'){
+    cabPDUpdateFocusList();
+    const hint=document.getElementById('cab-pd-poly-hint');
+    if(hint)hint.textContent='Drive the dozer to a corner of the alignment, tap "+ Drop Vertex". Repeat for each vertex.';
+  }
+  cabPDUpdateFooter();
+}
+
+function cabPDStep2SetSource(src){
+  if(src==='focus')return; // disabled stub
+  _cabPDStep2Source=src;
+  document.querySelectorAll('#cab-pd-pane-2 .cab-wizard-tile').forEach(t=>{
+    t.classList.toggle('is-active', t.dataset.source===src);
+  });
+  document.querySelectorAll('#cab-pd-pane-2 .cab-pd-source-body').forEach(b=>{
+    b.classList.toggle('hidden', b.dataset.source!==src);
+  });
+  cabPDUpdateFooter();
+}
+
+function cabPDDropVertexFromFocus(){
+  // B1 — explicit Drop Vertex button. Captures current blade-focus
+  // position from window._cabLastPose. Sim mode counts (machinePos →
+  // bladePose path is the same in sim and on real F9P).
+  const pose=window._cabLastPose;
+  const hint=document.getElementById('cab-pd-poly-hint');
+  if(!pose||!pose.centre){
+    if(hint)hint.textContent='⚠ No blade pose available — wait for RTK fix or start the sim.';
+    return;
+  }
+  const ta=document.getElementById('cab-pd-polyline');
+  if(!ta)return;
+  // Strip placeholder lines if textarea was untouched.
+  const cur=(ta.value||'').split(/\n/).filter(l=>{
+    const t=l.trim(); return t && !t.startsWith('#');
+  }).join('\n');
+  const line=pose.centre.x.toFixed(2)+','+pose.centre.z.toFixed(2)+','+pose.centre.y.toFixed(3);
+  ta.value=(cur?cur+'\n':'')+line;
+  cabPDUpdateFocusList();
+  if(hint)hint.textContent='✓ Vertex captured at ('+pose.centre.x.toFixed(2)+', '+pose.centre.z.toFixed(2)+'). Drive to next, tap again.';
+  cabPDUpdateFooter();
+}
+
+function cabPDUpdateFocusList(){
+  const list=document.getElementById('cab-pd-focus-list');
+  if(!list)return;
+  const pts=cabPDParsePolyline();
+  if(pts.length===0){
+    list.innerHTML='<div style="color:#7aa0c0;font-style:italic;font-size:11px">No vertices yet.</div>';
+  }else{
+    list.innerHTML=pts.map(function(p,i){
+      const elev=(p.elev!=null)?', '+p.elev.toFixed(3)+'m':'';
+      return '<div style="font-family:monospace;font-size:11px;color:#dce8f5;padding:2px 0">V'+(i+1)+': ('+p.x.toFixed(2)+', '+p.z.toFixed(2)+')'+elev+'</div>';
+    }).join('');
+  }
+}
+
+function cabPDClearAlignment(){
+  const ta=document.getElementById('cab-pd-polyline');
+  if(ta)ta.value='';
+  cabPDUpdateFocusList();
 }
 
 function cabPDUpdateSummary(){
@@ -3751,6 +3835,42 @@ body.cab-mode #design-panel{ z-index: 9100 !important; }
 }
 .cab-wizard-pane.hidden{ display:none }
 
+/* ── Slice 25 — Source-picker tiles (Step 1 + Step 2) ────────────── */
+.cab-wizard-tiles{
+  display:flex; gap:10px; margin-bottom:10px;
+}
+.cab-wizard-tile{
+  flex:1;
+  display:flex; flex-direction:column; align-items:center; gap:6px;
+  padding:14px 10px;
+  background:#0a1f35;
+  border:2px solid #1a3a5a;
+  border-radius:8px;
+  color:#dce8f5;
+  cursor:pointer;
+  transition:all .15s;
+  min-height:108px;
+  text-align:center;
+  font-family:inherit;
+}
+.cab-wizard-tile:hover:not(.is-disabled):not(:disabled){
+  background:#1a3a5a; border-color:#3a6090;
+}
+.cab-wizard-tile.is-active{
+  background:#1a3a5a; border-color:#e8a020;
+  box-shadow:0 0 12px rgba(232,160,32,.3);
+}
+.cab-wizard-tile.is-disabled,
+.cab-wizard-tile:disabled{
+  opacity:.45; cursor:not-allowed;
+}
+.cab-wizard-tile-icon{ font-size:28px; line-height:1; }
+.cab-wizard-tile-title{ font-size:14px; font-weight:800; color:#fff; letter-spacing:.3px }
+.cab-wizard-tile-desc{ font-size:10px; color:#7aa0c0; line-height:1.4 }
+
+.cab-pd-source-body{ /* container for source-specific input controls */ }
+.cab-pd-source-body.hidden{ display:none }
+
 /* Touch-friendly Next/Apply target (A1 — live daily, gloves on). */
 .cab-btn-apply:disabled{
   background:#3a4a5a; color:#5a6a7a; cursor:not-allowed;
@@ -4507,35 +4627,95 @@ body.cab-led-align-hidden #cab-offsets > .cab-offset-cell:not(.cab-offset-cell-h
 
       <!-- STEP 1: Alignment -->
       <div class="cab-wizard-pane" id="cab-pd-pane-1">
-        <div class="cab-field">
-          <label class="cab-field-label">Source</label>
+        <!-- Source picker tiles (Slice 25) -->
+        <div class="cab-wizard-tiles">
+          <button class="cab-wizard-tile is-active" data-source="points" onclick="cabPDStep1SetSource('points')">
+            <div class="cab-wizard-tile-icon">📍</div>
+            <div class="cab-wizard-tile-title">Points</div>
+            <div class="cab-wizard-tile-desc">Use saved recorded points.</div>
+          </button>
+          <button class="cab-wizard-tile" data-source="focus" onclick="cabPDStep1SetSource('focus')">
+            <div class="cab-wizard-tile-icon">🎯</div>
+            <div class="cab-wizard-tile-title">Focus</div>
+            <div class="cab-wizard-tile-desc">Drive + tap to capture from blade.</div>
+          </button>
+          <button class="cab-wizard-tile is-disabled" data-source="templates" disabled title="Saved alignment templates — coming in Slice 31">
+            <div class="cab-wizard-tile-icon">📦</div>
+            <div class="cab-wizard-tile-title">Templates</div>
+            <div class="cab-wizard-tile-desc">Saved alignments (soon).</div>
+          </button>
+        </div>
+
+        <!-- Source-specific input controls -->
+        <div class="cab-pd-source-body" data-source="points">
           <div class="cab-field-row">
             <button class="cab-radio" id="cab-pd-poly-recorded" onclick="cabPDSetPolySource('recorded');cabPDUpdateFooter()">Use recorded points</button>
             <button class="cab-radio" id="cab-pd-poly-manual"   onclick="cabPDSetPolySource('manual');cabPDUpdateFooter()">Manual entry</button>
           </div>
-          <textarea id="cab-pd-polyline" rows="6" oninput="cabPDUpdateFooter()" style="width:100%;background:#08131f;border:1px solid #1a2840;color:#dce8f5;font-family:'Menlo',monospace;font-size:12px;padding:6px;border-radius:3px;margin-top:6px" placeholder="Format: x1,z1 (one per line). Z-elevation taken from terrain unless 3 columns: x1,z1,elev1"></textarea>
+        </div>
+        <div class="cab-pd-source-body hidden" data-source="focus">
+          <button class="cab-btn-apply" style="font-size:14px;padding:14px 24px;width:auto" onclick="cabPDDropVertexFromFocus()">+ Drop Vertex from Blade Focus</button>
+          <div class="cab-field-row" style="margin-top:6px">
+            <button class="cab-btn-secondary" onclick="cabPDClearAlignment();cabPDUpdateFooter()">Clear all vertices</button>
+          </div>
+          <div id="cab-pd-focus-list" style="margin-top:8px;max-height:140px;overflow-y:auto;background:#08131f;border:1px solid #1a2840;border-radius:4px;padding:8px"></div>
+        </div>
+        <div class="cab-pd-source-body hidden" data-source="templates">
+          <div class="cab-field-hint" style="text-align:center;padding:30px;font-style:italic;color:#7aa0c0">📦 Saved alignment templates land in Slice 31.</div>
+        </div>
+
+        <!-- Always-visible polyline source-of-truth (advanced edit) -->
+        <div class="cab-field" style="margin-top:14px">
+          <label class="cab-field-label">Alignment vertices (edit if needed)</label>
+          <textarea id="cab-pd-polyline" rows="5" oninput="cabPDUpdateFooter();cabPDUpdateFocusList()" style="width:100%;background:#08131f;border:1px solid #1a2840;color:#dce8f5;font-family:'Menlo',monospace;font-size:12px;padding:6px;border-radius:3px" placeholder="Format: x1,z1 (one per line). Z-elevation taken from terrain unless 3 columns: x1,z1,elev1"></textarea>
           <div class="cab-field-hint" id="cab-pd-poly-hint">Polyline ordered along travel direction. Profile sweeps perpendicular to local heading. Min 2 points.</div>
         </div>
       </div>
 
       <!-- STEP 2: Section -->
       <div class="cab-wizard-pane hidden" id="cab-pd-pane-2">
-        <div class="cab-field">
-          <label class="cab-field-label">Templates</label>
+        <!-- Source picker tiles (Slice 25) -->
+        <div class="cab-wizard-tiles">
+          <button class="cab-wizard-tile" data-source="onscreen" onclick="cabPDStep2SetSource('onscreen')">
+            <div class="cab-wizard-tile-icon">✏️</div>
+            <div class="cab-wizard-tile-title">On-Screen</div>
+            <div class="cab-wizard-tile-desc">Click on the canvas to add vertices.</div>
+          </button>
+          <button class="cab-wizard-tile is-disabled" data-source="focus" disabled title="Define the section by driving to known offsets — coming in a later slice">
+            <div class="cab-wizard-tile-icon">🎯</div>
+            <div class="cab-wizard-tile-title">Focus</div>
+            <div class="cab-wizard-tile-desc">Drive offsets to define section (soon).</div>
+          </button>
+          <button class="cab-wizard-tile is-active" data-source="templates" onclick="cabPDStep2SetSource('templates')">
+            <div class="cab-wizard-tile-icon">📦</div>
+            <div class="cab-wizard-tile-title">Templates</div>
+            <div class="cab-wizard-tile-desc">Pick from 6 built-in profile presets.</div>
+          </button>
+        </div>
+
+        <!-- Source-specific input controls -->
+        <div class="cab-pd-source-body hidden" data-source="onscreen">
+          <div class="cab-field-hint" style="margin-bottom:6px">Click on the canvas below to add a vertex. Drag to move. Double-click to delete. Centre line (u=0) is the alignment.</div>
+        </div>
+        <div class="cab-pd-source-body" data-source="templates">
           <div class="cab-field-row">
             <button class="cab-radio" id="cab-pd-preset-flat"     onclick="cabPDLoadPreset('flat');cabPDUpdateFooter()">Flat</button>
             <button class="cab-radio" id="cab-pd-preset-crown"    onclick="cabPDLoadPreset('crown');cabPDUpdateFooter()">Crown (road)</button>
             <button class="cab-radio" id="cab-pd-preset-vdrain"   onclick="cabPDLoadPreset('vdrain');cabPDUpdateFooter()">V-drain</button>
-            <button class="cab-radio" id="cab-pd-preset-trap"     onclick="cabPDLoadPreset('trap');cabPDUpdateFooter()">Trapezoidal channel</button>
+            <button class="cab-radio" id="cab-pd-preset-trap"     onclick="cabPDLoadPreset('trap');cabPDUpdateFooter()">Trapezoidal</button>
             <button class="cab-radio" id="cab-pd-preset-batter"   onclick="cabPDLoadPreset('batter');cabPDUpdateFooter()">Batter</button>
             <button class="cab-radio" id="cab-pd-preset-dam"      onclick="cabPDLoadPreset('dam');cabPDUpdateFooter()">Dam</button>
           </div>
-          <canvas id="cab-pd-profile-canvas" width="640" height="200" style="background:#08131f;border:1px solid #1a2840;border-radius:4px;margin-top:6px;display:block;cursor:crosshair"></canvas>
-          <div class="cab-field-hint">Click to add a vertex · Drag to move · Double-click to delete · Snaps to 100 mm grid · Centre line is the alignment.</div>
-          <div class="cab-field-row" style="margin-top:6px">
-            <button class="cab-btn-secondary" onclick="cabPDClearProfile();cabPDUpdateFooter()">Clear vertices</button>
-            <span class="cab-field-prefix" id="cab-pd-vertex-count">0 vertices</span>
-          </div>
+        </div>
+        <div class="cab-pd-source-body hidden" data-source="focus">
+          <div class="cab-field-hint" style="text-align:center;padding:30px;font-style:italic;color:#7aa0c0">🎯 Section-from-Focus (drive to N known offsets, system fits a profile) lands in a later slice.</div>
+        </div>
+
+        <!-- Always-visible profile canvas (source of truth) -->
+        <canvas id="cab-pd-profile-canvas" width="640" height="200" style="background:#08131f;border:1px solid #1a2840;border-radius:4px;margin-top:8px;display:block;cursor:crosshair"></canvas>
+        <div class="cab-field-row" style="margin-top:6px">
+          <button class="cab-btn-secondary" onclick="cabPDClearProfile();cabPDUpdateFooter()">Clear vertices</button>
+          <span class="cab-field-prefix" id="cab-pd-vertex-count">0 vertices</span>
         </div>
       </div>
 
