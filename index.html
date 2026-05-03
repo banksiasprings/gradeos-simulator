@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GradeOS Simulator v0.9 · SW v147</title>
+<title>GradeOS Simulator v0.9 · SW v148</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <!-- Slice 11.5 — GLTF model loader (Three.js example loaders are global scripts, not modules) -->
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -1920,6 +1920,107 @@ function cabOpenProfileDesigner(){
   if(_cabPDPolySource==='recorded')cabPDSetPolySource('recorded');
   else cabPDSetPolySource('manual');
   cabPDRedrawProfile();
+  // Slice 24 — wizard always opens at Step 1 (per A2 decision: always
+  // create-new). Auto-name suggestion increments across sessions via
+  // designLibrary length.
+  const nameField=document.getElementById('cab-pd-name');
+  if(nameField){
+    const n=(typeof designLibrary!=='undefined' && Array.isArray(designLibrary))
+            ? (designLibrary.length+1) : 1;
+    nameField.value='Design '+n;
+  }
+  cabPDGotoStep(1);
+}
+
+// ── Slice 24 — Profile Designer wizard state machine ──────────────────
+// Decisions in docs/plans/profile-designer-wizard.md (A2/E1/E3).
+// Step 1 = Alignment, Step 2 = Section, Step 3 = Combine + Apply.
+// E1: strict gating forward (Next disabled unless current step is valid);
+// Previous always works.
+let _cabPDStep=1;
+const _CAB_PD_STEP_TITLES={1:'Create Alignment', 2:'Create Section', 3:'Combine and Apply'};
+
+function cabPDGotoStep(n){
+  _cabPDStep=Math.max(1,Math.min(3,n));
+  for(let i=1;i<=3;i++){
+    const pane=document.getElementById('cab-pd-pane-'+i);
+    const pill=document.getElementById('cab-pd-pill-'+i);
+    if(pane)pane.classList.toggle('hidden', i!==_cabPDStep);
+    if(pill){
+      pill.classList.toggle('is-active', i===_cabPDStep);
+      pill.classList.toggle('is-done', i<_cabPDStep);
+    }
+  }
+  const sub=document.getElementById('cab-pd-step-subtitle');
+  if(sub)sub.textContent='Step '+_cabPDStep+' of 3 : '+_CAB_PD_STEP_TITLES[_cabPDStep];
+  if(_cabPDStep===3)cabPDUpdateSummary();
+  if(_cabPDStep===2 && typeof cabPDRedrawProfile==='function'){
+    // Profile canvas may have been hidden during step 1; re-init geometry.
+    setTimeout(()=>{cabPDInitProfileCanvas();cabPDRedrawProfile();},0);
+  }
+  cabPDUpdateFooter();
+}
+
+function cabPDStepValid(step){
+  if(step===1){
+    const pts=cabPDParsePolyline();
+    return pts.length>=2;
+  }
+  if(step===2){
+    return Array.isArray(_cabPDProfile) && _cabPDProfile.length>=2;
+  }
+  if(step===3){
+    const nameOk=(document.getElementById('cab-pd-name')?.value||'').trim().length>0;
+    return cabPDStepValid(1) && cabPDStepValid(2) && nameOk;
+  }
+  return false;
+}
+
+function cabPDStepNext(){
+  if(!cabPDStepValid(_cabPDStep))return;
+  if(_cabPDStep<3) cabPDGotoStep(_cabPDStep+1);
+  else cabPDApply();
+}
+function cabPDStepBack(){
+  if(_cabPDStep>1) cabPDGotoStep(_cabPDStep-1);
+}
+
+function cabPDUpdateFooter(){
+  const prev=document.getElementById('cab-pd-prev');
+  const next=document.getElementById('cab-pd-next');
+  if(!prev||!next)return;
+  prev.style.display=(_cabPDStep===1)?'none':'';
+  if(_cabPDStep<3){
+    next.textContent='Next ▶';
+    next.disabled=!cabPDStepValid(_cabPDStep);
+  }else{
+    next.textContent='✓ Apply Design';
+    next.disabled=!cabPDStepValid(3);
+  }
+}
+
+function cabPDUpdateSummary(){
+  const el=document.getElementById('cab-pd-summary');
+  if(!el)return;
+  const pts=cabPDParsePolyline();
+  const nProfile=Array.isArray(_cabPDProfile)?_cabPDProfile.length:0;
+  // Length of alignment (sum of segment lengths, in metres).
+  let len=0;
+  for(let i=1;i<pts.length;i++){
+    const dx=pts[i].x-pts[i-1].x, dz=pts[i].z-pts[i-1].z;
+    len+=Math.hypot(dx,dz);
+  }
+  // Width of section (max u − min u).
+  let width=0;
+  if(nProfile>=2){
+    let umin=Infinity, umax=-Infinity;
+    _cabPDProfile.forEach(v=>{ if(v.u<umin)umin=v.u; if(v.u>umax)umax=v.u; });
+    width=umax-umin;
+  }
+  el.innerHTML =
+    '<b>Alignment:</b> '+pts.length+' point(s) · '+len.toFixed(2)+' m total<br>'+
+    '<b>Section:</b> '+nProfile+' vertices · '+width.toFixed(2)+' m wide<br>'+
+    '<b>Action:</b> extrude section along alignment, write to design surface.';
 }
 
 // Apply: extrude + write to design[] heightmap + register in designLibrary.
@@ -3601,11 +3702,60 @@ body.cab-mode #design-panel{ z-index: 9100 !important; }
   font-size:12px; color:#7aa0c0;
 }
 .cab-overlay-footer{
-  display:flex; justify-content:flex-end; gap:10px;
+  display:flex; justify-content:flex-end; align-items:center; gap:10px;
   padding-top:12px;
   border-top:1px solid #1a2840;
   margin-top:auto;
 }
+
+/* ── Slice 24 — Profile Designer wizard step pills + pane ───────────── */
+.cab-wizard-steps{
+  display:flex; gap:8px; margin:6px 0 8px 0; flex-wrap:wrap;
+}
+.cab-wizard-step-pill{
+  display:flex; align-items:center; gap:8px;
+  padding:8px 14px;
+  background:#0a1f35;
+  border:1px solid #1a3a5a;
+  border-radius:18px;
+  color:#7aa0c0;
+  font-size:12px; font-weight:700; letter-spacing:.4px;
+  user-select:none;
+  transition:all .15s;
+}
+.cab-wizard-step-pill-num{
+  display:inline-flex; align-items:center; justify-content:center;
+  width:22px; height:22px; border-radius:50%;
+  background:#0d2840;
+  color:#7aa0c0;
+  font-size:11px; font-weight:800;
+}
+.cab-wizard-step-pill.is-active{
+  background:#1a3a5a;
+  border-color:#e8a020;
+  color:#fff;
+}
+.cab-wizard-step-pill.is-active .cab-wizard-step-pill-num{
+  background:#e8a020; color:#0a1520;
+}
+.cab-wizard-step-pill.is-done{
+  background:#0d2030;
+  border-color:#27ae60;
+  color:#9ec8a3;
+}
+.cab-wizard-step-pill.is-done .cab-wizard-step-pill-num{
+  background:#27ae60; color:#0a1520;
+}
+.cab-wizard-pane{
+  /* Each step's body. Hidden when not the active step. */
+}
+.cab-wizard-pane.hidden{ display:none }
+
+/* Touch-friendly Next/Apply target (A1 — live daily, gloves on). */
+.cab-btn-apply:disabled{
+  background:#3a4a5a; color:#5a6a7a; cursor:not-allowed;
+}
+.cab-btn-apply:disabled:hover{ background:#3a4a5a }
 .cab-btn-apply{
   background:#e8a020; color:#0a1520;
   border:none; padding:10px 24px;
@@ -4338,47 +4488,82 @@ body.cab-led-align-hidden #cab-offsets > .cab-offset-cell:not(.cab-offset-cell-h
 </div>
 
 <!-- Profile Designer — Slice 6 -->
+<!-- Slice 24 — Profile Designer rebuilt as a 3-step wizard.
+     Plan: docs/plans/profile-designer-wizard.md
+     Step 1 = Create Alignment (was inline section "2. Alignment polyline")
+     Step 2 = Create Section   (was inline section "1. Cross-section profile")
+     Step 3 = Combine + Apply  (was inline section "3. Save as")
+     Math seam (extrudeProfileAlongPolyline) unchanged; cabPDApply() unchanged. -->
 <div id="cab-overlay-profile" class="cab-overlay hidden" onclick="cabCloseAllOverlays(event)">
-  <div class="cab-overlay-box cab-overlay-box-tall" onclick="event.stopPropagation()" style="min-width:680px">
-    <div class="cab-overlay-title">PROFILE DESIGNER</div>
-    <div class="cab-overlay-subtitle">Draw a 2D cross-section, pick a polyline, extrude. Subsumes Crown / Dam / Batter / Channel / Profile / etc.</div>
-    <div class="cab-form" style="max-height:62vh">
-      <div class="cab-field">
-        <label class="cab-field-label">1. Cross-section profile</label>
-        <div class="cab-field-row">
-          <button class="cab-radio" id="cab-pd-preset-flat"     onclick="cabPDLoadPreset('flat')">Flat</button>
-          <button class="cab-radio" id="cab-pd-preset-crown"    onclick="cabPDLoadPreset('crown')">Crown (road)</button>
-          <button class="cab-radio" id="cab-pd-preset-vdrain"   onclick="cabPDLoadPreset('vdrain')">V-drain</button>
-          <button class="cab-radio" id="cab-pd-preset-trap"     onclick="cabPDLoadPreset('trap')">Trapezoidal channel</button>
-          <button class="cab-radio" id="cab-pd-preset-batter"   onclick="cabPDLoadPreset('batter')">Batter</button>
-          <button class="cab-radio" id="cab-pd-preset-dam"      onclick="cabPDLoadPreset('dam')">Dam</button>
-        </div>
-        <canvas id="cab-pd-profile-canvas" width="600" height="180" style="background:#08131f;border:1px solid #1a2840;border-radius:4px;margin-top:6px;display:block;cursor:crosshair"></canvas>
-        <div class="cab-field-hint">Click to add a vertex · Drag to move · Double-click to delete · Snaps to 100 mm grid · Centre line is the alignment.</div>
-        <div class="cab-field-row" style="margin-top:6px">
-          <button class="cab-btn-secondary" onclick="cabPDClearProfile()">Clear vertices</button>
-          <span class="cab-field-prefix" id="cab-pd-vertex-count">0 vertices</span>
+  <div class="cab-overlay-box cab-overlay-box-tall" onclick="event.stopPropagation()" style="min-width:720px">
+    <div class="cab-overlay-title">CREATE DESIGN</div>
+    <div class="cab-wizard-steps" id="cab-pd-pills">
+      <div class="cab-wizard-step-pill is-active" id="cab-pd-pill-1"><span class="cab-wizard-step-pill-num">1</span> Alignment</div>
+      <div class="cab-wizard-step-pill" id="cab-pd-pill-2"><span class="cab-wizard-step-pill-num">2</span> Section</div>
+      <div class="cab-wizard-step-pill" id="cab-pd-pill-3"><span class="cab-wizard-step-pill-num">3</span> Combine</div>
+    </div>
+    <div class="cab-overlay-subtitle" id="cab-pd-step-subtitle">Step 1 of 3 : Create Alignment</div>
+    <div class="cab-form" style="max-height:54vh">
+
+      <!-- STEP 1: Alignment -->
+      <div class="cab-wizard-pane" id="cab-pd-pane-1">
+        <div class="cab-field">
+          <label class="cab-field-label">Source</label>
+          <div class="cab-field-row">
+            <button class="cab-radio" id="cab-pd-poly-recorded" onclick="cabPDSetPolySource('recorded');cabPDUpdateFooter()">Use recorded points</button>
+            <button class="cab-radio" id="cab-pd-poly-manual"   onclick="cabPDSetPolySource('manual');cabPDUpdateFooter()">Manual entry</button>
+          </div>
+          <textarea id="cab-pd-polyline" rows="6" oninput="cabPDUpdateFooter()" style="width:100%;background:#08131f;border:1px solid #1a2840;color:#dce8f5;font-family:'Menlo',monospace;font-size:12px;padding:6px;border-radius:3px;margin-top:6px" placeholder="Format: x1,z1 (one per line). Z-elevation taken from terrain unless 3 columns: x1,z1,elev1"></textarea>
+          <div class="cab-field-hint" id="cab-pd-poly-hint">Polyline ordered along travel direction. Profile sweeps perpendicular to local heading. Min 2 points.</div>
         </div>
       </div>
-      <div class="cab-field">
-        <label class="cab-field-label">2. Alignment polyline</label>
-        <div class="cab-field-row">
-          <button class="cab-radio" id="cab-pd-poly-recorded" onclick="cabPDSetPolySource('recorded')">Use recorded points</button>
-          <button class="cab-radio" id="cab-pd-poly-manual"   onclick="cabPDSetPolySource('manual')">Manual entry</button>
+
+      <!-- STEP 2: Section -->
+      <div class="cab-wizard-pane hidden" id="cab-pd-pane-2">
+        <div class="cab-field">
+          <label class="cab-field-label">Templates</label>
+          <div class="cab-field-row">
+            <button class="cab-radio" id="cab-pd-preset-flat"     onclick="cabPDLoadPreset('flat');cabPDUpdateFooter()">Flat</button>
+            <button class="cab-radio" id="cab-pd-preset-crown"    onclick="cabPDLoadPreset('crown');cabPDUpdateFooter()">Crown (road)</button>
+            <button class="cab-radio" id="cab-pd-preset-vdrain"   onclick="cabPDLoadPreset('vdrain');cabPDUpdateFooter()">V-drain</button>
+            <button class="cab-radio" id="cab-pd-preset-trap"     onclick="cabPDLoadPreset('trap');cabPDUpdateFooter()">Trapezoidal channel</button>
+            <button class="cab-radio" id="cab-pd-preset-batter"   onclick="cabPDLoadPreset('batter');cabPDUpdateFooter()">Batter</button>
+            <button class="cab-radio" id="cab-pd-preset-dam"      onclick="cabPDLoadPreset('dam');cabPDUpdateFooter()">Dam</button>
+          </div>
+          <canvas id="cab-pd-profile-canvas" width="640" height="200" style="background:#08131f;border:1px solid #1a2840;border-radius:4px;margin-top:6px;display:block;cursor:crosshair"></canvas>
+          <div class="cab-field-hint">Click to add a vertex · Drag to move · Double-click to delete · Snaps to 100 mm grid · Centre line is the alignment.</div>
+          <div class="cab-field-row" style="margin-top:6px">
+            <button class="cab-btn-secondary" onclick="cabPDClearProfile();cabPDUpdateFooter()">Clear vertices</button>
+            <span class="cab-field-prefix" id="cab-pd-vertex-count">0 vertices</span>
+          </div>
         </div>
-        <textarea id="cab-pd-polyline" rows="4" style="width:100%;background:#08131f;border:1px solid #1a2840;color:#dce8f5;font-family:'Menlo',monospace;font-size:12px;padding:6px;border-radius:3px;margin-top:6px" placeholder="Format: x1,z1 (one per line). Z-elevation taken from terrain unless 3 columns: x1,z1,elev1"></textarea>
-        <div class="cab-field-hint" id="cab-pd-poly-hint">Polyline ordered along travel direction. Profile sweeps perpendicular to local heading. Min 2 points.</div>
       </div>
-      <div class="cab-field">
-        <label class="cab-field-label">3. Save as</label>
-        <div class="cab-field-row">
-          <input type="text" class="cab-input" id="cab-pd-name" value="Profile Design 1" style="width:240px">
+
+      <!-- STEP 3: Combine + Apply -->
+      <div class="cab-wizard-pane hidden" id="cab-pd-pane-3">
+        <div class="cab-field">
+          <label class="cab-field-label">Name</label>
+          <div class="cab-field-row">
+            <input type="text" class="cab-input" id="cab-pd-name" value="Design 1" oninput="cabPDUpdateFooter()" style="width:280px">
+          </div>
+          <div class="cab-field-hint">Auto-generated; tap to rename.</div>
+        </div>
+        <div class="cab-field">
+          <label class="cab-field-label">Summary</label>
+          <div class="cab-field-hint" id="cab-pd-summary" style="font-size:13px;line-height:1.7;color:#dce8f5">—</div>
+        </div>
+        <div class="cab-field">
+          <div class="cab-field-hint" style="color:#e8a020">Tap "Apply Design" to extrude this section along the alignment and write it into the active design surface.</div>
         </div>
       </div>
     </div>
+
+    <!-- Footer: Cancel always shown · Previous shown on steps 2-3 · Next/Apply on right -->
     <div class="cab-overlay-footer">
       <button class="cab-btn-cancel" onclick="cabCloseAllOverlays()">Cancel</button>
-      <button class="cab-btn-apply" onclick="cabPDApply()">Apply Design</button>
+      <div style="flex:1"></div>
+      <button class="cab-btn-secondary" id="cab-pd-prev" onclick="cabPDStepBack()" style="display:none">◀ Previous</button>
+      <button class="cab-btn-apply" id="cab-pd-next" onclick="cabPDStepNext()">Next ▶</button>
     </div>
   </div>
 </div>
