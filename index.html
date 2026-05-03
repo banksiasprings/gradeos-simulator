@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GradeOS Simulator v0.9 · SW v125</title>
+<title>GradeOS Simulator v0.9 · SW v126</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <!-- Slice 1 — blade-pose seam. See CONTEXT.md, ADR-0002. -->
 <script type="module" src="./src/product/guidance/blade-pose.js"></script>
@@ -341,11 +341,12 @@ function _cabRecordOrigParent(canvas){
   }
 }
 function cabGetCanvasForType(type){
-  switch(type){
-    case 'three': return document.querySelector('.three-canvas');
-    case 'plan':  return document.getElementById('plan-canvas');
-    case 'cross': return document.getElementById('xsec-canvas');
-    case 'long':  return document.getElementById('side-profile-canvas');
+  // Slice 10 — only the .three-canvas matters now; multi-viewport rendering
+  // serves all view types from the single Three.js canvas. Legacy canvases
+  // (plan/xsec/long) are kept in their original DOM parents and unused
+  // in cab mode.
+  if(type==='three'||type==='plan'||type==='cross'||type==='long'){
+    return document.querySelector('.three-canvas');
   }
   return null;
 }
@@ -353,6 +354,9 @@ const _CAB_VIEWTYPE_NAMES={three:'3D View',plan:'Plan',cross:'Cross-section',lon
 function cabRefreshPaneCanvases(){
   // Slice 4e — also refresh zoom controls when panes change
   setTimeout(cabAddZoomControlsToPanes, 0);
+  // Slice 10 — also relocate the .three-canvas to span the centre pane
+  // (instead of into individual sub-panes).
+  _cabPositionThreeCanvas();
   const visiblePaneCount={'1single':1,'2vertical':2,'2horizontal':2,'1big2small':3,'3equal':3}[cabPaneState.layout]||3;
   // First pass: return canvases that aren't in their assigned pane to their original parents,
   // so we don't double-place a canvas if multiple panes ask for the same view type.
@@ -442,6 +446,8 @@ const CAB_RIBBON_CATALOG={
     {key:'rightCutFill', label:'Cut/Fill Right', icon:'▶'},
     {key:'crossSlope',   label:'Cross-slope',    icon:'⤡'},
     {key:'longGrade',    label:'Long Grade',     icon:'⤴'},
+    {key:'offlineDist',  label:'Offline Distance', icon:'╱'},  // Slice 10
+    {key:'chainage',     label:'Chainage',       icon:'┃'},   // Slice 10
   ],
   Position:[
     {key:'tipAElev',     label:'Tip A Elevation',icon:'L↕'},
@@ -484,6 +490,19 @@ function _cabComputeReadout(key,bladeTarget,bladePose){
     case 'rightCutFill': return fmtMm(tb(bladeTarget));
     case 'crossSlope': return fmtPct(bladePose?bladePose.crossSlope:null);
     case 'longGrade': return fmtPct(bladeTarget?bladeTarget.longGrade:null);
+    // Slice 10 — offline distance from selected guidance line + chainage along it.
+    case 'offlineDist': {
+      const ag = window._cabLastAlignment;
+      if(!ag) return {text:'—'};
+      const mm = ag.offlineDistanceM*1000;
+      if(Math.abs(mm)<50) return {text:'ON LINE', cls:'ongrade'};
+      return {text:(mm>=0?'+':'')+mm.toFixed(0)+' mm'+(mm>0?' R':' L'), cls:'fill'};
+    }
+    case 'chainage': {
+      const ag = window._cabLastAlignment;
+      if(!ag) return {text:'—'};
+      return {text:ag.chainageM.toFixed(2)+' m / '+ag.totalLengthM.toFixed(1)+' m'};
+    }
     case 'tipAElev': return fmtM(bladePose?bladePose.tipA.y:null);
     case 'tipBElev': return fmtM(bladePose?bladePose.tipB.y:null);
     case 'centreElev': return fmtM(bladePose?bladePose.centre.y:null);
@@ -1118,6 +1137,141 @@ function cabActivateRadio(id,on){
   if(!el)return;
   if(on)el.classList.add('active');
   else el.classList.remove('active');
+}
+
+// ── Slice 10 — Multi-viewport 3D rendering ─────────────────────────────
+// Replaces the bad 2D pane drawings with proper 3D camera views.
+// The Three.js canvas spans the full centre pane area; per-frame we
+// render the scene N times (once per visible pane) using different
+// cameras (perspective / top-down / side / blade close-up).
+//
+// Each pane's content area is transparent — the canvas underneath shows
+// through, with the right viewport for that pane.
+//
+// View types:
+//   'three' = orbit perspective camera (existing)
+//   'plan'  = orthographic top-down (bird's eye)
+//   'long'  = orthographic side-on (looking from the right of the machine,
+//             so you see the long-section / travel direction)
+//   'cross' = orthographic blade close-up (looking from behind the machine
+//             at the blade, so you see the cross-section)
+
+let _cabPlanCam = null, _cabLongCam = null, _cabCrossCam = null;
+function _cabEnsureCameras(){
+  if(typeof THREE === 'undefined' || _cabPlanCam) return;
+  // Top-down (orthographic). Half-width 25 m around machine.
+  _cabPlanCam = new THREE.OrthographicCamera(-25, 25, 25, -25, 0.1, 500);
+  _cabPlanCam.up.set(0, 0, -1); // North-up
+  // Side view (looking from the right of the machine, +X side).
+  _cabLongCam = new THREE.OrthographicCamera(-15, 15, 8, -3, 0.1, 200);
+  _cabLongCam.up.set(0, 1, 0);
+  // Cross / blade close-up (looking from behind the machine, +Z back).
+  _cabCrossCam = new THREE.OrthographicCamera(-5, 5, 4, -2, 0.1, 100);
+  _cabCrossCam.up.set(0, 1, 0);
+}
+function _cabUpdateCameraForView(view){
+  _cabEnsureCameras();
+  const mx = (typeof machinePos !== 'undefined') ? machinePos.x : 0;
+  const mz = (typeof machinePos !== 'undefined') ? machinePos.z : 0;
+  const my = (typeof gElev === 'function') ? gElev(mx, mz) : 0;
+  const hdg = (typeof machinePos !== 'undefined') ? machinePos.hdg : 0;
+  const sin = Math.sin(hdg), cos = Math.cos(hdg);
+  switch(view){
+    case 'plan': {
+      // Apply the user's pane zoom (cabPaneZoom) by scaling the orthographic
+      // half-extent. zoom > 1 → tighter view.
+      _cabEnsureCameras();
+      _cabPlanCam.position.set(mx, my + 80, mz);
+      _cabPlanCam.lookAt(mx, my, mz);
+      // Up vector = forward direction so the scene rotates with the machine.
+      _cabPlanCam.up.set(sin, 0, cos);
+      _cabPlanCam.updateProjectionMatrix();
+      return _cabPlanCam;
+    }
+    case 'long': {
+      // Position 25 m to the right of the machine, looking towards it.
+      const rx = mx + cos * 25;
+      const rz = mz - sin * 25;
+      _cabLongCam.position.set(rx, my + 3, rz);
+      _cabLongCam.lookAt(mx, my + 1, mz);
+      _cabLongCam.updateProjectionMatrix();
+      return _cabLongCam;
+    }
+    case 'cross': {
+      // Position 12 m behind the machine, looking forward (towards the blade).
+      const bx = mx - sin * 12;
+      const bz = mz - cos * 12;
+      _cabCrossCam.position.set(bx, my + 2.5, bz);
+      _cabCrossCam.lookAt(mx + sin * 4, my + 0.5, mz + cos * 4);
+      _cabCrossCam.updateProjectionMatrix();
+      return _cabCrossCam;
+    }
+    case 'three':
+    default:
+      return camera; // existing orbit perspective camera
+  }
+}
+function _cabPositionThreeCanvas(){
+  const tc = renderer && renderer.domElement;
+  const centre = document.getElementById('cab-centre-pane');
+  if(!tc || !centre) return;
+  if(document.body.classList.contains('cab-mode')){
+    if(tc.parentElement !== centre) centre.appendChild(tc);
+    // CSS handles position/sizing in cab mode (inset:0, full).
+  }else{
+    // Out of cab mode — return to original viewport.
+    const vp = document.getElementById('viewport');
+    if(vp && tc.parentElement !== vp) vp.appendChild(tc);
+  }
+}
+function _cabRenderViewports(){
+  if(!document.body.classList.contains('cab-mode')) return false;
+  const centre = document.getElementById('cab-centre-pane');
+  if(!centre || !renderer) return false;
+  const cRect = centre.getBoundingClientRect();
+  if(cRect.width < 4 || cRect.height < 4) return false;
+  // Make sure renderer canvas matches centre dims (handles resize).
+  const dpr = renderer.getPixelRatio();
+  const want = { w: Math.round(cRect.width * dpr), h: Math.round(cRect.height * dpr) };
+  if(renderer.domElement.width !== want.w || renderer.domElement.height !== want.h){
+    renderer.setSize(cRect.width, cRect.height, false);
+  }
+  const layout = (cabPaneState && cabPaneState.layout) || '1big2small';
+  const visiblePaneCount = {'1single':1,'2vertical':2,'2horizontal':2,'1big2small':3,'3equal':3}[layout] || 3;
+  renderer.setScissorTest(true);
+  for(let i = 1; i <= visiblePaneCount; i++){
+    const pane = document.getElementById('cab-pane-'+i);
+    if(!pane) continue;
+    const pRect = pane.getBoundingClientRect();
+    // Convert pane rect to canvas-local viewport coords.
+    const x = pRect.left - cRect.left;
+    // WebGL viewport Y origin is bottom-left.
+    const y = cRect.height - (pRect.bottom - cRect.top);
+    const w = pRect.width;
+    const h = pRect.height;
+    if(w < 2 || h < 2) continue;
+    renderer.setViewport(x, y, w, h);
+    renderer.setScissor(x, y, w, h);
+    const view = (cabPaneState && cabPaneState.panes && cabPaneState.panes[i]) || 'three';
+    const cam = _cabUpdateCameraForView(view);
+    // For orthographic cams, recompute frustum from aspect.
+    if(cam && cam.isOrthographicCamera){
+      const aspect = w / h;
+      // Keep vertical extent fixed; scale horizontal by aspect.
+      const baseH = (view === 'cross') ? 6 : (view === 'long') ? 11 : 50;
+      const halfH = baseH / 2;
+      cam.top = halfH; cam.bottom = -halfH;
+      cam.right = halfH * aspect; cam.left = -halfH * aspect;
+      cam.updateProjectionMatrix();
+    }else if(cam && cam.isPerspectiveCamera){
+      // Perspective camera aspect must match this viewport.
+      cam.aspect = w / h;
+      cam.updateProjectionMatrix();
+    }
+    renderer.render(scene, cam);
+  }
+  renderer.setScissorTest(false);
+  return true;
 }
 
 // ── Slice 9 — Selected guidance line + horizontal alignment offset ────
@@ -3004,15 +3158,39 @@ body.cab-mode #workscreen-back-btn{display:none !important}
   position:relative;
   overflow:hidden;
 }
-/* When the 3D canvas is moved into a pane content, fill it. */
-.cab-pane-content > canvas.three-canvas{
+/* Slice 10 — the Three.js canvas now spans the full centre pane area as
+   a single backdrop. Per-frame multi-viewport renders show different
+   camera angles within each pane's region of the canvas. */
+body.cab-mode .three-canvas{
+  position:absolute !important;
+  top:0; left:0;
   width:100% !important;
   height:100% !important;
   display:block;
+  z-index:1;
+  pointer-events:auto;
 }
-/* When 2D canvases (plan/xsec/long) are moved into a pane content. */
-.cab-pane-content > canvas{
-  display:block;
+#cab-centre-pane{position:relative}
+/* Pane chrome (headers, borders) sits on top of the canvas. Content area
+   is transparent so the canvas shows through. */
+body.cab-mode .cab-pane{
+  background:transparent;
+  border:1px solid #1a2840;
+  position:relative;
+  z-index:2;
+  pointer-events:none;
+}
+body.cab-mode .cab-pane-header{
+  background:rgba(13,31,53,.85);
+  pointer-events:auto;
+  backdrop-filter:blur(2px);
+}
+body.cab-mode .cab-pane-content{
+  background:transparent;
+  pointer-events:none;
+}
+body.cab-mode .cab-pane-zoom{
+  pointer-events:auto;
 }
 .cab-pane-empty{
   display:flex; align-items:center; justify-content:center;
@@ -3278,11 +3456,13 @@ body.cab-led-left-hidden.cab-led-right-hidden.cab-toolbar-hidden #cab-bottom-str
 /* Top alignment bar hidden — centre pane grows up to fill the row. */
 body.cab-led-align-hidden #cab-led-align{display:none}
 body.cab-led-align-hidden #cab-centre-pane{grid-row:3 / 5}
-/* Slice 9.5 — hide the H-Align Offset cell when the top alignment LED bar
-   is hidden (they're conceptually paired — no point setting an offset
-   for guidance you've turned off). The remaining 2 cells reflow. */
+/* Slice 9.5 / Slice 10 — hide the centre H-Align Offset cell when the top
+   alignment LED bar is hidden. The flanking Elevation + Working Surface
+   cells reflow into a 2-column grid. */
 body.cab-led-align-hidden .cab-offset-cell-halign{display:none}
 body.cab-led-align-hidden #cab-offsets{grid-template-columns:1fr 1fr}
+body.cab-led-align-hidden #cab-offsets > .cab-offset-cell:not(.cab-offset-cell-halign):nth-of-type(1){grid-column:1}
+body.cab-led-align-hidden #cab-offsets > .cab-offset-cell:not(.cab-offset-cell-halign):nth-of-type(3){grid-column:2}
 
 /* ── Slice 4e — Inline elevation offset buttons (Steven's UX feedback) ─ */
 .cab-offset-controls{
@@ -3449,22 +3629,23 @@ body.cab-led-align-hidden #cab-offsets{grid-template-columns:1fr 1fr}
         <button class="cab-offset-btn cab-offset-btn-up" onclick="cabBumpOffset(1)" title="Increment elevation offset by current step">+</button>
       </div>
     </div>
-    <div class="cab-offset-cell">
-      <div class="cab-offset-label">WORKING SURFACE <span id="cab-offset-ws-incr-label" style="font-size:9px;color:#5a7a98;font-weight:400">(±10 mm)</span></div>
-      <div class="cab-offset-controls">
-        <button class="cab-offset-btn cab-offset-btn-down" onclick="cabBumpWorking(-1)" title="Decrement working surface offset by current step">−</button>
-        <div class="cab-offset-value" id="cab-offset-working" onclick="cabWorkSetWorking(0)" title="Tap to zero">+0.000 m</div>
-        <button class="cab-offset-btn cab-offset-btn-up" onclick="cabBumpWorking(1)" title="Increment working surface offset by current step">+</button>
-      </div>
-    </div>
-    <!-- Slice 9 — Horizontal alignment offset (perpendicular to selected guidance line).
-         Hides automatically when the top alignment LED bar is hidden (Slice 9.5). -->
+    <!-- Slice 10 — H-Align Offset moved to centre cell (per Steven's feedback —
+         spatial mapping with the centre LED bar above which is alignment).
+         Hides automatically when the top alignment LED bar is hidden. -->
     <div class="cab-offset-cell cab-offset-cell-halign">
       <div class="cab-offset-label">H-ALIGN OFFSET <span id="cab-offset-halign-incr-label" style="font-size:9px;color:#5a7a98;font-weight:400">(±10 mm)</span></div>
       <div class="cab-offset-controls">
         <button class="cab-offset-btn cab-offset-btn-down" onclick="cabBumpHAlign(-1)" title="Move target line left of current">←</button>
         <div class="cab-offset-value" id="cab-offset-halign" onclick="cabSetHAlignOffset(0)" title="Tap to zero">+0.000 m</div>
         <button class="cab-offset-btn cab-offset-btn-up" onclick="cabBumpHAlign(1)" title="Move target line right of current">→</button>
+      </div>
+    </div>
+    <div class="cab-offset-cell">
+      <div class="cab-offset-label">WORKING SURFACE <span id="cab-offset-ws-incr-label" style="font-size:9px;color:#5a7a98;font-weight:400">(±10 mm)</span></div>
+      <div class="cab-offset-controls">
+        <button class="cab-offset-btn cab-offset-btn-down" onclick="cabBumpWorking(-1)" title="Decrement working surface offset by current step">−</button>
+        <div class="cab-offset-value" id="cab-offset-working" onclick="cabWorkSetWorking(0)" title="Tap to zero">+0.000 m</div>
+        <button class="cab-offset-btn cab-offset-btn-up" onclick="cabBumpWorking(1)" title="Increment working surface offset by current step">+</button>
       </div>
     </div>
   </div>
@@ -8969,12 +9150,14 @@ function loop(t){
     if(fuelCostEl)fuelCostEl.textContent='$'+Math.round(fuelL*1.85).toLocaleString()+' @$1.85/L';
     lastProdUpdateT=t;
   }
-  const activeCam=(camMode==='plan')?planCam:camera;
-  // Slice 8 (Performance) — skip the Three.js render entirely when the
-  // canvas is hidden. In cab mode the canvas only renders when a pane has
-  // 3D selected (it's been relocated into that pane). Out of cab mode the
-  // canvas lives in #viewport which is the dominant surface.
-  if(_cabShouldRender3D())renderer.render(scene,activeCam);
+  // Slice 10 — in cab mode, multi-viewport render (different camera per pane).
+  // Out of cab mode, single render with the active camera as before.
+  if(document.body.classList.contains('cab-mode')){
+    _cabRenderViewports();
+  }else{
+    const activeCam=(camMode==='plan')?planCam:camera;
+    renderer.render(scene,activeCam);
+  }
   if(fieldMode)updateFieldPanels();
 }
 function _cabShouldRender3D(){
