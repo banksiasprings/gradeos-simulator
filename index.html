@@ -3,8 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GradeOS Simulator v0.9 · SW v126</title>
+<title>GradeOS Simulator v0.9 · SW v127</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<!-- Slice 11 — clean dozer model + sprite renderer for cab pane backgrounds. -->
+<script type="module" src="./src/sim/render/dozer-model.js"></script>
+<script type="module" src="./src/sim/render/dozer-sprites.js"></script>
 <!-- Slice 1 — blade-pose seam. See CONTEXT.md, ADR-0002. -->
 <script type="module" src="./src/product/guidance/blade-pose.js"></script>
 <script type="module" src="./src/sim/fake-gps/blade-antennas.js"></script>
@@ -341,13 +344,10 @@ function _cabRecordOrigParent(canvas){
   }
 }
 function cabGetCanvasForType(type){
-  // Slice 10 — only the .three-canvas matters now; multi-viewport rendering
-  // serves all view types from the single Three.js canvas. Legacy canvases
-  // (plan/xsec/long) are kept in their original DOM parents and unused
-  // in cab mode.
-  if(type==='three'||type==='plan'||type==='cross'||type==='long'){
-    return document.querySelector('.three-canvas');
-  }
+  // Slice 11 — panes use sprite rendering (per-pane 2D canvas); legacy
+  // canvas relocation is unused. Return null so cabRefreshPaneCanvases
+  // doesn't try to move anything around. The sprite canvases are
+  // created on-demand by _cabEnsurePaneSpriteCanvas.
   return null;
 }
 const _CAB_VIEWTYPE_NAMES={three:'3D View',plan:'Plan',cross:'Cross-section',long:'Long Section'};
@@ -1139,140 +1139,76 @@ function cabActivateRadio(id,on){
   else el.classList.remove('active');
 }
 
-// ── Slice 10 — Multi-viewport 3D rendering ─────────────────────────────
-// Replaces the bad 2D pane drawings with proper 3D camera views.
-// The Three.js canvas spans the full centre pane area; per-frame we
-// render the scene N times (once per visible pane) using different
-// cameras (perspective / top-down / side / blade close-up).
+// ── Slice 11 — Cab pane sprite rendering ───────────────────────────────
+// Replaces Slice 10's multi-viewport real-time 3D with static dozer
+// sprites + (Slice 12) 2D overlays. Each pane has its own 2D canvas;
+// the appropriate sprite is drawn as the background, scaled to fit.
 //
-// Each pane's content area is transparent — the canvas underneath shows
-// through, with the right viewport for that pane.
+// Sprites: side / top / blade / perspective — generated once at boot
+// from the clean Three.js dozer model. See src/sim/render/dozer-*.js.
 //
-// View types:
-//   'three' = orbit perspective camera (existing)
-//   'plan'  = orthographic top-down (bird's eye)
-//   'long'  = orthographic side-on (looking from the right of the machine,
-//             so you see the long-section / travel direction)
-//   'cross' = orthographic blade close-up (looking from behind the machine
-//             at the blade, so you see the cross-section)
-
-let _cabPlanCam = null, _cabLongCam = null, _cabCrossCam = null;
-function _cabEnsureCameras(){
-  if(typeof THREE === 'undefined' || _cabPlanCam) return;
-  // Top-down (orthographic). Half-width 25 m around machine.
-  _cabPlanCam = new THREE.OrthographicCamera(-25, 25, 25, -25, 0.1, 500);
-  _cabPlanCam.up.set(0, 0, -1); // North-up
-  // Side view (looking from the right of the machine, +X side).
-  _cabLongCam = new THREE.OrthographicCamera(-15, 15, 8, -3, 0.1, 200);
-  _cabLongCam.up.set(0, 1, 0);
-  // Cross / blade close-up (looking from behind the machine, +Z back).
-  _cabCrossCam = new THREE.OrthographicCamera(-5, 5, 4, -2, 0.1, 100);
-  _cabCrossCam.up.set(0, 1, 0);
-}
-function _cabUpdateCameraForView(view){
-  _cabEnsureCameras();
-  const mx = (typeof machinePos !== 'undefined') ? machinePos.x : 0;
-  const mz = (typeof machinePos !== 'undefined') ? machinePos.z : 0;
-  const my = (typeof gElev === 'function') ? gElev(mx, mz) : 0;
-  const hdg = (typeof machinePos !== 'undefined') ? machinePos.hdg : 0;
-  const sin = Math.sin(hdg), cos = Math.cos(hdg);
-  switch(view){
-    case 'plan': {
-      // Apply the user's pane zoom (cabPaneZoom) by scaling the orthographic
-      // half-extent. zoom > 1 → tighter view.
-      _cabEnsureCameras();
-      _cabPlanCam.position.set(mx, my + 80, mz);
-      _cabPlanCam.lookAt(mx, my, mz);
-      // Up vector = forward direction so the scene rotates with the machine.
-      _cabPlanCam.up.set(sin, 0, cos);
-      _cabPlanCam.updateProjectionMatrix();
-      return _cabPlanCam;
-    }
-    case 'long': {
-      // Position 25 m to the right of the machine, looking towards it.
-      const rx = mx + cos * 25;
-      const rz = mz - sin * 25;
-      _cabLongCam.position.set(rx, my + 3, rz);
-      _cabLongCam.lookAt(mx, my + 1, mz);
-      _cabLongCam.updateProjectionMatrix();
-      return _cabLongCam;
-    }
-    case 'cross': {
-      // Position 12 m behind the machine, looking forward (towards the blade).
-      const bx = mx - sin * 12;
-      const bz = mz - cos * 12;
-      _cabCrossCam.position.set(bx, my + 2.5, bz);
-      _cabCrossCam.lookAt(mx + sin * 4, my + 0.5, mz + cos * 4);
-      _cabCrossCam.updateProjectionMatrix();
-      return _cabCrossCam;
-    }
-    case 'three':
-    default:
-      return camera; // existing orbit perspective camera
+// View-type → sprite name mapping:
+//   'three' = perspective (3/4 angle)
+//   'plan'  = top  (bird's-eye)
+//   'long'  = side (long-section equivalent — view from the side)
+//   'cross' = blade (front view — blade-on)
+const _CAB_VIEW_TO_SPRITE = {three:'perspective', plan:'top', long:'side', cross:'blade'};
+function _cabEnsurePaneSpriteCanvas(paneIdx){
+  const content = document.getElementById('cab-pane-'+paneIdx+'-content');
+  if(!content) return null;
+  let cv = content.querySelector('canvas.cab-pane-sprite');
+  if(!cv){
+    // Clear any leftover content (placeholder text) and add a canvas.
+    content.querySelectorAll('.cab-pane-empty').forEach(e => e.remove());
+    cv = document.createElement('canvas');
+    cv.className = 'cab-pane-sprite';
+    content.appendChild(cv);
   }
-}
-function _cabPositionThreeCanvas(){
-  const tc = renderer && renderer.domElement;
-  const centre = document.getElementById('cab-centre-pane');
-  if(!tc || !centre) return;
-  if(document.body.classList.contains('cab-mode')){
-    if(tc.parentElement !== centre) centre.appendChild(tc);
-    // CSS handles position/sizing in cab mode (inset:0, full).
-  }else{
-    // Out of cab mode — return to original viewport.
-    const vp = document.getElementById('viewport');
-    if(vp && tc.parentElement !== vp) vp.appendChild(tc);
+  // Resize canvas to its display size when it doesn't match.
+  const want = { w: Math.max(2, content.clientWidth), h: Math.max(2, content.clientHeight) };
+  if(cv.width !== want.w || cv.height !== want.h){
+    cv.width = want.w; cv.height = want.h;
   }
+  return cv;
 }
-function _cabRenderViewports(){
-  if(!document.body.classList.contains('cab-mode')) return false;
-  const centre = document.getElementById('cab-centre-pane');
-  if(!centre || !renderer) return false;
-  const cRect = centre.getBoundingClientRect();
-  if(cRect.width < 4 || cRect.height < 4) return false;
-  // Make sure renderer canvas matches centre dims (handles resize).
-  const dpr = renderer.getPixelRatio();
-  const want = { w: Math.round(cRect.width * dpr), h: Math.round(cRect.height * dpr) };
-  if(renderer.domElement.width !== want.w || renderer.domElement.height !== want.h){
-    renderer.setSize(cRect.width, cRect.height, false);
-  }
+function _cabDrawPaneSprite(paneIdx){
+  const cv = _cabEnsurePaneSpriteCanvas(paneIdx);
+  if(!cv) return;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = '#0a1520';
+  ctx.fillRect(0, 0, cv.width, cv.height);
+  if(typeof window.getDozerSprites !== 'function') return;
+  const view = (cabPaneState && cabPaneState.panes && cabPaneState.panes[paneIdx]) || 'three';
+  const spriteName = _CAB_VIEW_TO_SPRITE[view] || 'perspective';
+  const sprites = window.getDozerSprites();
+  const img = sprites[spriteName];
+  if(!img || !img.complete || img.naturalWidth === 0) return;
+  // Letterbox-fit the sprite into the canvas, preserving aspect ratio.
+  const cw = cv.width, ch = cv.height;
+  const iw = img.naturalWidth, ih = img.naturalHeight;
+  const s = Math.min(cw / iw, ch / ih);
+  const dw = iw * s, dh = ih * s;
+  const dx = (cw - dw) / 2, dy = (ch - dh) / 2;
+  ctx.drawImage(img, dx, dy, dw, dh);
+  // Pane label overlay (small, top-right).
+  ctx.fillStyle = 'rgba(232,160,32,.85)';
+  ctx.font = 'bold 10px monospace';
+  ctx.textAlign = 'right';
+  ctx.fillText(spriteName.toUpperCase()+' VIEW', cw - 6, 14);
+}
+function cabRenderAllPaneSprites(){
+  if(!document.body.classList.contains('cab-mode')) return;
   const layout = (cabPaneState && cabPaneState.layout) || '1big2small';
-  const visiblePaneCount = {'1single':1,'2vertical':2,'2horizontal':2,'1big2small':3,'3equal':3}[layout] || 3;
-  renderer.setScissorTest(true);
-  for(let i = 1; i <= visiblePaneCount; i++){
-    const pane = document.getElementById('cab-pane-'+i);
-    if(!pane) continue;
-    const pRect = pane.getBoundingClientRect();
-    // Convert pane rect to canvas-local viewport coords.
-    const x = pRect.left - cRect.left;
-    // WebGL viewport Y origin is bottom-left.
-    const y = cRect.height - (pRect.bottom - cRect.top);
-    const w = pRect.width;
-    const h = pRect.height;
-    if(w < 2 || h < 2) continue;
-    renderer.setViewport(x, y, w, h);
-    renderer.setScissor(x, y, w, h);
-    const view = (cabPaneState && cabPaneState.panes && cabPaneState.panes[i]) || 'three';
-    const cam = _cabUpdateCameraForView(view);
-    // For orthographic cams, recompute frustum from aspect.
-    if(cam && cam.isOrthographicCamera){
-      const aspect = w / h;
-      // Keep vertical extent fixed; scale horizontal by aspect.
-      const baseH = (view === 'cross') ? 6 : (view === 'long') ? 11 : 50;
-      const halfH = baseH / 2;
-      cam.top = halfH; cam.bottom = -halfH;
-      cam.right = halfH * aspect; cam.left = -halfH * aspect;
-      cam.updateProjectionMatrix();
-    }else if(cam && cam.isPerspectiveCamera){
-      // Perspective camera aspect must match this viewport.
-      cam.aspect = w / h;
-      cam.updateProjectionMatrix();
-    }
-    renderer.render(scene, cam);
-  }
-  renderer.setScissorTest(false);
-  return true;
+  const visible = {'1single':1,'2vertical':2,'2horizontal':2,'1big2small':3,'3equal':3}[layout] || 3;
+  for(let i = 1; i <= visible; i++) _cabDrawPaneSprite(i);
 }
+// Re-render on resize / layout change / pane swap.
+window.addEventListener('resize', () => { if(document.body.classList.contains('cab-mode')) cabRenderAllPaneSprites(); });
+
+// (Slice 10 multi-viewport scaffold removed in Slice 11 — replaced by
+// per-pane sprite rendering above. The clean dozer model is rendered
+// to PNG sprites at boot via getDozerSprites(); panes redraw on
+// layout / view-type / resize changes.)
 
 // ── Slice 9 — Selected guidance line + horizontal alignment offset ────
 // State: the line that drives the top alignment LED bar (and any future
@@ -1871,9 +1807,23 @@ function showCabScreen(){
   if(c)c.classList.remove('hidden');
   if(b)b.classList.remove('show');
   document.body.classList.add('cab-mode');
-  // Apply current layout + place canvases.
+  // Slice 11 — kick off sprite generation if not already cached, and
+  // redraw panes once each image finishes loading.
+  if(typeof window.getDozerSprites === 'function'){
+    const sprites = window.getDozerSprites();
+    Object.values(sprites).forEach(img => {
+      if(!img) return;
+      if(img.complete && img.naturalWidth > 0){
+        // Already loaded.
+      } else {
+        img.addEventListener('load', () => {
+          if(typeof cabRenderAllPaneSprites === 'function') cabRenderAllPaneSprites();
+        }, {once: true});
+      }
+    });
+  }
   cabRefreshPaneCanvases();
-  requestAnimationFrame(()=>{ cabResizeRenderer(); });
+  if(typeof cabRenderAllPaneSprites === 'function') cabRenderAllPaneSprites();
 }
 // Boot init when DOM is ready
 if(document.readyState==='loading'){
@@ -3158,43 +3108,23 @@ body.cab-mode #workscreen-back-btn{display:none !important}
   position:relative;
   overflow:hidden;
 }
-/* Slice 10 — the Three.js canvas now spans the full centre pane area as
-   a single backdrop. Per-frame multi-viewport renders show different
-   camera angles within each pane's region of the canvas. */
+/* Slice 11 — each pane has its own 2D canvas hosting a static dozer
+   sprite + (in Slice 12) cut/fill overlays. The Three.js canvas
+   returns to #viewport when in cab mode (hidden, doesn't render). */
 body.cab-mode .three-canvas{
-  position:absolute !important;
-  top:0; left:0;
-  width:100% !important;
-  height:100% !important;
-  display:block;
-  z-index:1;
-  pointer-events:auto;
+  display:none;
 }
 #cab-centre-pane{position:relative}
-/* Pane chrome (headers, borders) sits on top of the canvas. Content area
-   is transparent so the canvas shows through. */
-body.cab-mode .cab-pane{
-  background:transparent;
-  border:1px solid #1a2840;
-  position:relative;
-  z-index:2;
-  pointer-events:none;
-}
-body.cab-mode .cab-pane-header{
-  background:rgba(13,31,53,.85);
-  pointer-events:auto;
-  backdrop-filter:blur(2px);
-}
-body.cab-mode .cab-pane-content{
-  background:transparent;
-  pointer-events:none;
-}
-body.cab-mode .cab-pane-zoom{
-  pointer-events:auto;
-}
 .cab-pane-empty{
   display:flex; align-items:center; justify-content:center;
   height:100%; color:#2a4060; font-size:12px;
+}
+/* Slice 11 — each pane's 2D sprite canvas */
+.cab-pane-sprite{
+  width:100% !important;
+  height:100% !important;
+  display:block;
+  background:#0a1520;
 }
 
 /* ── Slice 4c — Modal overlays ───────────────────────────────────────── */
@@ -9150,10 +9080,11 @@ function loop(t){
     if(fuelCostEl)fuelCostEl.textContent='$'+Math.round(fuelL*1.85).toLocaleString()+' @$1.85/L';
     lastProdUpdateT=t;
   }
-  // Slice 10 — in cab mode, multi-viewport render (different camera per pane).
-  // Out of cab mode, single render with the active camera as before.
+  // Slice 11 — in cab mode, draw static dozer sprites per pane (no real-
+  // time 3D in cab). Out of cab mode, single render with the active
+  // camera as before.
   if(document.body.classList.contains('cab-mode')){
-    _cabRenderViewports();
+    if(typeof cabRenderAllPaneSprites === 'function') cabRenderAllPaneSprites();
   }else{
     const activeCam=(camMode==='plan')?planCam:camera;
     renderer.render(scene,activeCam);
