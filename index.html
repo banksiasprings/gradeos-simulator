@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GradeOS Simulator v0.9 · SW v150</title>
+<title>GradeOS Simulator v0.9 · SW v151</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <!-- Slice 11.5 — GLTF model loader (Three.js example loaders are global scripts, not modules) -->
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -2161,6 +2161,76 @@ function cabPDPlanRedraw(){
     ctx.textAlign='left';
     ctx.fillText('V'+(i+1),pt.x+10,pt.y-8);
   });
+  // Slice 27 — segment-length + deflection-angle labels (drawn on top
+  // of polyline so they stay legible). C3 decision: deflection from
+  // previous segment, signed (+ = right turn, − = left). Cyan pill for
+  // length, amber pill for deflection.
+  if(pts.length>=2){
+    ctx.font='11px monospace';
+    ctx.textBaseline='middle';
+    // Segment-length labels at midpoints.
+    for(let i=0;i<pts.length-1;i++){
+      const a=pts[i], b=pts[i+1];
+      const dx=b.x-a.x, dz=b.z-a.z;
+      const lenM=Math.hypot(dx,dz);
+      if(lenM<0.01)continue;
+      const pa=_cabPDPlanW2P(a.x,a.z), pb=_cabPDPlanW2P(b.x,b.z);
+      const midX=(pa.x+pb.x)/2, midY=(pa.y+pb.y)/2;
+      const text=lenM.toFixed(2)+' m';
+      const tw=ctx.measureText(text).width+10;
+      // Pill background for legibility over the polyline.
+      ctx.fillStyle='rgba(8,18,32,0.88)';
+      ctx.strokeStyle='rgba(102,200,255,0.55)';
+      ctx.lineWidth=1;
+      _cabPDPlanRoundRect(ctx, midX-tw/2, midY-9, tw, 18, 4);
+      ctx.fill(); ctx.stroke();
+      ctx.fillStyle='#bce4ff';
+      ctx.textAlign='center';
+      ctx.fillText(text,midX,midY);
+    }
+    // Deflection-angle labels at interior vertices.
+    for(let i=1;i<pts.length-1;i++){
+      const a=pts[i-1], b=pts[i], c=pts[i+1];
+      // Bearing of each segment (sim: bearing 0 = +Z = north; +X = east).
+      const b1=Math.atan2(b.x-a.x, b.z-a.z);
+      const b2=Math.atan2(c.x-b.x, c.z-b.z);
+      let defDeg=(b2-b1)*180/Math.PI;
+      while(defDeg>180) defDeg-=360;
+      while(defDeg<-180) defDeg+=360;
+      if(Math.abs(defDeg)<0.1)continue; // skip near-straight bends
+      const pt=_cabPDPlanW2P(b.x,b.z);
+      const sign=defDeg>0?'+':'';
+      const text=sign+defDeg.toFixed(1)+'°';
+      const tw=ctx.measureText(text).width+10;
+      // Position above-right of the vertex, away from the vertex circle.
+      const lx=pt.x+12, ly=pt.y-20;
+      ctx.fillStyle='rgba(232,160,32,0.92)';
+      ctx.strokeStyle='rgba(255,245,216,0.55)';
+      ctx.lineWidth=1;
+      _cabPDPlanRoundRect(ctx, lx, ly-9, tw, 18, 4);
+      ctx.fill(); ctx.stroke();
+      ctx.fillStyle='#0a1520';
+      ctx.textAlign='center';
+      ctx.fillText(text, lx+tw/2, ly);
+    }
+    ctx.textBaseline='alphabetic';
+  }
+}
+
+// Helper for rounded label pills (Slice 27).
+function _cabPDPlanRoundRect(ctx, x, y, w, h, r){
+  if(r==null)r=4;
+  ctx.beginPath();
+  ctx.moveTo(x+r, y);
+  ctx.lineTo(x+w-r, y);
+  ctx.quadraticCurveTo(x+w, y, x+w, y+r);
+  ctx.lineTo(x+w, y+h-r);
+  ctx.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
+  ctx.lineTo(x+r, y+h);
+  ctx.quadraticCurveTo(x, y+h, x, y+h-r);
+  ctx.lineTo(x, y+r);
+  ctx.quadraticCurveTo(x, y, x+r, y);
+  ctx.closePath();
 }
 
 function _cabPDPlanFindVertex(px,py,tol){
