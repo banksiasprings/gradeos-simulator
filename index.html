@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GradeOS Simulator v0.9 · SW v142</title>
+<title>GradeOS Simulator v0.9 · SW v143</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <!-- Slice 11.5 — GLTF model loader (Three.js example loaders are global scripts, not modules) -->
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -4574,8 +4574,6 @@ body.cab-led-align-hidden #cab-offsets > .cab-offset-cell:not(.cab-offset-cell-h
     <button class="tb" id="b-daylight" onclick="toggleDaylight()" title="Daylight line — shows cut/fill boundary where design meets existing ground">📍 Daylight</button>
     <button class="tb" id="b-passcount" onclick="togglePassCount()" title="Pass count overlay — heat map of machine coverage intensity">🔥 Passes</button>
     <button class="tb" id="b-stripplan" onclick="toggleStripPlan()" title="Grade strip planner — optimal grading sequence based on design surface gradient">📋 Strips</button>
-    <button class="tb" id="b-replay" onclick="toggleReplay()" title="Time-lapse replay — animate terrain from original to current graded state">⏪ Replay</button>
-    <button class="tb" id="b-ghost" onclick="toggleGhost()" title="Ghost terrain — shows original terrain as transparent overlay to reveal what has been cut">👻 Ghost</button>
     <button class="tb blu" onclick="openJobReport()" title="Generate earthwork job report">📊 Report</button>
   </div>
 
@@ -4684,8 +4682,6 @@ body.cab-led-align-hidden #cab-offsets > .cab-offset-cell:not(.cab-offset-cell-h
         <button class="drawer-btn" data-mirror="b-daylight" onclick="toggleDaylight();syncDrawerMirrors()">Daylight</button>
         <button class="drawer-btn" data-mirror="b-passcount" onclick="togglePassCount();syncDrawerMirrors()">Passes</button>
         <button class="drawer-btn" data-mirror="b-stripplan" onclick="toggleStripPlan();syncDrawerMirrors()">Strips</button>
-        <button class="drawer-btn" data-mirror="b-replay" onclick="toggleReplay();syncDrawerMirrors()">Replay</button>
-        <button class="drawer-btn" data-mirror="b-ghost" onclick="toggleGhost();syncDrawerMirrors()">Ghost</button>
       </div>
     </div>
 
@@ -5308,10 +5304,7 @@ let showPassCount=false;let passCountMesh=null;let passCountDirty=false;
 const passCount=new Uint8Array(N*N);
 let rtkFixType='RTK FIXED';let lastRtkType='RTK FIXED';
 let engineSeconds=0;  // total machine-on time in seconds
-let showGhost=false;let ghostMesh=null;
 let showStripPlan=false;let stripPlanGrp=null;
-const terrainHistory=[];const HIST_MAX=24;let lastHistorySnap=0;
-let isReplaying=false;let replayFrame=0;let replayTimer=null;
 let autoSteer=false;let autoMovingFwd=false;
 const autoSt={stripX:0,dir:1};
 let measureLineMesh=null;
@@ -5740,7 +5733,6 @@ function rebuildTerrMesh(){
   scene.remove(terrMesh);terrMesh.geometry.dispose();
   terrMesh=new THREE.Mesh(buildTerrGeoColored(),terrMat);
   terrMesh.rotation.x=-Math.PI/2;terrMesh.visible=showTerrain>0;terrMat.opacity=showTerrain===2?0.35:1;scene.add(terrMesh);
-  if(showGhost)buildGhostMesh();
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -5893,8 +5885,7 @@ function genTerrain(type){
   originalGround.set(ground);
   // Reset cut session stats on new terrain
   sessionCutVol=0;sessionFillVol=0;prodOnTime=0;remainingCutVol=0;engineSeconds=0;
-  if(ghostMesh){scene.remove(ghostMesh);ghostMesh.geometry.dispose();ghostMesh.material.dispose();ghostMesh=null;}
-  passCount.fill(0);terrainHistory.length=0;lastHistorySnap=0;
+  passCount.fill(0);
   const sc=document.getElementById('st-cut');if(sc)sc.textContent='0.0m³';
   const pd=document.getElementById('st-prod');if(pd)pd.style.display='none';
   rebuildTerrMesh();clearDesign();genContours();buildFlowLines();buildSlopeWarn();buildTolMesh();buildStakes();buildDaylightMesh();buildPassCountMesh();
@@ -6777,12 +6768,6 @@ function updateMachine(dt){
     if(posE)posE.textContent=machinePos.x.toFixed(1);
     if(posN)posN.textContent=machinePos.z.toFixed(1);
   }
-  // Snapshot terrain history for time-lapse replay (every 3s while cutting)
-  if(isCutting&&performance.now()-lastHistorySnap>3000){
-    terrainHistory.push(ground.slice());
-    if(terrainHistory.length>HIST_MAX)terrainHistory.shift();
-    lastHistorySnap=performance.now();
-  }
   if(!autoSteer){
     // Slice 13.1 — steering convention fix. Was A/← turned right (hdg+=)
     // and D/→ turned left (hdg-=) — backwards from standard WASD. Now
@@ -7354,50 +7339,6 @@ function togglePassCount(){
     document.getElementById('st-hint').textContent='🔥 Pass count: 🟠=1 pass · 🟡=2 · 🟢=3-4 · bright🟢=5+';
 }
 
-// ═══════════════════════════════════════════════════════════════════
-// GHOST TERRAIN — original terrain as transparent overlay showing what's been cut
-// ═══════════════════════════════════════════════════════════════════
-function buildGhostMesh(){
-  if(ghostMesh){scene.remove(ghostMesh);ghostMesh.geometry.dispose();ghostMesh.material.dispose();ghostMesh=null;}
-  if(!showGhost)return;
-  // Check if anything has actually been cut (originalGround differs from ground)
-  let hasCut=false;
-  for(let i=0;i<N*N;i++){if(originalGround[i]-ground[i]>0.02){hasCut=true;break;}}
-  if(!hasCut){
-    document.getElementById('st-hint').textContent='👻 Ghost: no cuts yet — drive the machine to see original terrain appear.';
-    return;
-  }
-  const geo=new THREE.PlaneGeometry(SZ,SZ,GR,GR);
-  geo.rotateX(-Math.PI/2);
-  const pos=geo.attributes.position;
-  const col=[];
-  for(let i=0;i<pos.count;i++){
-    pos.setY(i,originalGround[i]+0.06); // lift slightly above current terrain
-    const cut=originalGround[i]-ground[i]; // how much has been removed
-    // Colour: grey-blue for uncut areas, highlight cut zones in amber
-    const r=cut>0.05?0.6:0.3;
-    const g=cut>0.05?0.3:0.35;
-    const b=cut>0.05?0.1:0.5;
-    col.push(r,g,b);
-  }
-  geo.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
-  pos.needsUpdate=true;geo.computeVertexNormals();
-  ghostMesh=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({
-    vertexColors:true,transparent:true,opacity:0.32,
-    side:THREE.DoubleSide,depthWrite:false,wireframe:false
-  }));
-  scene.add(ghostMesh);
-  // Wireframe overlay on top
-  const wfGeo=new THREE.WireframeGeometry(geo);
-  const wfLine=new THREE.LineSegments(wfGeo,new THREE.LineBasicMaterial({color:0x3a6a9a,transparent:true,opacity:0.18}));
-  ghostMesh.add(wfLine);
-  document.getElementById('st-hint').textContent='👻 Ghost: grey-blue=uncut original · amber=zones you\'ve already cut. Toggle off with Ghost button.';
-}
-function toggleGhost(){
-  showGhost=!showGhost;
-  document.getElementById('b-ghost').classList.toggle('act',showGhost);
-  buildGhostMesh();
-}
 
 // ═══════════════════════════════════════════════════════════════════
 // UNDO / REDO
@@ -9798,37 +9739,6 @@ function toggleStripPlan(){
   buildStripPlan();
 }
 
-// ═══════════════════════════════════════════════════════════════════
-// TIME-LAPSE TERRAIN REPLAY
-// ═══════════════════════════════════════════════════════════════════
-function toggleReplay(){
-  if(isReplaying){
-    // Stop replay
-    clearInterval(replayTimer);replayTimer=null;isReplaying=false;
-    document.getElementById('b-replay').classList.remove('act');
-    // Restore current terrain
-    rebuildTerrMesh();
-    document.getElementById('st-hint').textContent='Replay stopped.';
-    return;
-  }
-  if(terrainHistory.length<2){
-    document.getElementById('st-hint').textContent='No history yet — drive the machine to record terrain snapshots, then replay.';
-    return;
-  }
-  isReplaying=true;replayFrame=0;
-  document.getElementById('b-replay').classList.add('act');
-  document.getElementById('st-hint').textContent=`⏪ Replaying ${terrainHistory.length} snapshots… click Replay again to stop`;
-  replayTimer=setInterval(()=>{
-    if(replayFrame>=terrainHistory.length){clearInterval(replayTimer);replayTimer=null;isReplaying=false;
-      document.getElementById('b-replay').classList.remove('act');
-      rebuildTerrMesh();document.getElementById('st-hint').textContent='Replay complete.';return;}
-    ground.set(terrainHistory[replayFrame]);
-    rebuildTerrMesh();
-    if(showTol)buildTolMesh();
-    if(showDaylight)buildDaylightMesh();
-    replayFrame++;
-  },600);
-}
 
 // ═══════════════════════════════════════════════════════════════════
 // INIT
