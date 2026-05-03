@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GradeOS Simulator v0.9 · SW v155</title>
+<title>GradeOS Simulator v0.9 · SW v156</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <!-- Slice 11.5 — GLTF model loader (Three.js example loaders are global scripts, not modules) -->
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -2054,6 +2054,8 @@ function cabOpenProfileDesigner(){
   if(wB)wB.value='0';
   // Slice 30 — reset preview to Plan tab on open.
   if(typeof cabPDSetPreviewTab==='function')cabPDSetPreviewTab('plan');
+  // Slice 31 — refresh template lists on open so newly-saved templates show.
+  if(typeof cabPDRenderTemplateLists==='function')cabPDRenderTemplateLists();
   cabPDGotoStep(1);
 }
 
@@ -2512,6 +2514,9 @@ function cabPDStep1SetSource(src){
     cabPDUpdateFocusList();
     const hint=document.getElementById('cab-pd-poly-hint');
     if(hint)hint.textContent='Drive the dozer to a corner of the alignment, tap "+ Drop Vertex". Repeat for each vertex.';
+  } else if(src==='templates'){
+    // Slice 31 — refresh saved-alignments list when picker opened.
+    if(typeof cabPDRenderTemplateLists==='function') cabPDRenderTemplateLists();
   }
   cabPDUpdateFooter();
 }
@@ -2621,6 +2626,106 @@ function cabPDUpdateSummary(){
       '<b>Effective width:</b> '+wA.toFixed(2)+' m left + '+wB.toFixed(2)+' m right = '+(wA+wB).toFixed(2)+' m total<br>'+
       '<b>Action:</b> extrude section along alignment, write to design surface.';
   }
+}
+
+// ── Slice 31 — Templates library (alignments + sections) ─────────────
+// Storage: localStorage key 'gradeos-design-templates-v1'.
+// Scope per B3 decision: GLOBAL across projects (no per-project filter
+// until the Project hierarchy lands; will migrate then).
+const _CAB_PD_TPL_KEY='gradeos-design-templates-v1';
+function _cabPDLoadTemplates(){
+  try{
+    const raw=localStorage.getItem(_CAB_PD_TPL_KEY);
+    if(!raw)return {alignments:[], sections:[]};
+    const obj=JSON.parse(raw);
+    return {
+      alignments:Array.isArray(obj.alignments)?obj.alignments:[],
+      sections:  Array.isArray(obj.sections  )?obj.sections  :[],
+    };
+  }catch(e){ return {alignments:[], sections:[]}; }
+}
+function _cabPDSaveTemplates(t){
+  try{ localStorage.setItem(_CAB_PD_TPL_KEY, JSON.stringify(t)); }catch(e){}
+}
+function _cabPDTplId(){ return 't'+Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+
+function cabPDSaveAlignmentTemplate(){
+  const pts=cabPDParsePolyline();
+  if(pts.length<2){ alert('Need at least 2 vertices on the alignment to save.'); return; }
+  const name=(prompt('Name for this alignment template:', 'Alignment '+(new Date().toISOString().slice(0,10)))||'').trim();
+  if(!name)return;
+  const t=_cabPDLoadTemplates();
+  t.alignments.push({id:_cabPDTplId(), name, points:pts.map(p=>({x:p.x,z:p.z,...(p.elev!=null?{elev:p.elev}:{})})), created:Date.now()});
+  _cabPDSaveTemplates(t);
+  cabPDRenderTemplateLists();
+}
+function cabPDSaveSectionTemplate(){
+  if(!Array.isArray(_cabPDProfile) || _cabPDProfile.length<2){
+    alert('Need at least 2 vertices on the section to save.'); return;
+  }
+  const name=(prompt('Name for this section template:', 'Section '+(new Date().toISOString().slice(0,10)))||'').trim();
+  if(!name)return;
+  const t=_cabPDLoadTemplates();
+  t.sections.push({id:_cabPDTplId(), name, profile:_cabPDProfile.map(v=>({u:v.u, dy:v.dy})), created:Date.now()});
+  _cabPDSaveTemplates(t);
+  cabPDRenderTemplateLists();
+}
+
+function cabPDLoadAlignmentTemplate(id){
+  const t=_cabPDLoadTemplates();
+  const a=t.alignments.find(x=>x.id===id);
+  if(!a)return;
+  const ta=document.getElementById('cab-pd-polyline');
+  if(!ta)return;
+  ta.value=a.points.map(p=>{
+    if(p.elev!=null)return p.x.toFixed(2)+','+p.z.toFixed(2)+','+p.elev.toFixed(3);
+    return p.x.toFixed(2)+','+p.z.toFixed(2);
+  }).join('\n');
+  if(typeof cabPDPlanFitView==='function'){cabPDPlanFitView();cabPDPlanRedraw();}
+  cabPDUpdateFocusList();
+  cabPDUpdateFooter();
+}
+function cabPDLoadSectionTemplate(id){
+  const t=_cabPDLoadTemplates();
+  const s=t.sections.find(x=>x.id===id);
+  if(!s)return;
+  _cabPDProfile.length=0;
+  s.profile.forEach(v=>_cabPDProfile.push({u:v.u, dy:v.dy}));
+  cabPDRedrawProfile();
+  cabPDUpdateFooter();
+}
+function cabPDDeleteTemplate(kind, id){
+  const t=_cabPDLoadTemplates();
+  if(kind==='alignment') t.alignments=t.alignments.filter(x=>x.id!==id);
+  if(kind==='section')   t.sections  =t.sections  .filter(x=>x.id!==id);
+  _cabPDSaveTemplates(t);
+  cabPDRenderTemplateLists();
+}
+
+function cabPDRenderTemplateLists(){
+  const t=_cabPDLoadTemplates();
+  const renderList=(elId, items, kind, loadFn) => {
+    const el=document.getElementById(elId);
+    if(!el)return;
+    if(items.length===0){
+      el.innerHTML='<div style="color:#7aa0c0;font-style:italic;font-size:11px">No saved templates yet.</div>';
+      return;
+    }
+    el.innerHTML=items.map(it=>{
+      const summary=(kind==='alignment')
+        ? (it.points.length+' points')
+        : (it.profile.length+' vertices');
+      const safeName=(it.name||'').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+      return '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #0d1f30">'+
+        '<div style="flex:1"><div style="font-weight:700;color:#dce8f5;font-size:12px">'+safeName+'</div>'+
+        '<div style="font-size:10px;color:#7aa0c0;font-family:monospace">'+summary+'</div></div>'+
+        '<button class="cab-btn-secondary" style="padding:4px 10px;font-size:11px" onclick="cabPDLoad'+(kind==='alignment'?'Alignment':'Section')+'Template(\''+it.id+'\')">Load</button>'+
+        '<button class="cab-btn-secondary" style="padding:4px 10px;font-size:11px;color:#ef5350" onclick="if(confirm(\'Delete &quot;'+safeName+'&quot;?\')) cabPDDeleteTemplate(\''+kind+'\',\''+it.id+'\')">×</button>'+
+      '</div>';
+    }).join('');
+  };
+  renderList('cab-pd-step1-templates-list', t.alignments, 'alignment');
+  renderList('cab-pd-step2-templates-list', t.sections,   'section');
 }
 
 function cabPDResetWidths(){
@@ -5423,10 +5528,10 @@ body.cab-led-align-hidden #cab-offsets > .cab-offset-cell:not(.cab-offset-cell-h
             <div class="cab-wizard-tile-title">Focus</div>
             <div class="cab-wizard-tile-desc">Drive + tap to capture from blade.</div>
           </button>
-          <button class="cab-wizard-tile is-disabled" data-source="templates" disabled title="Saved alignment templates — coming in Slice 31">
+          <button class="cab-wizard-tile" data-source="templates" onclick="cabPDStep1SetSource('templates')" title="Load a previously saved alignment">
             <div class="cab-wizard-tile-icon">📦</div>
             <div class="cab-wizard-tile-title">Templates</div>
-            <div class="cab-wizard-tile-desc">Saved alignments (soon).</div>
+            <div class="cab-wizard-tile-desc">Load a saved alignment.</div>
           </button>
         </div>
 
@@ -5445,7 +5550,7 @@ body.cab-led-align-hidden #cab-offsets > .cab-offset-cell:not(.cab-offset-cell-h
           <div id="cab-pd-focus-list" style="margin-top:8px;max-height:140px;overflow-y:auto;background:#08131f;border:1px solid #1a2840;border-radius:4px;padding:8px"></div>
         </div>
         <div class="cab-pd-source-body hidden" data-source="templates">
-          <div class="cab-field-hint" style="text-align:center;padding:30px;font-style:italic;color:#7aa0c0">📦 Saved alignment templates land in Slice 31.</div>
+          <div id="cab-pd-step1-templates-list" style="background:#08131f;border:1px solid #1a2840;border-radius:4px;padding:8px;max-height:160px;overflow-y:auto"></div>
         </div>
 
         <!-- Slice 26 — interactive plan canvas. Always visible regardless
@@ -5456,6 +5561,11 @@ body.cab-led-align-hidden #cab-offsets > .cab-offset-cell:not(.cab-offset-cell-h
         <div class="cab-field-hint" style="display:flex;justify-content:space-between;align-items:center">
           <span>Tap to add · drag to move · tap-and-hold to delete · tap a segment to insert.</span>
           <button class="cab-btn-secondary" style="padding:4px 10px;font-size:11px" onclick="cabPDPlanFitView();cabPDPlanRedraw()">Fit view</button>
+        </div>
+
+        <!-- Slice 31 — Save as Template button (Step 1). -->
+        <div class="cab-field-row" style="margin-top:8px;justify-content:flex-end">
+          <button class="cab-btn-secondary" style="padding:6px 12px;font-size:11px" onclick="cabPDSaveAlignmentTemplate()">💾 Save alignment as template…</button>
         </div>
 
         <!-- Advanced: text-edit vertices (collapsed by default) -->
@@ -5496,6 +5606,7 @@ body.cab-led-align-hidden #cab-offsets > .cab-offset-cell:not(.cab-offset-cell-h
           <div class="cab-field-hint" style="margin-bottom:6px"><b>Click:</b> tap to add a vertex, drag to move, double-tap to delete. <b>Finger-draw:</b> hold and drag to trace the profile in one stroke; on release the system simplifies it to a clean ~5–15 vertex polyline. Centre line (u=0) is the alignment.</div>
         </div>
         <div class="cab-pd-source-body" data-source="templates">
+          <div style="font-size:10px;color:#7aa0c0;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Built-in presets</div>
           <div class="cab-field-row">
             <button class="cab-radio" id="cab-pd-preset-flat"     onclick="cabPDLoadPreset('flat');cabPDUpdateFooter()">Flat</button>
             <button class="cab-radio" id="cab-pd-preset-crown"    onclick="cabPDLoadPreset('crown');cabPDUpdateFooter()">Crown (road)</button>
@@ -5504,6 +5615,9 @@ body.cab-led-align-hidden #cab-offsets > .cab-offset-cell:not(.cab-offset-cell-h
             <button class="cab-radio" id="cab-pd-preset-batter"   onclick="cabPDLoadPreset('batter');cabPDUpdateFooter()">Batter</button>
             <button class="cab-radio" id="cab-pd-preset-dam"      onclick="cabPDLoadPreset('dam');cabPDUpdateFooter()">Dam</button>
           </div>
+          <!-- Slice 31 — saved section templates list. -->
+          <div style="font-size:10px;color:#7aa0c0;text-transform:uppercase;letter-spacing:.5px;margin:10px 0 4px">My saved sections</div>
+          <div id="cab-pd-step2-templates-list" style="background:#08131f;border:1px solid #1a2840;border-radius:4px;padding:8px;max-height:120px;overflow-y:auto"></div>
         </div>
         <div class="cab-pd-source-body hidden" data-source="focus">
           <div class="cab-field-hint" style="text-align:center;padding:30px;font-style:italic;color:#7aa0c0">🎯 Section-from-Focus (drive to N known offsets, system fits a profile) lands in a later slice.</div>
@@ -5514,6 +5628,9 @@ body.cab-led-align-hidden #cab-offsets > .cab-offset-cell:not(.cab-offset-cell-h
         <div class="cab-field-row" style="margin-top:6px">
           <button class="cab-btn-secondary" onclick="cabPDClearProfile();cabPDUpdateFooter()">Clear vertices</button>
           <span class="cab-field-prefix" id="cab-pd-vertex-count">0 vertices</span>
+          <div style="flex:1"></div>
+          <!-- Slice 31 — Save as Template button (Step 2). -->
+          <button class="cab-btn-secondary" style="padding:6px 12px;font-size:11px" onclick="cabPDSaveSectionTemplate()">💾 Save section as template…</button>
         </div>
       </div>
 
