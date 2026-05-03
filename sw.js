@@ -1,5 +1,5 @@
-const CACHE = 'gradeos-v108';
-const ASSETS = ['./', './index.html'];
+const CACHE = 'gradeos-v110';
+const ASSETS = ['./', './index.html', './src/product/guidance/blade-pose.js', './src/sim/fake-gps/blade-antennas.js'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)));
