@@ -1,6 +1,6 @@
 # Profile Designer Wizard — Plan
 
-**Status:** Drafted 2026-05-04. Grilling in progress — see "Open questions" at the bottom. Slice 24 not yet started; do NOT begin implementing until the open questions are resolved.
+**Status:** Locked 2026-05-04. All 16 decisions resolved with Steven (see "Decisions" at the bottom). Slice 24 cleared to start.
 
 **Reference:** Cat GRADE 3-step "Create Design" wizard (screenshots reviewed in session). 16+ screens captured covering alignment placement, section drawing, combine-and-apply, plus job setup / file transfer / live cab examples. The wizard pattern is the canonical inspiration.
 
@@ -144,29 +144,46 @@ Save / load alignment templates and section templates in `localStorage` (key: `g
 
 ---
 
-## Open questions (grilling — resolve before Slice 24)
+## Decisions (locked 2026-05-04)
 
-These are the calls we need to make before any code lands. Answers will be folded back into this doc and referenced by the slice commits.
+All 16 questions answered by Steven; design is now locked. Slice 24 cleared to start.
 
-1. **Cab-only or cab + work-screen?** Recommend cab-only.
-2. **Replace existing modal in-place, or feature-flag new wizard?** Recommend in-place.
-3. **Width A/B semantics:** scale-to-fit OR truncation/extension? Recommend truncation/extension (matches Cat).
-4. **Bearing convention for Slice 27 angles:** deflection angle OR absolute compass bearing? Recommend deflection.
-5. **Step 2 / Focus:** include in Slice 25 OR defer to a later slice? Recommend defer.
-6. **Templates storage:** localStorage OR IndexedDB? Recommend localStorage now, migrate later.
-7. **Frequency / context of use** — once per job, daily, multiple times? Pre-design at home or live in cab?
-8. **Edit-existing flow** — does the wizard handle editing an existing design, or is it always create-new?
-9. **Background of the Step 1 plan canvas** — empty grid only, or terrain / recorded points / existing alignments shown faded?
-10. **Step navigation gating** — must complete each step before Next, or allow skip / freeform navigation?
-11. **Apply behaviour** — replace current design or add new alongside? What happens to the previously-active design? Project hierarchy implications?
-12. **Pause / resume mid-wizard** — possible, or Cancel always discards?
-13. **Default vertex tools** — tap-and-hold to delete OK on touchscreen? Insert-vertex-on-segment-click — yes/no?
-14. **3D preview interactivity in Slice 30** — just rotate, or rotate + zoom + pan? Show terrain underneath?
-15. **Template scope** — global across projects, or scoped per-project?
-16. **Variable-width corridor** — constant width along alignment OR width can vary per-vertex? (Cat's wizard suggests constant; variable corridor is a much bigger feature.)
+### A — Scope and shape
+
+- **A1. Frequency / context of use: live, daily, in the cab.** Implies touch-first ergonomics, glove-friendly hit targets (≥44 px primary, larger for the main actions), high contrast for outdoor / sunlight viewing, modal sized to fit the 10" cab screen without scrolling. This is THE governing constraint — every UX call below biases toward "easy to do live with one hand on the controls."
+- **A2. Always create-new; templates are the persistence layer.** Wizard does not edit an existing design. To "tweak" a previous design, the user reloads it as a template (Slice 31) and re-applies. Simpler state model, no in-place mutate path.
+- **A3. Cab-only.** Work-screen Profile Designer modal stays as a debug aid until Slice 21 demolition retires the work-screen entirely.
+
+### B — Source pickers and capture
+
+- **B1. Step 1 / Focus capture: explicit "Drop Vertex" button inside the wizard.** Each tap captures `bladePose.centre` and appends to the alignment polyline. Sim mode counts (simulated focus point works the same as a real F9P focus). The existing toolbar Record Point button stays a separate workflow — those points are picked up via the **Step 1 / Points** tile.
+- **B2. Step 2 / Focus: deferred** to a post-wizard slice (call it Slice 32). Slice 25 ships it as a stub tile labelled "Coming soon."
+- **B3. Templates: global, important.** Steven called out templates as a primary feature. Stored globally (cross-project) until Project hierarchy lands, at which point we migrate to per-project + global library options.
+
+### C — Alignment editing UX
+
+- **C1. All polyline-editing affordances enabled:** drag any vertex to reshape, tap-and-hold (~600 ms) to delete, click on a segment to insert a new vertex there.
+- **C2. Step 1 plan canvas background:** empty grid + already-recorded points (faint dots) + the dozer's current position and heading marker. Skip terrain contours and existing designs (assume create-new — busy backgrounds slow down picking).
+- **C3. Bearing convention: deflection from previous segment** (interior angle, smaller numbers, 0° = straight). Easier to reason about live ("is this a sharp turn?") than compass bearings.
+- **C4. Variable-width corridor: not yet.** v1.0 wizard is constant width (with asymmetric A/B per Slice 29). Variable corridor is post-v1.0.
+
+### D — Width / Apply / Persistence
+
+- **D1. Width A/B semantics: truncation/extension** (matches Cat). Profile keeps native u-coords; A/B clip or extend the final flat edge to those bounds. If profile data falls outside `[-A, +B]`, clip with a small "Section will be clipped to width A/B" warning.
+- **D2. Apply behaviour: replace + ask for confirmation** when there's an active design. ("This will replace 'South Drain V01'. Apply?" → Apply / Cancel.) Once Project / Designs hierarchy lands properly, default shifts to "add alongside."
+- **D3. Naming: auto-generate, user can override.** Default suggestion `Design 1`, `Design 2`, ... incrementing. User can rename in the field on Step 3.
+- **D4. Pause / resume mid-wizard: no — Cancel always discards.** Drafts are too much engineering cost for marginal value. If the user needs to step out, they re-do the wizard with a template recall.
+- **D5. Templates storage: localStorage now, IndexedDB at Project hierarchy migration.** Key: `gradeos-design-templates-v1`.
+
+### E — Polish
+
+- **E1. Step navigation gating: strict.** Next button disabled until current step has valid input (≥2 vertices for alignment, ≥2 vertices for section). Previous always works (no gating backward).
+- **E2. 3D preview (Slice 30): rotate + zoom + pan, with existing terrain rendered underneath in a faint colour.** Cut/fill preview is a value-add over Cat's design-only preview — operator sees where the proposed design will cut/fill before applying.
+- **E3. In-place modification of the existing modal, slice by slice** (no parallel feature flag). Cab works at every commit. Math seam unchanged.
 
 ---
 
 ## Status / Decisions log
 
-- **2026-05-04:** Plan drafted from Cat GRADE reference screenshots. Open questions raised. Awaiting Steven's answers before Slice 24 begins.
+- **2026-05-04 (early):** Plan drafted from Cat GRADE reference screenshots. 16 open questions raised.
+- **2026-05-04 (later):** Steven answered all 16. Decisions locked above. Slice 24 cleared.
