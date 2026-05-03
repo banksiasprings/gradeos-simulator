@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GradeOS Simulator v0.9 · SW v141</title>
+<title>GradeOS Simulator v0.9 · SW v142</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <!-- Slice 11.5 — GLTF model loader (Three.js example loaders are global scripts, not modules) -->
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -59,7 +59,7 @@ function switchDesignTab(tab){
     const div=document.createElement('div');
     div.id='dtab-tools-content';
     div.style.cssText='padding:16px;overflow-y:auto;flex:1';
-    div.innerHTML=`<button class='drawer-btn' id='dp-topo-tools-btn' onclick='toggleTerrain()' style='width:100%;margin-bottom:16px;font-size:13px;padding:12px;display:flex;align-items:center;gap:10px' title='Tap to cycle: Off → Active → Reference'><span id='dp-topo-tools-led' style='display:inline-block;width:11px;height:11px;border-radius:50%;background:#cc3333;box-shadow:0 0 6px rgba(204,51,51,0.6);flex-shrink:0'></span><span style='flex:1'>🏔 Topo</span><span id='dp-topo-tools-label' style='font-size:11px;font-weight:700;color:#cc3333'>OFF</span></button><div style='font-size:10px;color:#4a7aa0;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px'>Quick Design Tools</div><div style='display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:18px'><button class='dtools-btn' onclick='setTool("flat");closeDesignPanel()'>⬛ Flat Pad<span>Level area</span></button><button class='dtools-btn' onclick='setTool("slope");closeDesignPanel()'>◥ Single Slope<span>Grade in one direction</span></button><button class='dtools-btn' onclick='setTool("batter");closeDesignPanel()'>⛰ Batter<span>Slope from crest line</span></button><button class='dtools-btn' onclick='setTool("irrig");closeDesignPanel()'>💧 Irrig Bay<span>Auto-balance cut/fill</span></button><button class='dtools-btn' onclick='setTool("bestfit");closeDesignPanel()'>📐 Min Earthworks<span>Fit flattest grade</span></button><button class='dtools-btn' onclick='setTool("section");closeDesignPanel()'>✂ Cross-Section<span>Profile cut view</span></button></div><div style='font-size:10px;color:#4a7aa0;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px'>Tin Line Design</div><div style='display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:18px'><button class='dtools-btn' onclick='switchDesignTab("profile")'>📐 Profile Designer<span>Cross-section template</span></button><button class='dtools-btn' onclick='switchDesignTab("align")'>🛣 Alignment Designer<span>Spline + vertical grade</span></button></div><div style='font-size:10px;color:#4a7aa0;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px'>Quick Scenarios</div><div style='display:grid;grid-template-columns:1fr 1fr;gap:8px'><button class='dtools-btn dtools-grn' onclick='runScenario("irrig");closeDesignPanel()'>🌾 Irrigation Bay<span>Auto-graded flood bay</span></button><button class='dtools-btn dtools-grn' onclick='runScenario("housepad");closeDesignPanel()'>🏠 House Pad<span>3 lots on hillside</span></button><button class='dtools-btn dtools-grn' onclick='runScenario("road");closeDesignPanel()'>🛣 Road Cut<span>3% grade corridor</span></button><button class='dtools-btn dtools-grn' onclick='runScenario("dam");closeDesignPanel()'>🌊 Dam<span>Pond + batter slopes</span></button></div>`;
+    div.innerHTML=`<button class='drawer-btn' id='dp-topo-tools-btn' onclick='toggleTerrain()' style='width:100%;margin-bottom:16px;font-size:13px;padding:12px;display:flex;align-items:center;gap:10px' title='Tap to cycle: Off → Active → Reference'><span id='dp-topo-tools-led' style='display:inline-block;width:11px;height:11px;border-radius:50%;background:#cc3333;box-shadow:0 0 6px rgba(204,51,51,0.6);flex-shrink:0'></span><span style='flex:1'>🏔 Topo</span><span id='dp-topo-tools-label' style='font-size:11px;font-weight:700;color:#cc3333'>OFF</span></button><div style='font-size:10px;color:#4a7aa0;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px'>Quick Design Tools</div><div style='display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:18px'><button class='dtools-btn' onclick='setTool("flat");closeDesignPanel()'>⬛ Flat Pad<span>Level area</span></button><button class='dtools-btn' onclick='setTool("slope");closeDesignPanel()'>◥ Single Slope<span>Grade in one direction</span></button><button class='dtools-btn' onclick='setTool("batter");closeDesignPanel()'>⛰ Batter<span>Slope from crest line</span></button><button class='dtools-btn' onclick='setTool("irrig");closeDesignPanel()'>💧 Irrig Bay<span>Auto-balance cut/fill</span></button><button class='dtools-btn' onclick='setTool("bestfit");closeDesignPanel()'>📐 Min Earthworks<span>Fit flattest grade</span></button><button class='dtools-btn' onclick='setTool("section");closeDesignPanel()'>✂ Cross-Section<span>Profile cut view</span></button></div><div style='font-size:10px;color:#4a7aa0;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px'>Tin Line Design</div><div style='display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:18px'><button class='dtools-btn' onclick='switchDesignTab("profile")'>📐 Profile Designer<span>Cross-section template</span></button><button class='dtools-btn' onclick='switchDesignTab("align")'>🛣 Alignment Designer<span>Spline + vertical grade</span></button></div>`;
     content.appendChild(div);
   } else {
     const el=document.getElementById(map[tab]);
@@ -4635,11 +4635,6 @@ body.cab-led-align-hidden #cab-offsets > .cab-offset-cell:not(.cab-offset-cell-h
         <button class="drawer-btn" onclick="setTool('section')">✂ Cross-Section</button>
         <button class="drawer-btn" onclick="openDesignPanel('tools');document.getElementById('side-drawer').classList.remove('open')">📐 Design Panel</button>
         <button class="drawer-btn" onclick="openDesignPanel('align');document.getElementById('side-drawer').classList.remove('open')">🛣 Alignment Designer</button>
-        <div style="font-size:9px;color:#4a7aa0;text-transform:uppercase;letter-spacing:1px;padding:8px 4px 4px">Quick Scenarios</div>
-        <button class="drawer-btn grn" onclick="runScenario('irrig');document.getElementById('side-drawer').classList.remove('open')">🌾 Irrigation Bay</button>
-        <button class="drawer-btn grn" onclick="runScenario('housepad');document.getElementById('side-drawer').classList.remove('open')">🏠 House Pad</button>
-        <button class="drawer-btn grn" onclick="runScenario('road');document.getElementById('side-drawer').classList.remove('open')">🛣 Road Cut</button>
-        <button class="drawer-btn grn" onclick="runScenario('dam');document.getElementById('side-drawer').classList.remove('open')">🌊 Dam</button>
       </div>
     </div>
 
@@ -5064,17 +5059,6 @@ body.cab-led-align-hidden #cab-offsets > .cab-offset-cell:not(.cab-offset-cell-h
       </div>
     </div>
 
-    <!-- Quick Scenarios -->
-    <div class="spanel">
-      <div class="spanel-hdr" onclick="togglePanel('qs')"><h3>🚀 Quick Demo Scenarios</h3><span class="toggle">▾</span></div>
-      <div class="spanel-body" id="qs-body">
-        <p style="font-size:10px;color:#4a7aa0;margin-bottom:6px;line-height:1.5">One-click demo setups — terrain + design applied and balanced automatically.</p>
-        <button class="btn grn" style="width:100%;margin-bottom:3px" onclick="runScenario('irrig')">🌾 Irrigation Bay Grade</button>
-        <button class="btn grn" style="width:100%;margin-bottom:3px" onclick="runScenario('housepad')">🏠 House Pad Development</button>
-        <button class="btn grn" style="width:100%;margin-bottom:3px" onclick="runScenario('road')">🛣 Road Construction Cut</button>
-        <button class="btn grn" style="width:100%;margin-bottom:3px" onclick="runScenario('dam')">🌊 Dam / Retention Wall</button>
-      </div>
-    </div>
 
     <!-- Tool panel -->
     <div class="spanel">
@@ -9368,58 +9352,6 @@ function captureScreenshot(){
   document.getElementById('st-hint').textContent='📷 Screenshot saved.';
 }
 
-// ═══════════════════════════════════════════════════════════════════
-// QUICK DEMO SCENARIOS
-// ═══════════════════════════════════════════════════════════════════
-function applyDesignRect(cx,cz,halfW,halfH,getElev){
-  // Apply design to a rectangular area; getElev(wx,wz) returns target elevation
-  const g1=w2g(cx-halfW,cz-halfH),g2=w2g(cx+halfW,cz+halfH);
-  for(let gz=g1.gz;gz<=g2.gz;gz++) for(let gx=g1.gx;gx<=g2.gx;gx++){
-    const wx=(gx-GR/2)*CS,wz=(gz-GR/2)*CS;
-    setDesign(gx,gz,getElev(wx,wz));
-  }
-}
-function runScenario(type){
-  let desc='';
-  if(type==='irrig'){
-    genTerrain('irrig_bay');
-    // Apply 0.05% fall in X direction (0.5mm/m) — typical flood irrigation grade
-    const baseElev=1.2;const gradeX=0.0005;
-    applyDesignRect(0,0,SZ/2-2,SZ/2-2,(wx)=>baseElev-wx*gradeX);
-    desc='🌾 Irrig Bay: 0.05% grade applied across full site. Auto-balanced. Drive machine to grade.';
-  }else if(type==='housepad'){
-    genTerrain('house_pad');
-    // Apply three flat pads at different elevations on a hillside
-    const pads=[{cx:-28,cz:-28,hw:18,hh:20,e:1.5},{cx:22,cz:-5,hw:18,hh:20,e:3.2},{cx:-5,cz:30,hw:25,hh:18,e:4.8}];
-    pads.forEach(p=>applyDesignRect(p.cx,p.cz,p.hw,p.hh,()=>p.e));
-    desc='🏠 House Pads: 3 lots applied at RL 1.5m, 3.2m, 4.8m. Cut on uphill, fill on downhill edges.';
-  }else if(type==='road'){
-    genTerrain('road_cut');
-    // Apply diagonal slope along road corridor centre line
-    // Road goes NW to SE: z=x*0.5 line. Apply 3% grade along road direction
-    const grade=0.03;
-    applyDesignRect(0,0,SZ/2-2,SZ/2-2,(wx,wz)=>1.5+(wx*0.6+wz*0.4)*0.03);
-    desc='🛣 Road Cut: 3% grade applied across formation. Cut through hill, fill in gully.';
-  }else if(type==='dam'){
-    genTerrain('dam_site');
-    // Apply dam design: flat pond floor, batter slopes, embankment crest
-    applyDesignRect(0,0,SZ/2-2,SZ/2-2,(wx,wz)=>{
-      const distFromCentre=Math.max(Math.abs(wx),Math.abs(wz));
-      if(distFromCentre<20)return 0.5; // pond floor
-      else if(distFromCentre<40)return 0.5+(distFromCentre-20)/20*2.5; // inner batter
-      else return 3.0; // embankment crest
-    });
-    desc='🌊 Dam: pond floor at RL 0.5m, batters to crest at RL 3.0m. Balance before grading.';
-  }
-  // Finish up: rebuild and auto-balance
-  rebuildDesMesh();buildTolMesh();buildDaylightMesh();buildStakes();
-  if(showStripPlan)buildStripPlan();
-  calcVol();
-  setTimeout(()=>{autoBalanceVOffset();},50); // slight delay to let calcVol settle
-  document.getElementById('st-hint').textContent=desc;
-  // Return to navigate mode so the scene is clean after scenario loads
-  setTool('nav');
-}
 
 // ═══════════════════════════════════════════════════════════════════
 // AUTO-STEER
