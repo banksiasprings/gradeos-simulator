@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GradeOS Simulator v0.8 · SW v115</title>
+<title>GradeOS Simulator v0.8 · SW v116</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <!-- Slice 1 — blade-pose seam. See CONTEXT.md, ADR-0002. -->
 <script type="module" src="./src/product/guidance/blade-pose.js"></script>
@@ -634,28 +634,317 @@ function cabRibbonApply(){
   cabCloseAllOverlays();
 }
 
-// ── Slice 4c — Toolbar wiring (open the right modal/overlay) ───────────
+// ── Slice 4d — Toolbar catalog + Edit Right Toolbar modal ──────────────
+const CAB_TOOLBAR_CATALOG=[
+  {key:'focus',          label:'Blade Focus',      icon:'●'},
+  {key:'record',         label:'Record Point',     icon:'📍'},
+  {key:'changeview',     label:'Change View',      icon:'⊞'},
+  {key:'overview',       label:'Overview Screen',  icon:'🌐'},
+  {key:'overlays',       label:'Overlays',         icon:'👁'},
+  {key:'editribbon',     label:'Edit Text Ribbon', icon:'≡'},
+  {key:'worksettings',   label:'Work Settings',    icon:'▤'},
+  {key:'systemsettings', label:'System Settings',  icon:'⚙'},
+];
+const CAB_TOOLBAR_DEFAULT=['focus','record','changeview','overview','overlays','worksettings','systemsettings'];
+let _cabToolbarDraft=[];
+function cabOpenEditToolbar(){
+  _cabToolbarDraft=[...cabPaneState.toolbar];
+  cabRenderToolbarModal();
+  cabOpenOverlay('cab-overlay-edittoolbar');
+}
+function _cabFindToolbarItem(key){
+  return CAB_TOOLBAR_CATALOG.find(i=>i.key===key);
+}
+function cabRenderToolbarModal(){
+  const sel=document.getElementById('cab-toolbar-selected-list');
+  const avail=document.getElementById('cab-toolbar-available-list');
+  if(!sel||!avail)return;
+  sel.innerHTML='';
+  if(_cabToolbarDraft.length===0){
+    sel.innerHTML='<div class="cab-pane-empty" style="padding:14px">(no icons selected — toolbar will be empty)</div>';
+  }else{
+    _cabToolbarDraft.forEach((key,i)=>{
+      const item=_cabFindToolbarItem(key);
+      if(!item)return;
+      const row=document.createElement('div');
+      row.className='cab-ribbon-row selected';
+      row.innerHTML=`<span class="cab-ribbon-row-icon">${item.icon}</span>
+        <span class="cab-ribbon-row-label">${item.label}</span>
+        <button class="cab-ribbon-row-action" onclick="cabToolbarMoveUp(${i})" ${i===0?'disabled':''}>▲</button>
+        <button class="cab-ribbon-row-action" onclick="cabToolbarMoveDown(${i})" ${i===_cabToolbarDraft.length-1?'disabled':''}>▼</button>
+        <button class="cab-ribbon-row-action" onclick="cabToolbarRemove(${i})">✕</button>`;
+      sel.appendChild(row);
+    });
+  }
+  avail.innerHTML='';
+  CAB_TOOLBAR_CATALOG.forEach(item=>{
+    const inDraft=_cabToolbarDraft.includes(item.key);
+    const row=document.createElement('div');
+    row.className='cab-ribbon-row';
+    row.innerHTML=`<span class="cab-ribbon-row-icon">${item.icon}</span>
+      <span class="cab-ribbon-row-label">${item.label}</span>
+      <button class="cab-ribbon-row-action" onclick="cabToolbarToggleAvail('${item.key}')">${inDraft?'✓ Selected':'+ Add'}</button>`;
+    avail.appendChild(row);
+  });
+}
+function cabToolbarMoveUp(i){
+  if(i<=0)return;
+  const t=_cabToolbarDraft[i];_cabToolbarDraft[i]=_cabToolbarDraft[i-1];_cabToolbarDraft[i-1]=t;
+  cabRenderToolbarModal();
+}
+function cabToolbarMoveDown(i){
+  if(i>=_cabToolbarDraft.length-1)return;
+  const t=_cabToolbarDraft[i];_cabToolbarDraft[i]=_cabToolbarDraft[i+1];_cabToolbarDraft[i+1]=t;
+  cabRenderToolbarModal();
+}
+function cabToolbarRemove(i){
+  _cabToolbarDraft.splice(i,1);
+  cabRenderToolbarModal();
+}
+function cabToolbarToggleAvail(key){
+  if(_cabToolbarDraft.includes(key)){
+    _cabToolbarDraft=_cabToolbarDraft.filter(k=>k!==key);
+  }else{
+    _cabToolbarDraft.push(key);
+  }
+  cabRenderToolbarModal();
+}
+function cabToolbarResetDefaults(){
+  _cabToolbarDraft=[...CAB_TOOLBAR_DEFAULT];
+  cabRenderToolbarModal();
+}
+function cabToolbarApply(){
+  cabPaneState.toolbar=[..._cabToolbarDraft];
+  cabPersistState();
+  cabRebuildRightToolbar();
+  cabCloseAllOverlays();
+}
+function cabRebuildRightToolbar(){
+  const wrap=document.getElementById('cab-right-toolbar');
+  if(!wrap)return;
+  wrap.innerHTML='';
+  cabPaneState.toolbar.forEach(key=>{
+    const item=_cabFindToolbarItem(key);
+    if(!item)return;
+    const btn=document.createElement('button');
+    btn.className='cab-tool-btn';
+    btn.title=item.label;
+    btn.textContent=item.icon;
+    btn.onclick=()=>cabToolTap(key);
+    wrap.appendChild(btn);
+  });
+}
+
+// ── Slice 4d — System Settings (units, mounting, toolbar visibility) ───
+const cabSysState={
+  units:'metric',
+  showRightToolbar:true,
+  antennaA_dy:-0.5,    // Pole height: blade-tip Y offset down to antenna (dy is negative)
+  antennaB_dy:-0.5,
+  defaultToleranceM:0.025,
+};
+function cabOpenSystemSettings(){
+  // Populate fields from current state
+  cabActivateRadio('cab-sys-units-metric',cabSysState.units==='metric');
+  cabActivateRadio('cab-sys-toolbar-on',cabSysState.showRightToolbar===true);
+  cabActivateRadio('cab-sys-toolbar-off',cabSysState.showRightToolbar===false);
+  const a=document.getElementById('cab-sys-antenna-a');
+  if(a)a.value=Math.abs(cabSysState.antennaA_dy).toFixed(2);
+  const b=document.getElementById('cab-sys-antenna-b');
+  if(b)b.value=Math.abs(cabSysState.antennaB_dy).toFixed(2);
+  const t=document.getElementById('cab-sys-default-tol');
+  if(t)t.value=cabSysState.defaultToleranceM.toFixed(3);
+  cabOpenOverlay('cab-overlay-systemsettings');
+}
+function cabSysSetUnits(u){
+  cabSysState.units=u;
+  cabActivateRadio('cab-sys-units-metric',u==='metric');
+  cabPersistState();
+}
+function cabSysSetToolbar(on){
+  cabSysState.showRightToolbar=!!on;
+  cabActivateRadio('cab-sys-toolbar-on',on===true);
+  cabActivateRadio('cab-sys-toolbar-off',on===false);
+  cabApplyToolbarVisibility();
+  cabPersistState();
+}
+function cabApplyToolbarVisibility(){
+  if(cabSysState.showRightToolbar){
+    document.body.classList.remove('cab-toolbar-hidden');
+  }else{
+    document.body.classList.add('cab-toolbar-hidden');
+  }
+  cabResizeRenderer();
+}
+function cabSysSetAntenna(side,m){
+  if(!isFinite(m)||m<0||m>5)return;
+  // Pole height entered as positive; mounting.dy is stored as negative (antenna→tip)
+  if(side==='A')cabSysState.antennaA_dy=-Math.abs(m);
+  else cabSysState.antennaB_dy=-Math.abs(m);
+  // Live-update SIM_BLADE_MOUNTING so the blade-pose math picks up the change.
+  if(typeof window.SIM_BLADE_MOUNTING==='object'&&window.SIM_BLADE_MOUNTING){
+    window.SIM_BLADE_MOUNTING.antennaA.dy=cabSysState.antennaA_dy;
+    window.SIM_BLADE_MOUNTING.antennaB.dy=cabSysState.antennaB_dy;
+  }
+  cabPersistState();
+}
+function cabSysSetDefaultTol(m){
+  if(!isFinite(m)||m<=0||m>1)return;
+  cabSysState.defaultToleranceM=m;
+  // Apply to global so blade-target picks it up.
+  if(typeof guidanceTolerance!=='undefined')guidanceTolerance=m;
+  cabPersistState();
+}
+
+// ── Slice 4d — Work Settings (per-task) ────────────────────────────────
+const cabWorkState={
+  tolerancePresetM:0.025,
+  vgm:'center',
+};
+function cabOpenWorkSettings(){
+  // Populate fields from current state
+  const eo=document.getElementById('cab-work-elev-offset');
+  if(eo&&typeof vOffset!=='undefined')eo.value=vOffset.toFixed(3);
+  const focus=(typeof bladeFocus!=='undefined')?bladeFocus:'center';
+  cabActivateRadio('cab-work-focus-tipA',focus==='tipA');
+  cabActivateRadio('cab-work-focus-center',focus==='center');
+  cabActivateRadio('cab-work-focus-tipB',focus==='tipB');
+  // Tolerance preset radios
+  const tol=(typeof guidanceTolerance!=='undefined')?guidanceTolerance:0.025;
+  cabActivateRadio('cab-work-tol-rough',Math.abs(tol-0.100)<1e-4);
+  cabActivateRadio('cab-work-tol-medium',Math.abs(tol-0.050)<1e-4);
+  cabActivateRadio('cab-work-tol-fine',Math.abs(tol-0.020)<1e-4);
+  const c=document.getElementById('cab-work-tol-custom');
+  if(c)c.value=tol.toFixed(3);
+  // VGM
+  cabActivateRadio('cab-work-vgm-center',cabWorkState.vgm==='center');
+  cabActivateRadio('cab-work-vgm-2points',cabWorkState.vgm==='2points');
+  cabOpenOverlay('cab-overlay-worksettings');
+}
+function cabWorkSetOffset(m){
+  if(!isFinite(m))return;
+  // Clamp to a sane range
+  m=Math.max(-2,Math.min(2,m));
+  if(typeof vOffset!=='undefined'){
+    // Update via existing global; keep both in sync.
+    window.vOffset=m;
+    try{vOffset=m;}catch(e){}
+  }
+  const eo=document.getElementById('cab-work-elev-offset');
+  if(eo)eo.value=m.toFixed(3);
+}
+function cabWorkAdjustOffset(delta){
+  const cur=(typeof vOffset!=='undefined')?vOffset:0;
+  cabWorkSetOffset(cur+delta);
+}
+function cabWorkSetFocus(f){
+  if(typeof setBladeFocus==='function'){
+    setBladeFocus(f);
+  }else if(typeof bladeFocus!=='undefined'){
+    bladeFocus=f;
+  }
+  cabActivateRadio('cab-work-focus-tipA',f==='tipA');
+  cabActivateRadio('cab-work-focus-center',f==='center');
+  cabActivateRadio('cab-work-focus-tipB',f==='tipB');
+}
+function cabWorkSetTolerance(m){
+  if(!isFinite(m)||m<=0||m>1)return;
+  if(typeof guidanceTolerance!=='undefined')guidanceTolerance=m;
+  cabWorkState.tolerancePresetM=m;
+  cabActivateRadio('cab-work-tol-rough',Math.abs(m-0.100)<1e-4);
+  cabActivateRadio('cab-work-tol-medium',Math.abs(m-0.050)<1e-4);
+  cabActivateRadio('cab-work-tol-fine',Math.abs(m-0.020)<1e-4);
+}
+function cabWorkSetVGM(mode){
+  cabWorkState.vgm=mode;
+  cabActivateRadio('cab-work-vgm-center',mode==='center');
+  cabActivateRadio('cab-work-vgm-2points',mode==='2points');
+  // Math wiring deferred — for Slice 4d this is just UI state.
+}
+function cabActivateRadio(id,on){
+  const el=document.getElementById(id);
+  if(!el)return;
+  if(on)el.classList.add('active');
+  else el.classList.remove('active');
+}
+
+// ── Slice 4d — cabToolTap (replaces 4c version, routes to real screens) ─
 function cabToolTap(which){
   if(which==='focus'&&typeof setBladeFocus==='function'){
     const next={center:'tipA',tipA:'tipB',tipB:'center'}[(typeof bladeFocus!=='undefined'?bladeFocus:'center')];
     setBladeFocus(next);
   }else if(which==='changeview'){
     cabOpenOverlay('cab-overlay-changeview');
-  }else if(which==='worksettings'){
-    // Stub — Slice 4d will route to a real Work Settings panel.
-    // For now repurpose to Edit Text Ribbon since that's an operator-config we built.
+  }else if(which==='editribbon'){
     cabOpenEditRibbon();
+  }else if(which==='worksettings'){
+    cabOpenWorkSettings();
+  }else if(which==='systemsettings'){
+    cabOpenSystemSettings();
   }else if(which==='record'){
     console.log('Record point — wired in a future slice');
   }else if(which==='overview'){
     console.log('Overview screen — wired in a future slice');
   }else if(which==='overlays'){
     console.log('Overlays — wired in a future slice');
-  }else if(which==='systemsettings'){
-    // Temporary route to GPS panel until proper System Settings exists.
-    document.body.classList.remove('cab-mode');
-    openGPSPanel();
   }
+}
+
+// ── Slice 4d — Persistence (extends Slice 4c) ──────────────────────────
+const _slice4c_cabPersistState=window.cabPersistState;
+const _slice4c_cabLoadState=window.cabLoadState;
+function cabPersistState(){
+  try{
+    localStorage.setItem('gradeos-cab-state-v1',JSON.stringify({
+      layout:cabPaneState.layout,
+      panes:cabPaneState.panes,
+      ribbon:cabPaneState.ribbon,
+      toolbar:cabPaneState.toolbar,
+      sys:cabSysState,
+    }));
+  }catch(e){}
+}
+function cabLoadState(){
+  try{
+    const s=localStorage.getItem('gradeos-cab-state-v1');
+    if(s){
+      const o=JSON.parse(s);
+      if(o.layout)cabPaneState.layout=o.layout;
+      if(o.panes)cabPaneState.panes={...cabPaneState.panes,...o.panes};
+      if(Array.isArray(o.ribbon))cabPaneState.ribbon=o.ribbon.slice(0,5);
+      if(Array.isArray(o.toolbar))cabPaneState.toolbar=o.toolbar;
+      if(o.sys)Object.assign(cabSysState,o.sys);
+      // Apply system-side state at load
+      if(typeof window.SIM_BLADE_MOUNTING==='object'&&window.SIM_BLADE_MOUNTING){
+        window.SIM_BLADE_MOUNTING.antennaA.dy=cabSysState.antennaA_dy;
+        window.SIM_BLADE_MOUNTING.antennaB.dy=cabSysState.antennaB_dy;
+      }
+      if(typeof guidanceTolerance!=='undefined')guidanceTolerance=cabSysState.defaultToleranceM;
+    }
+  }catch(e){}
+}
+
+// Extend cabPaneState with toolbar (default if not loaded)
+if(!cabPaneState.toolbar)cabPaneState.toolbar=[...CAB_TOOLBAR_DEFAULT];
+
+// On boot init, also rebuild the right toolbar from state and apply visibility.
+const _slice4c_cabInit=window.cabInit;
+function cabInit(){
+  cabLoadState();
+  if(!cabPaneState.toolbar)cabPaneState.toolbar=[...CAB_TOOLBAR_DEFAULT];
+  const pane=document.getElementById('cab-centre-pane');
+  if(pane){
+    pane.className=pane.className.replace(/\bcab-layout-\S+/g,'').trim();
+    pane.classList.add('cab-layout-'+cabPaneState.layout);
+  }
+  cabRebuildBottomStrip();
+  cabRebuildRightToolbar();
+  cabApplyToolbarVisibility();
+}
+if(document.readyState==='loading'){
+  document.addEventListener('DOMContentLoaded',cabInit);
+}else{
+  cabInit();
 }
 
 // ── Slice 4c — localStorage persistence ────────────────────────────────
@@ -2147,6 +2436,84 @@ body.cab-mode #workscreen-back-btn{display:none !important}
   letter-spacing:1.2px; text-transform:uppercase;
   padding:8px 4px 4px;
 }
+
+/* ── Slice 4d — Settings forms ───────────────────────────────────────── */
+.cab-form{
+  display:flex; flex-direction:column; gap:14px;
+  padding:8px 0;
+  max-height:60vh;
+  overflow-y:auto;
+}
+.cab-field{
+  display:flex; flex-direction:column; gap:6px;
+}
+.cab-field-label{
+  font-size:11px; font-weight:700;
+  color:#e8a020;
+  letter-spacing:1.2px; text-transform:uppercase;
+}
+.cab-field-row{
+  display:flex; align-items:center; gap:6px;
+  flex-wrap:wrap;
+}
+.cab-field-prefix{
+  font-size:12px; color:#7aa0c0;
+  font-family:'Menlo',monospace;
+}
+.cab-field-hint{
+  font-size:11px; color:#5a7a98;
+  line-height:1.4;
+  margin-top:2px;
+}
+.cab-input{
+  background:#08131f;
+  border:1px solid #1e4a7a;
+  color:#e0e8f0;
+  padding:6px 10px;
+  font-family:'Menlo',monospace;
+  font-size:13px;
+  border-radius:3px;
+  width:100px;
+}
+.cab-input:focus{
+  outline:none;
+  border-color:#e8a020;
+}
+.cab-input-narrow{width:70px}
+.cab-input:disabled{opacity:.4}
+.cab-stepper{
+  background:#0d1f35;
+  border:1px solid #1e4a7a;
+  color:#e0e8f0;
+  padding:6px 10px;
+  font-size:11px; font-weight:700;
+  border-radius:3px; cursor:pointer;
+  transition:all .12s;
+}
+.cab-stepper:hover{background:#173256; border-color:#e8a020}
+.cab-radio{
+  background:#0d1f35;
+  border:1px solid #1e4a7a;
+  color:#a8c0d8;
+  padding:8px 14px;
+  font-size:12px; font-weight:600;
+  border-radius:3px; cursor:pointer;
+  transition:all .12s;
+}
+.cab-radio:hover{background:#173256; border-color:#2a5a8a; color:#e0e8f0}
+.cab-radio.active{
+  background:#e8a020;
+  border-color:#e8a020;
+  color:#0a1520;
+}
+.cab-radio-disabled{
+  opacity:.35;
+  cursor:not-allowed !important;
+}
+.cab-radio-disabled:hover{background:#0d1f35; border-color:#1e4a7a; color:#a8c0d8}
+/* Toolbar hidden — body class set when System Settings → Show Right Toolbar = Off */
+body.cab-toolbar-hidden #cab-right-toolbar{display:none}
+body.cab-toolbar-hidden #cab-centre-pane{grid-column:2 / 5}
 </style>
 </head>
 <body>
@@ -2336,7 +2703,7 @@ body.cab-mode #workscreen-back-btn{display:none !important}
     <div class="cab-overlay-title">EDIT TEXT RIBBON</div>
     <div class="cab-overlay-subtitle">Pick up to 5 readouts to show along the bottom of the work screen</div>
     <div id="cab-ribbon-selected">
-      <div class="cab-ribbon-section-label">Selected (drag to reorder · max 5)</div>
+      <div class="cab-ribbon-section-label">Selected (reorder · max 5)</div>
       <div id="cab-ribbon-selected-list"></div>
     </div>
     <div class="cab-ribbon-section-label">Available</div>
@@ -2345,6 +2712,148 @@ body.cab-mode #workscreen-back-btn{display:none !important}
       <button class="cab-btn-cancel" onclick="cabCloseAllOverlays()">Cancel</button>
       <button class="cab-btn-secondary" onclick="cabRibbonResetDefaults()">Reset Defaults</button>
       <button class="cab-btn-apply" onclick="cabRibbonApply()">Apply</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Right Toolbar — Slice 4d -->
+<div id="cab-overlay-edittoolbar" class="cab-overlay hidden" onclick="cabCloseAllOverlays(event)">
+  <div class="cab-overlay-box cab-overlay-box-tall" onclick="event.stopPropagation()">
+    <div class="cab-overlay-title">EDIT RIGHT TOOLBAR</div>
+    <div class="cab-overlay-subtitle">Pick which icons appear in the right-side toolbar (and in what order)</div>
+    <div id="cab-toolbar-selected">
+      <div class="cab-ribbon-section-label">Selected (reorder)</div>
+      <div id="cab-toolbar-selected-list"></div>
+    </div>
+    <div class="cab-ribbon-section-label">Available</div>
+    <div id="cab-toolbar-available-list"></div>
+    <div class="cab-overlay-footer">
+      <button class="cab-btn-cancel" onclick="cabCloseAllOverlays()">Cancel</button>
+      <button class="cab-btn-secondary" onclick="cabToolbarResetDefaults()">Reset Defaults</button>
+      <button class="cab-btn-apply" onclick="cabToolbarApply()">Apply</button>
+    </div>
+  </div>
+</div>
+
+<!-- Work Settings — Slice 4d -->
+<div id="cab-overlay-worksettings" class="cab-overlay hidden" onclick="cabCloseAllOverlays(event)">
+  <div class="cab-overlay-box cab-overlay-box-tall" onclick="event.stopPropagation()">
+    <div class="cab-overlay-title">WORK SETTINGS</div>
+    <div class="cab-overlay-subtitle">Per-task settings — change as the job changes</div>
+    <div class="cab-form">
+      <div class="cab-field">
+        <label class="cab-field-label">Elevation Offset</label>
+        <div class="cab-field-row">
+          <button class="cab-stepper" onclick="cabWorkAdjustOffset(-0.025)">−25mm</button>
+          <button class="cab-stepper" onclick="cabWorkAdjustOffset(-0.005)">−5mm</button>
+          <input type="number" class="cab-input" id="cab-work-elev-offset" step="0.001" onchange="cabWorkSetOffset(parseFloat(this.value))">
+          <button class="cab-stepper" onclick="cabWorkAdjustOffset(0.005)">+5mm</button>
+          <button class="cab-stepper" onclick="cabWorkAdjustOffset(0.025)">+25mm</button>
+          <button class="cab-stepper" onclick="cabWorkSetOffset(0)">Zero</button>
+        </div>
+        <div class="cab-field-hint">Per-pass shift on top of the design surface (metres). Working surface offset coming in Slice 5.</div>
+      </div>
+      <div class="cab-field">
+        <label class="cab-field-label">Blade Focus</label>
+        <div class="cab-field-row">
+          <button class="cab-radio" id="cab-work-focus-tipA" onclick="cabWorkSetFocus('tipA')">◀ Tip A (Left)</button>
+          <button class="cab-radio" id="cab-work-focus-center" onclick="cabWorkSetFocus('center')">● Centre</button>
+          <button class="cab-radio" id="cab-work-focus-tipB" onclick="cabWorkSetFocus('tipB')">Tip B (Right) ▶</button>
+        </div>
+        <div class="cab-field-hint">Which point on the blade is the primary cut/fill reference.</div>
+      </div>
+      <div class="cab-field">
+        <label class="cab-field-label">Tolerance Preset</label>
+        <div class="cab-field-row">
+          <button class="cab-radio" id="cab-work-tol-rough"  onclick="cabWorkSetTolerance(0.100)">Rough ±100mm</button>
+          <button class="cab-radio" id="cab-work-tol-medium" onclick="cabWorkSetTolerance(0.050)">Medium ±50mm</button>
+          <button class="cab-radio" id="cab-work-tol-fine"   onclick="cabWorkSetTolerance(0.020)">Fine ±20mm</button>
+          <input type="number" class="cab-input cab-input-narrow" id="cab-work-tol-custom" step="0.005" onchange="cabWorkSetTolerance(parseFloat(this.value))" title="Custom tolerance (m)">
+        </div>
+        <div class="cab-field-hint">On-grade band half-width. Cut/fill displays blank when RTK accuracy can't back the precision (per ADR-0003).</div>
+      </div>
+      <div class="cab-field">
+        <label class="cab-field-label">Vertical Guidance Mode</label>
+        <div class="cab-field-row">
+          <button class="cab-radio cab-radio-disabled" disabled title="Coming in a future slice">Right</button>
+          <button class="cab-radio" id="cab-work-vgm-center" onclick="cabWorkSetVGM('center')">Centre</button>
+          <button class="cab-radio cab-radio-disabled" disabled>Left</button>
+          <button class="cab-radio cab-radio-disabled" disabled>Linked-to-Focus</button>
+          <button class="cab-radio" id="cab-work-vgm-2points" onclick="cabWorkSetVGM('2points')">2-Points</button>
+        </div>
+        <div class="cab-field-hint">How cut/fill is measured along the blade. Only Centre and 2-Points wired in Slice 4d; the rest land in a later slice.</div>
+      </div>
+    </div>
+    <div class="cab-overlay-footer">
+      <button class="cab-btn-cancel" onclick="cabCloseAllOverlays()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- System Settings — Slice 4d -->
+<div id="cab-overlay-systemsettings" class="cab-overlay hidden" onclick="cabCloseAllOverlays(event)">
+  <div class="cab-overlay-box cab-overlay-box-tall" onclick="event.stopPropagation()">
+    <div class="cab-overlay-title">SYSTEM SETTINGS</div>
+    <div class="cab-overlay-subtitle">Persistent calibration — set once at install, rarely changed</div>
+    <div class="cab-form">
+      <div class="cab-field">
+        <label class="cab-field-label">Units</label>
+        <div class="cab-field-row">
+          <button class="cab-radio" id="cab-sys-units-metric" onclick="cabSysSetUnits('metric')">Metric (m / mm)</button>
+          <button class="cab-radio cab-radio-disabled" disabled title="Imperial display coming later">Imperial (ft / in)</button>
+        </div>
+      </div>
+      <div class="cab-field">
+        <label class="cab-field-label">Show Right Toolbar</label>
+        <div class="cab-field-row">
+          <button class="cab-radio" id="cab-sys-toolbar-on"  onclick="cabSysSetToolbar(true)">On</button>
+          <button class="cab-radio" id="cab-sys-toolbar-off" onclick="cabSysSetToolbar(false)">Off</button>
+        </div>
+        <div class="cab-field-hint">Per CONTEXT.md GQ-5 — toolbar is hideable for operators who don't want it.</div>
+      </div>
+      <div class="cab-field">
+        <label class="cab-field-label">Antenna Mounting (pole height above blade tip)</label>
+        <div class="cab-field-row">
+          <span class="cab-field-prefix">A:</span>
+          <input type="number" class="cab-input cab-input-narrow" id="cab-sys-antenna-a" step="0.01" onchange="cabSysSetAntenna('A', parseFloat(this.value))">
+          <span class="cab-field-prefix">m</span>
+          <span style="width:18px"></span>
+          <span class="cab-field-prefix">B:</span>
+          <input type="number" class="cab-input cab-input-narrow" id="cab-sys-antenna-b" step="0.01" onchange="cabSysSetAntenna('B', parseFloat(this.value))">
+          <span class="cab-field-prefix">m</span>
+        </div>
+        <div class="cab-field-hint">Vertical distance from the cutting-edge tip up to the antenna phase centre. Measured at install. Per ADR-0002.</div>
+      </div>
+      <div class="cab-field">
+        <label class="cab-field-label">Cutting Edge Length</label>
+        <div class="cab-field-row">
+          <span class="cab-field-prefix">A:</span>
+          <input type="number" class="cab-input cab-input-narrow" id="cab-sys-edge-a" step="0.01" placeholder="—" disabled title="Wiring lands when blade-pose math consumes per-side lengths">
+          <span class="cab-field-prefix">m</span>
+          <span style="width:18px"></span>
+          <span class="cab-field-prefix">B:</span>
+          <input type="number" class="cab-input cab-input-narrow" id="cab-sys-edge-b" step="0.01" placeholder="—" disabled>
+          <span class="cab-field-prefix">m</span>
+        </div>
+        <div class="cab-field-hint">Per-side cutting-edge length to compensate for asymmetric wear. Not yet consumed by blade-pose math; wires in a future slice.</div>
+      </div>
+      <div class="cab-field">
+        <label class="cab-field-label">Default Tolerance</label>
+        <div class="cab-field-row">
+          <input type="number" class="cab-input cab-input-narrow" id="cab-sys-default-tol" step="0.005" onchange="cabSysSetDefaultTol(parseFloat(this.value))">
+          <span class="cab-field-prefix">m (half-band)</span>
+        </div>
+        <div class="cab-field-hint">Tolerance used at boot. Operator can override per-task in Work Settings.</div>
+      </div>
+      <div class="cab-field">
+        <label class="cab-field-label">RTK / NTRIP Source</label>
+        <div class="cab-field-row">
+          <span class="cab-field-prefix" style="font-size:12px">Configured externally — see ADR-0003 for own-base + NTRIP-over-Starlink architecture.</span>
+        </div>
+      </div>
+    </div>
+    <div class="cab-overlay-footer">
+      <button class="cab-btn-cancel" onclick="cabCloseAllOverlays()">Close</button>
     </div>
   </div>
 </div>
