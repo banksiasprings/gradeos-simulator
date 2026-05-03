@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GradeOS Simulator v0.8 · SW v118</title>
+<title>GradeOS Simulator v0.8 · SW v119</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <!-- Slice 1 — blade-pose seam. See CONTEXT.md, ADR-0002. -->
 <script type="module" src="./src/product/guidance/blade-pose.js"></script>
@@ -653,7 +653,7 @@ function cabScreenUpdate(bladeTarget,bladePose){
   const eo=document.getElementById('cab-offset-elev');
   if(eo&&typeof vOffset!=='undefined')eo.textContent=(vOffset>=0?'+':'')+vOffset.toFixed(3)+' m';
   const wo=document.getElementById('cab-offset-working');
-  if(wo)wo.textContent='+0.000 m';
+  if(wo&&typeof workingSurfaceOffset!=='undefined')wo.textContent=(workingSurfaceOffset>=0?'+':'')+workingSurfaceOffset.toFixed(3)+' m';
   // Status bar
   const sbDes=document.getElementById('cab-statusbar-design');
   if(sbDes){
@@ -946,6 +946,9 @@ function cabOpenWorkSettings(){
   // Populate fields from current state
   const eo=document.getElementById('cab-work-elev-offset');
   if(eo&&typeof vOffset!=='undefined')eo.value=vOffset.toFixed(3);
+  // Slice 5 — Working Surface Offset
+  const wo=document.getElementById('cab-work-working-offset');
+  if(wo&&typeof workingSurfaceOffset!=='undefined')wo.value=workingSurfaceOffset.toFixed(3);
   const focus=(typeof bladeFocus!=='undefined')?bladeFocus:'center';
   cabActivateRadio('cab-work-focus-tipA',focus==='tipA');
   cabActivateRadio('cab-work-focus-center',focus==='center');
@@ -973,10 +976,27 @@ function cabWorkSetOffset(m){
   }
   const eo=document.getElementById('cab-work-elev-offset');
   if(eo)eo.value=m.toFixed(3);
+  cabPersistState();  // Slice 5 — persist offsets across reloads
 }
 function cabWorkAdjustOffset(delta){
   const cur=(typeof vOffset!=='undefined')?vOffset:0;
   cabWorkSetOffset(cur+delta);
+}
+// Slice 5 — Working Surface Offset adjusters (parallel to elevation).
+function cabWorkSetWorking(m){
+  if(!isFinite(m))return;
+  m=Math.max(-2,Math.min(2,m));
+  if(typeof workingSurfaceOffset!=='undefined'){
+    window.workingSurfaceOffset=m;
+    try{workingSurfaceOffset=m;}catch(e){}
+  }
+  const wo=document.getElementById('cab-work-working-offset');
+  if(wo)wo.value=m.toFixed(3);
+  cabPersistState();
+}
+function cabWorkAdjustWorking(delta){
+  const cur=(typeof workingSurfaceOffset!=='undefined')?workingSurfaceOffset:0;
+  cabWorkSetWorking(cur+delta);
 }
 function cabWorkSetFocus(f){
   if(typeof setBladeFocus==='function'){
@@ -1135,6 +1155,11 @@ function cabPersistState(){
       ribbon:cabPaneState.ribbon,
       toolbar:cabPaneState.toolbar,
       sys:cabSysState,
+      // Slice 5 — persist both offsets (per-pass elevation + bulk working surface)
+      offsets:{
+        elevation:(typeof vOffset!=='undefined')?vOffset:0,
+        workingSurface:(typeof workingSurfaceOffset!=='undefined')?workingSurfaceOffset:0,
+      },
     }));
   }catch(e){}
 }
@@ -1154,6 +1179,17 @@ function cabLoadState(){
         window.SIM_BLADE_MOUNTING.antennaB.dy=cabSysState.antennaB_dy;
       }
       if(typeof guidanceTolerance!=='undefined')guidanceTolerance=cabSysState.defaultToleranceM;
+      // Slice 5 — restore offsets
+      if(o.offsets){
+        if(o.offsets.elevation!=null&&typeof vOffset!=='undefined'){
+          window.vOffset=o.offsets.elevation;
+          try{vOffset=o.offsets.elevation;}catch(e){}
+        }
+        if(o.offsets.workingSurface!=null&&typeof workingSurfaceOffset!=='undefined'){
+          window.workingSurfaceOffset=o.offsets.workingSurface;
+          try{workingSurfaceOffset=o.offsets.workingSurface;}catch(e){}
+        }
+      }
     }
   }catch(e){}
 }
@@ -2931,8 +2967,8 @@ body.cab-toolbar-hidden #cab-centre-pane{grid-column:2 / 5}
       </div>
     </div>
     <div class="cab-offset-cell">
-      <div class="cab-offset-label">WORKING SURFACE</div>
-      <div class="cab-offset-value cab-offset-value-static" id="cab-offset-working">+0.000 m</div>
+      <div class="cab-offset-label">WORKING SURFACE <span style="font-size:9px;color:#5a7a98;font-weight:400">(tap to set)</span></div>
+      <div class="cab-offset-value" id="cab-offset-working" onclick="cabOpenWorkSettings()" title="Tap to open Work Settings to set the working surface offset">+0.000 m</div>
     </div>
   </div>
   <!-- Row 3: Top horizontal LED bar = alignment guidance -->
@@ -3087,7 +3123,19 @@ body.cab-toolbar-hidden #cab-centre-pane{grid-column:2 / 5}
           <button class="cab-stepper" onclick="cabWorkAdjustOffset(0.025)">+25mm</button>
           <button class="cab-stepper" onclick="cabWorkSetOffset(0)">Zero</button>
         </div>
-        <div class="cab-field-hint">Per-pass shift on top of the design surface (metres). Working surface offset coming in Slice 5.</div>
+        <div class="cab-field-hint">Per-pass shift on top of the working surface (metres). Bump from the cab screen +/− buttons.</div>
+      </div>
+      <div class="cab-field">
+        <label class="cab-field-label">Working Surface Offset</label>
+        <div class="cab-field-row">
+          <button class="cab-stepper" onclick="cabWorkAdjustWorking(-0.100)">−100mm</button>
+          <button class="cab-stepper" onclick="cabWorkAdjustWorking(-0.050)">−50mm</button>
+          <input type="number" class="cab-input" id="cab-work-working-offset" step="0.005" onchange="cabWorkSetWorking(parseFloat(this.value))">
+          <button class="cab-stepper" onclick="cabWorkAdjustWorking(0.050)">+50mm</button>
+          <button class="cab-stepper" onclick="cabWorkAdjustWorking(0.100)">+100mm</button>
+          <button class="cab-stepper" onclick="cabWorkSetWorking(0)">Zero</button>
+        </div>
+        <div class="cab-field-hint">Bulk shift to a target intermediate surface. Subgrade workflow: set −300 mm, bulk-cut with elevation offset = 0, then walk the elevation offset back up by passes. Total target = design + working + elevation.</div>
       </div>
       <div class="cab-field">
         <label class="cab-field-label">Blade Focus</label>
@@ -4151,6 +4199,7 @@ let savedProfiles=[];
 let pfPoints=[];
 let pfDrag=null;
 let vOffset=0;
+let workingSurfaceOffset=0; // Slice 5 — bulk shift to a target intermediate surface (m). See CONTEXT.md two-layer offset model.
 let guidanceZoomPlan = 1.0, guidanceZoomBlade = 1.0, guidanceZoomSide = 1.0;
 function zoomGuidance(panel, dir) { const factor = dir > 0 ? 1.25 : 0.8; if (panel === 'plan')  guidanceZoomPlan  = Math.max(0.4, Math.min(3.0, guidanceZoomPlan  * factor)); if (panel === 'blade') guidanceZoomBlade = Math.max(0.4, Math.min(3.0, guidanceZoomBlade * factor)); if (panel === 'side')  guidanceZoomSide  = Math.max(0.4, Math.min(3.0, guidanceZoomSide  * factor)); }
 let camMode='3d';
@@ -5564,7 +5613,11 @@ function updateMachine(dt){
     const _toleranceMm2=(typeof guidanceTolerance!=='undefined')?guidanceTolerance*1000:25;
     let bladeTarget2=null;
     if(bladePose2&&typeof window.computeBladeTarget==='function'&&window.designSurface){
-      bladeTarget2=window.computeBladeTarget(bladePose2,window.designSurface,{vOffset,toleranceMm:_toleranceMm2});
+      bladeTarget2=window.computeBladeTarget(bladePose2,window.designSurface,{
+        elevationOffset:vOffset,
+        workingSurfaceOffset:workingSurfaceOffset,
+        toleranceMm:_toleranceMm2,
+      });
     }
     const lMM2=bladeTarget2&&bladeTarget2.tipA?bladeTarget2.tipA.cutFillMm:null;
     const rMM2=bladeTarget2&&bladeTarget2.tipB?bladeTarget2.tipB.cutFillMm:null;
@@ -5708,7 +5761,11 @@ function updateMachine(dt){
   const _toleranceMm=(typeof guidanceTolerance!=='undefined')?guidanceTolerance*1000:25;
   let bladeTarget=null;
   if(machineType!=='excavator'&&bladePose&&typeof window.computeBladeTarget==='function'&&window.designSurface){
-    bladeTarget=window.computeBladeTarget(bladePose,window.designSurface,{vOffset,toleranceMm:_toleranceMm});
+    bladeTarget=window.computeBladeTarget(bladePose,window.designSurface,{
+      elevationOffset:vOffset,
+      workingSurfaceOffset:workingSurfaceOffset,
+      toleranceMm:_toleranceMm,
+    });
   }
   // Excavator path is bucket-reach geometry, not blade-tip geometry — kept inline
   // (different sensor model, future slice).

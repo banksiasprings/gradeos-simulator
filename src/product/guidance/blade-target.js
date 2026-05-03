@@ -39,9 +39,18 @@
 
 /**
  * @typedef {Object} BladeTargetOptions
- * @property {number} [vOffset]      Vertical design offset in metres (default 0).
+ * @property {number} [elevationOffset]      Per-pass elevation shift (m). Default 0.
+ *   Bumped via the cab screen +/- buttons. Persisted across passes.
+ *   (Backwards-compatible alias `vOffset` is also accepted — old name.)
+ * @property {number} [workingSurfaceOffset] Bulk shift to a target intermediate
+ *   surface (m). Default 0. Used for subgrade-prep / base-build workflows
+ *   where the operator targets a surface N mm offset from design until
+ *   they say otherwise. Per CONTEXT.md two-layer offset model.
  * @property {number} [toleranceMm]  Half-band, default 25 mm.
  * @property {number} [fwdDistanceM] Forward sample distance for longGrade, default 2 m.
+ *
+ * The combined target Z is:
+ *   target_z = designElev + workingSurfaceOffset + elevationOffset
  */
 
 /**
@@ -59,7 +68,12 @@
 function computeBladeTarget(bladePose, designSurface, options) {
   if (!bladePose || !designSurface) return null;
   const opts = options || {};
-  const vOffset = opts.vOffset || 0;
+  // Two-layer offset model per CONTEXT.md. elevationOffset is per-pass;
+  // workingSurfaceOffset is the bulk shift to a target intermediate surface.
+  // vOffset is accepted as a backwards-compatible alias for elevationOffset.
+  const elevationOffset = (opts.elevationOffset != null ? opts.elevationOffset : (opts.vOffset || 0));
+  const workingSurfaceOffset = opts.workingSurfaceOffset || 0;
+  const totalOffset = elevationOffset + workingSurfaceOffset;
   const toleranceMm = opts.toleranceMm != null ? opts.toleranceMm : 25;
   const fwdDistanceM = opts.fwdDistanceM != null ? opts.fwdDistanceM : 2;
 
@@ -70,7 +84,7 @@ function computeBladeTarget(bladePose, designSurface, options) {
   const sampleTip = (tip) => {
     const designY = designSurface.elevAt(tip.x, tip.z);
     if (designY === null || designY === undefined) return null;
-    const adjustedDesignY = designY + vOffset;
+    const adjustedDesignY = designY + totalOffset;
     const cutFillMm = (adjustedDesignY - tip.y) * 1000;
     return {
       cutFillMm,
