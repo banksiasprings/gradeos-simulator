@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GradeOS Simulator v0.9 · SW v138</title>
+<title>GradeOS Simulator v0.9 · SW v139</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <!-- Slice 11.5 — GLTF model loader (Three.js example loaders are global scripts, not modules) -->
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -4591,7 +4591,6 @@ body.cab-led-align-hidden #cab-offsets > .cab-offset-cell:not(.cab-offset-cell-h
     <button class="tb blu" onclick="document.getElementById('design-import').click()" title="Import design surface from LandXML (.xml) or design CSV">📐 Import Design</button>
     <button class="tb" id="b-guidance" onclick="toggleGuidanceScreen()" title="Guidance Screen — 3-panel layout with alignment and cut/fill light bars">🎯 Guidance</button>
     <button class="tb" id="b-field" onclick="toggleFieldMode()" title="Field / Operator Mode — clean full-screen view with 3 profile windows (M key)">🖥 Field</button>
-    <button class="tb" id="b-pitch" onclick="togglePitchCard()" title="Pitch / Site Status Card — live stats summary for demos (P key)">📊 Pitch</button>
     <button class="tb" onclick="toggleKeyHelp()" title="Keyboard shortcuts (H)">⌨ Keys</button>
     <button class="tb" onclick="captureScreenshot()" title="Save screenshot of 3D view as PNG">📷 Screenshot</button>
     <button class="tb grn" id="b-tablet-demo" onclick="toggleTabletDemo()" title="📱 Tablet Demo — use this tablet's GPS, compass and IMU as the machine blade">📱 Tablet</button>
@@ -5209,76 +5208,6 @@ body.cab-led-align-hidden #cab-offsets > .cab-offset-cell:not(.cab-offset-cell-h
   <div id="st-speed" style="display:none">Spd: <span id="st-spd-val" style="color:#7aabcc;font-family:monospace">0.0</span> km/h · <span id="st-hdg" style="color:#7aabcc;font-family:monospace">000</span>°</div>
   <div id="st-pos" style="display:none">E: <span id="st-pos-e" style="color:#7aabcc;font-family:monospace">0.0</span> N: <span id="st-pos-n" style="color:#7aabcc;font-family:monospace">0.0</span></div>
   <div id="st-hint" style="margin-left:auto;color:#4a7aa0">Scroll=zoom · Right-drag=orbit · Dbl-click=probe elevation &amp; grade</div>
-</div>
-
-<!-- Pitch / Site Status Card -->
-<div id="pitch-card" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
-  z-index:8500;background:rgba(4,11,22,0.97);border:1px solid #1e4a6a;border-radius:10px;
-  box-shadow:0 8px 48px rgba(0,0,0,0.85);width:480px;max-width:92vw;font-size:12px;color:#c8dde8;
-  pointer-events:all;">
-  <div style="background:#071c2e;padding:8px 14px 6px;border-radius:9px 9px 0 0;border-bottom:1px solid #1e4a6a;
-    display:flex;justify-content:space-between;align-items:center">
-    <div>
-      <span style="font-size:16px;font-weight:900;letter-spacing:2px;color:#fff">GRADE<span style="color:#e8a020">OS</span></span>
-      <span style="font-size:10px;color:#4a7aa0;margin-left:8px">v0.9 — Built by operators, for operators</span>
-    </div>
-    <button onclick="togglePitchCard()" style="background:none;border:1px solid #1e4a6a;color:#4a7aa0;cursor:pointer;padding:2px 8px;border-radius:4px;font-size:11px">✕ P</button>
-  </div>
-  <div style="padding:10px 14px;display:grid;grid-template-columns:1fr 1fr;gap:10px">
-    <!-- Site info -->
-    <div style="background:#040c18;border:1px solid #0d2030;border-radius:6px;padding:8px 10px">
-      <div style="color:#4a7aa0;font-size:9px;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px">Site</div>
-      <div style="font-size:22px;font-weight:700;color:#fff;font-family:monospace" id="pc-terrain">Hilly Farm</div>
-      <div style="color:#7aabcc;margin-top:2px">160 m × 160 m · <span style="color:#e8a020">2.56 ha</span></div>
-      <div style="color:#4a7aa0;margin-top:4px;font-size:10px" id="pc-rtk-row">📡 RTK FIXED · AUSCORS · 9mm</div>
-    </div>
-    <!-- Volumes -->
-    <div style="background:#040c18;border:1px solid #0d2030;border-radius:6px;padding:8px 10px">
-      <div style="color:#4a7aa0;font-size:9px;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px">Volumes</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px">
-        <span style="color:#4a7aa0">Cut:</span><span id="pc-cut" style="color:#42a5f5;font-family:monospace;font-weight:700">0 m³</span>
-        <span style="color:#4a7aa0">Fill:</span><span id="pc-fill" style="color:#ff7043;font-family:monospace;font-weight:700">0 m³</span>
-        <span style="color:#4a7aa0">Net:</span><span id="pc-net" style="color:#66bb6a;font-family:monospace;font-weight:700">0 m³</span>
-        <span style="color:#4a7aa0">Area:</span><span id="pc-area" style="color:#7aabcc;font-family:monospace">0 m²</span>
-      </div>
-    </div>
-    <!-- Progress -->
-    <div style="background:#040c18;border:1px solid #0d2030;border-radius:6px;padding:8px 10px">
-      <div style="color:#4a7aa0;font-size:9px;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px">Job Progress</div>
-      <div style="font-size:28px;font-weight:900;font-family:monospace" id="pc-pct" style="color:#66bb6a">0%</div>
-      <div style="height:6px;background:#071525;border-radius:3px;margin:5px 0">
-        <div id="pc-progbar" style="height:100%;border-radius:3px;background:#ff7043;width:0%;transition:width .5s"></div>
-      </div>
-      <div id="pc-ontol" style="color:#4a7aa0;font-size:10px">0 of 0 cells ±25mm</div>
-    </div>
-    <!-- Machine -->
-    <div style="background:#040c18;border:1px solid #0d2030;border-radius:6px;padding:8px 10px">
-      <div style="color:#4a7aa0;font-size:9px;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px">Machine</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px">
-        <span style="color:#4a7aa0">Engine:</span><span id="pc-eng" style="color:#ffb74d;font-family:monospace;font-weight:700">0.0 min</span>
-        <span style="color:#4a7aa0">Cut/hr:</span><span id="pc-rate" style="color:#66bb6a;font-family:monospace;font-weight:700">—</span>
-        <span style="color:#4a7aa0">Session:</span><span id="pc-scut" style="color:#42a5f5;font-family:monospace;font-weight:700">0 m³</span>
-        <span style="color:#4a7aa0">Fuel:</span><span id="pc-fuel" style="color:#ff8a65;font-family:monospace;font-weight:700">0 L</span>
-      </div>
-    </div>
-  </div>
-  <!-- Cost comparison bar -->
-  <div style="margin:0 14px 14px;background:linear-gradient(135deg,#04111e,#071c2e);border:1px solid #1e4a6a;border-radius:6px;padding:8px 12px">
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-      <div>
-        <div style="color:#4a7aa0;font-size:9px;text-transform:uppercase;letter-spacing:1px">Total cost of ownership (1 machine, 3 years)</div>
-        <div style="display:flex;gap:16px;margin-top:4px;align-items:flex-end">
-          <div><div style="color:#66bb6a;font-size:18px;font-weight:900;font-family:monospace">$5,364</div><div style="color:#4a7aa0;font-size:9px">GradeOS ($149/mo × 36)</div></div>
-          <div style="color:#4a7aa0;font-size:20px">vs</div>
-          <div><div style="color:#ef5350;font-size:18px;font-weight:900;font-family:monospace">$55,000+</div><div style="color:#4a7aa0;font-size:9px">Trimble Earthworks</div></div>
-        </div>
-      </div>
-      <div style="text-align:right">
-        <div style="color:#e8a020;font-size:13px;font-weight:700">Save $49,636</div>
-        <div style="color:#4a7aa0;font-size:9px">+ no lock-in · open formats</div>
-      </div>
-    </div>
-  </div>
 </div>
 
 <!-- Elevation Probe Popup -->
@@ -9789,7 +9718,6 @@ function toggleKeyHelp(){
 // H key shortcut
 document.addEventListener('keydown',e=>{
   if(e.key==='h'||e.key==='H'){if(!e.ctrlKey&&!e.metaKey)toggleKeyHelp();}
-  if(e.key==='p'||e.key==='P'){if(!e.ctrlKey&&!e.metaKey)togglePitchCard();}
   if(e.key==='m'||e.key==='M'){if(!e.ctrlKey&&!e.metaKey)toggleFieldMode();}
 });
 
@@ -10049,74 +9977,6 @@ function updateFieldPanels(){
   if(cvLong&&cvLong.width>0)drawLongSection(cvLong);
   if(cvXsec&&cvXsec.width>0)drawCrossSection(cvXsec);
   if(cvPlan&&cvPlan.width>0)drawPlanView(cvPlan);
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// PITCH / SITE STATUS CARD
-// ═══════════════════════════════════════════════════════════════════
-let pitchCardVisible=false;let pitchUpdateInterval=null;
-function updatePitchCard(){
-  if(!pitchCardVisible)return;
-  // Terrain name
-  const terrName=document.getElementById('st-terrain');
-  const pc_terrain=document.getElementById('pc-terrain');
-  if(terrName&&pc_terrain)pc_terrain.textContent=terrName.textContent;
-  // RTK row
-  const rtkTxt=document.getElementById('rtk-txt');
-  const pcRtk=document.getElementById('pc-rtk-row');
-  if(rtkTxt&&pcRtk){
-    const col=rtkFixType==='RTK FIXED'?'#27ae60':rtkFixType==='RTK FLOAT'?'#e8a020':'#ffd600';
-    pcRtk.innerHTML=`<span style="color:${col}">📡 ${rtkTxt.textContent}</span>`;
-  }
-  // Volumes from DOM
-  const cut=document.getElementById('vc-cut')?.textContent||'0 m³';
-  const fill=document.getElementById('vc-fill')?.textContent||'0 m³';
-  const net=document.getElementById('vc-net')?.textContent||'0 m³';
-  const area=document.getElementById('vc-area')?.textContent||'0 m²';
-  document.getElementById('pc-cut').textContent=cut;
-  document.getElementById('pc-fill').textContent=fill;
-  document.getElementById('pc-net').textContent=net;
-  document.getElementById('pc-area').textContent=area;
-  // Progress
-  const pct=parseInt(document.getElementById('vc-progpct')?.textContent)||0;
-  const pcPct=document.getElementById('pc-pct');
-  if(pcPct){
-    pcPct.textContent=pct+'%';
-    pcPct.style.color=pct>=95?'#00e676':pct>=75?'#69f0ae':pct>=50?'#ffeb3b':'#ff7043';
-  }
-  const bar=document.getElementById('pc-progbar');
-  if(bar){bar.style.width=pct+'%';bar.style.background=pct>=95?'#00e676':pct>=75?'#69f0ae':pct>=50?'#ffeb3b':'#ff7043';}
-  const ontol=document.getElementById('vc-proginTol')?.textContent||'—';
-  const pcOntol=document.getElementById('pc-ontol');if(pcOntol)pcOntol.textContent=ontol;
-  // Machine
-  const eng=document.getElementById('vc-eng-hrs')?.textContent||'—';
-  const scut=document.getElementById('vc-session-cut')?.textContent||'—';
-  const fuel=document.getElementById('vc-fuel')?.textContent||'—';
-  document.getElementById('pc-eng').textContent=eng;
-  document.getElementById('pc-scut').textContent=scut;
-  document.getElementById('pc-fuel').textContent=fuel;
-  // Productivity rate
-  const hrs=engineSeconds/3600;
-  const pcRate=document.getElementById('pc-rate');
-  if(pcRate){
-    if(hrs>0.01&&sessionCutVol>0){
-      pcRate.textContent=(sessionCutVol/hrs).toFixed(1)+' m³/hr';
-      pcRate.style.color='#66bb6a';
-    }else{pcRate.textContent='—';pcRate.style.color='#4a7aa0';}
-  }
-}
-function togglePitchCard(){
-  pitchCardVisible=!pitchCardVisible;
-  const card=document.getElementById('pitch-card');
-  card.style.display=pitchCardVisible?'block':'none';
-  document.getElementById('b-pitch').classList.toggle('act',pitchCardVisible);
-  if(pitchCardVisible){
-    updatePitchCard();
-    pitchUpdateInterval=setInterval(updatePitchCard,1500);
-    document.getElementById('st-hint').textContent='📊 Pitch card open — press P to close · auto-updates every 1.5s';
-  }else{
-    clearInterval(pitchUpdateInterval);pitchUpdateInterval=null;
-  }
 }
 
 // ═══════════════════════════════════════════════════════════════════
