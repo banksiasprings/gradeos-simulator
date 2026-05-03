@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GradeOS Simulator v0.9 · SW v130</title>
+<title>GradeOS Simulator v0.9 · SW v131</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <!-- Slice 11.5 — GLTF model loader (Three.js example loaders are global scripts, not modules) -->
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -660,6 +660,10 @@ function _cabPinchDist(st){
 const _origCabScreenUpdate=window.cabScreenUpdate;
 function cabScreenUpdate(bladeTarget,bladePose){
   if(!document.body.classList.contains('cab-mode'))return;
+  // Slice 12 — cache the latest blade data so the per-pane overlay
+  // drawing can read it (the sprite render loop runs separately).
+  window._cabLastTarget = bladeTarget || null;
+  window._cabLastPose   = bladePose   || null;
   // LED bars (unchanged from Slice 4b)
   _cabDrawVerticalLEDBar(document.getElementById('cab-led-tipA'),bladeTarget&&bladeTarget.tipA?bladeTarget.tipA.cutFillMm:null);
   _cabDrawVerticalLEDBar(document.getElementById('cab-led-tipB'),bladeTarget&&bladeTarget.tipB?bladeTarget.tipB.cutFillMm:null);
@@ -1191,8 +1195,257 @@ function _cabDrawPaneSprite(paneIdx){
   const dw = iw * s, dh = ih * s;
   const dx = (cw - dw) / 2, dy = (ch - dh) / 2;
   ctx.drawImage(img, dx, dy, dw, dh);
-  // Slice 11.5 — label removed (operator already sees the view name in the
-  // pane header strip). No need to repeat it on the sprite.
+  // Slice 12 — draw live cut/fill / alignment overlays on top of the sprite.
+  _cabDrawPaneOverlay(ctx, view, cw, ch);
+}
+
+// ── Slice 12 — Per-pane live overlays ──────────────────────────────────
+// Reads cached bladeTarget / bladePose / selectedGuidanceLine and draws
+// view-appropriate visualisations on top of the static dozer sprite:
+//   cross  — design line + tolerance band + cut/fill arrow at blade tip
+//   long   — design grade line + centre cut/fill arrow
+//   plan   — alignment line + recorded points + heading arrow
+//   three  — minimal cut/fill colour ring at the (centre) blade tip
+const _CAB_TOLERANCE_MM_DEFAULT = 25;
+function _cabDrawPaneOverlay(ctx, view, cw, ch){
+  const target = window._cabLastTarget;
+  const pose   = window._cabLastPose;
+  if(view === 'plan'){
+    _drawPlanOverlay(ctx, cw, ch, pose);
+  } else if(view === 'cross'){
+    _drawCrossOverlay(ctx, cw, ch, target);
+  } else if(view === 'long'){
+    _drawLongOverlay(ctx, cw, ch, target);
+  } else if(view === 'three'){
+    _drawPerspOverlay(ctx, cw, ch, target);
+  }
+}
+function _cabTolerancePx(ch){
+  const tolM = (typeof guidanceTolerance !== 'undefined') ? guidanceTolerance : (_CAB_TOLERANCE_MM_DEFAULT/1000);
+  return tolM * 1000 * _cabPxPerMm(ch);
+}
+function _cabPxPerMm(ch){
+  // Map ±500 mm cut/fill to ±40% of pane height — visually sensible scale.
+  return (ch * 0.4) / 500;
+}
+function _cabFillStyleForCmm(cmm){
+  const tol = (typeof guidanceTolerance !== 'undefined') ? guidanceTolerance*1000 : _CAB_TOLERANCE_MM_DEFAULT;
+  if(cmm == null || isNaN(cmm)) return '#7aa0c0';
+  if(Math.abs(cmm) < tol)       return '#27ae60'; // green = on grade
+  return cmm > 0 ? '#ef5350' : '#42a5f5';        // red = cut, blue = fill
+}
+function _cabCmmLabel(cmm){
+  const tol = (typeof guidanceTolerance !== 'undefined') ? guidanceTolerance*1000 : _CAB_TOLERANCE_MM_DEFAULT;
+  if(cmm == null || isNaN(cmm)) return '— NO DESIGN —';
+  if(Math.abs(cmm) < tol) return 'ON GRADE';
+  return (cmm>0?'+':'') + cmm.toFixed(0) + ' mm';
+}
+function _drawCrossOverlay(ctx, cw, ch, target){
+  // Cross-section: design line horizontal in the middle, tolerance band,
+  // blade-tip indicator above/below depending on cut/fill. Shows centre,
+  // tipA, tipB.
+  const designY = ch * 0.6; // a bit below middle so it visually sits on the blade tip
+  const ppmm = _cabPxPerMm(ch);
+  // Tolerance band
+  const tolPx = _cabTolerancePx(ch);
+  ctx.fillStyle = 'rgba(39, 174, 96, 0.18)';
+  ctx.fillRect(0, designY - tolPx, cw, tolPx * 2);
+  // Design line (dashed green)
+  ctx.strokeStyle = 'rgba(39, 174, 96, 0.85)';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([10, 5]);
+  ctx.beginPath();
+  ctx.moveTo(0, designY); ctx.lineTo(cw, designY);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  if(!target){
+    ctx.fillStyle = 'rgba(122, 160, 192, 0.7)';
+    ctx.font = 'bold 13px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('— NO DESIGN —', cw/2, designY - tolPx - 10);
+    return;
+  }
+  // Three tips: A on left, centre middle, B on right
+  const tips = [
+    { tip: target.tipA,   x: cw * 0.22, label: 'L' },
+    { tip: target.centre, x: cw * 0.50, label: 'C' },
+    { tip: target.tipB,   x: cw * 0.78, label: 'R' },
+  ];
+  tips.forEach(({tip, x, label}) => {
+    if(!tip) return;
+    const cmm = tip.cutFillMm;
+    if(cmm == null || isNaN(cmm)) return;
+    const tipY = designY - cmm * ppmm; // cut > 0 → tip ABOVE design (smaller Y)
+    const col = _cabFillStyleForCmm(cmm);
+    // Bar from blade-tip Y down to design line
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(x, tipY); ctx.lineTo(x, designY);
+    ctx.stroke();
+    // Tip marker
+    ctx.fillStyle = col;
+    ctx.beginPath(); ctx.arc(x, tipY, 5, 0, Math.PI*2); ctx.fill();
+    // Label
+    ctx.font = 'bold 11px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = col;
+    ctx.fillText(label, x, tipY - 9);
+    // Numeric value
+    ctx.font = 'bold 10px monospace';
+    ctx.fillText(_cabCmmLabel(cmm), x, designY + 14);
+  });
+}
+function _drawLongOverlay(ctx, cw, ch, target){
+  // Long-section: design grade line slanted by longGrade %, centre tip
+  // indicator above/below. Shows the operator how the design grade
+  // changes as they move forward.
+  const designY = ch * 0.6;
+  const ppmm = _cabPxPerMm(ch);
+  // Tolerance band
+  const tolPx = _cabTolerancePx(ch);
+  ctx.fillStyle = 'rgba(39, 174, 96, 0.18)';
+  ctx.fillRect(0, designY - tolPx, cw, tolPx * 2);
+  // Design grade line (slanted by longGrade %)
+  const grade = (target && target.longGrade != null && !isNaN(target.longGrade)) ? target.longGrade : 0;
+  // grade in % means rise/run × 100. For pane width cw representing ~10 m,
+  // total rise across pane = cw_m * grade/100. Scale per ppmm for visual.
+  const paneSpanM = 10; // assume the pane shows ~10 m of forward distance
+  const slopeRiseM = paneSpanM * grade / 100;
+  const slopeRisePx = slopeRiseM * 1000 * ppmm;
+  ctx.strokeStyle = 'rgba(39, 174, 96, 0.85)';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([10, 5]);
+  ctx.beginPath();
+  ctx.moveTo(0, designY + slopeRisePx/2);
+  ctx.lineTo(cw, designY - slopeRisePx/2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  if(!target){
+    ctx.fillStyle = 'rgba(122, 160, 192, 0.7)';
+    ctx.font = 'bold 13px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('— NO DESIGN —', cw/2, designY - tolPx - 10);
+    return;
+  }
+  // Centre cut/fill indicator at midspan
+  if(target.centre){
+    const cmm = target.centre.cutFillMm;
+    if(cmm != null && !isNaN(cmm)){
+      const x = cw * 0.5;
+      const tipY = designY - cmm * ppmm;
+      const col = _cabFillStyleForCmm(cmm);
+      ctx.strokeStyle = col; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(x, tipY); ctx.lineTo(x, designY); ctx.stroke();
+      ctx.fillStyle = col;
+      ctx.beginPath(); ctx.arc(x, tipY, 6, 0, Math.PI*2); ctx.fill();
+      ctx.font = 'bold 12px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(_cabCmmLabel(cmm), x, tipY - 10);
+    }
+  }
+  // Grade % readout (top-right)
+  ctx.fillStyle = 'rgba(232, 160, 32, 0.85)';
+  ctx.font = 'bold 11px monospace';
+  ctx.textAlign = 'right';
+  ctx.fillText('GRADE: ' + (grade>=0?'+':'') + grade.toFixed(2) + '%', cw - 8, 14);
+}
+function _drawPlanOverlay(ctx, cw, ch, pose){
+  // Plan: draw the alignment polyline (if selected), recorded points,
+  // heading arrow at machine. Reads selectedGuidanceLine from globals.
+  if(typeof selectedGuidanceLine === 'undefined') return;
+  // World coords visible in this pane: ±radius around the machine.
+  const radiusM = 30;
+  const ppm = Math.min(cw, ch) / (radiusM * 2); // pixels per metre
+  const cx = cw / 2, cy = ch / 2;
+  if(!pose){ return; }
+  const mx = pose.centre ? pose.centre.x : 0;
+  const mz = pose.centre ? pose.centre.z : 0;
+  const w2pX = (wx) => cx + (wx - mx) * ppm;
+  const w2pY = (wz) => cy - (wz - mz) * ppm; // image Y inverted
+  // Recorded points (orange dots)
+  if(window._cabRecordedPoints && window._cabRecordedPoints.length){
+    ctx.fillStyle = 'rgba(232, 160, 32, 0.85)';
+    window._cabRecordedPoints.forEach(p => {
+      const x = w2pX(p.x), y = w2pY(p.z);
+      if(x < 0 || x > cw || y < 0 || y > ch) return;
+      ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI*2); ctx.fill();
+    });
+  }
+  // Selected guidance line (cyan polyline)
+  if(selectedGuidanceLine && selectedGuidanceLine.points && selectedGuidanceLine.points.length >= 2){
+    ctx.strokeStyle = 'rgba(102, 200, 255, 0.95)';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    selectedGuidanceLine.points.forEach((p, i) => {
+      const x = w2pX(p.x), y = w2pY(p.z);
+      if(i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+    // Apply horizontal alignment offset visualisation: a parallel line
+    if(typeof horizontalAlignmentOffset === 'number' && Math.abs(horizontalAlignmentOffset) > 1e-6){
+      // Compute offset endpoints (perpendicular to line tangent at each segment)
+      const off = horizontalAlignmentOffset;
+      ctx.strokeStyle = 'rgba(232, 160, 32, 0.85)';
+      ctx.setLineDash([6, 4]);
+      ctx.beginPath();
+      const pts = selectedGuidanceLine.points;
+      for(let i = 0; i < pts.length - 1; i++){
+        const p0 = pts[i], p1 = pts[i+1];
+        const dx = p1.x - p0.x, dz = p1.z - p0.z;
+        const len = Math.hypot(dx, dz);
+        if(len < 1e-6) continue;
+        const ux = dx/len, uz = dz/len;
+        // Right-perpendicular = (uz, -ux)
+        const px0 = p0.x + uz * off, pz0 = p0.z - ux * off;
+        const px1 = p1.x + uz * off, pz1 = p1.z - ux * off;
+        if(i === 0) ctx.moveTo(w2pX(px0), w2pY(pz0));
+        ctx.lineTo(w2pX(px1), w2pY(pz1));
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
+  // Machine indicator (centre, with heading arrow)
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(-pose.heading); // pose.heading: 0 = +Z forward (up in image)
+  // Body rect
+  ctx.fillStyle = 'rgba(232, 160, 32, 0.95)';
+  ctx.fillRect(-6, -8, 12, 16);
+  // Heading arrow (forward triangle)
+  ctx.beginPath();
+  ctx.moveTo(0, -14);
+  ctx.lineTo(-4, -8);
+  ctx.lineTo(4, -8);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+  // Scale legend (bottom-left)
+  ctx.fillStyle = 'rgba(122, 160, 192, 0.7)';
+  ctx.font = 'bold 10px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText(`±${radiusM} m`, 6, ch - 6);
+}
+function _drawPerspOverlay(ctx, cw, ch, target){
+  // Minimal: cut/fill colour ring at lower-centre (where the blade-tip
+  // marker is in the perspective sprite). Plus a small mm readout.
+  if(!target || !target.centre) return;
+  const cmm = target.centre.cutFillMm;
+  if(cmm == null || isNaN(cmm)) return;
+  const col = _cabFillStyleForCmm(cmm);
+  // Glow ring around the marker area (approximate position at lower-centre)
+  const gx = cw * 0.50, gy = ch * 0.78;
+  ctx.fillStyle = col + '33'; // semi-transparent
+  ctx.beginPath(); ctx.arc(gx, gy, 28, 0, Math.PI*2); ctx.fill();
+  ctx.strokeStyle = col;
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(gx, gy, 28, 0, Math.PI*2); ctx.stroke();
+  // mm readout above the marker
+  ctx.fillStyle = col;
+  ctx.font = 'bold 13px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(_cabCmmLabel(cmm), gx, gy - 36);
 }
 function cabRenderAllPaneSprites(){
   if(!document.body.classList.contains('cab-mode')) return;
