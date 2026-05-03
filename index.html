@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GradeOS Simulator v0.9 · SW v136</title>
+<title>GradeOS Simulator v0.9 · SW v137</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <!-- Slice 11.5 — GLTF model loader (Three.js example loaders are global scripts, not modules) -->
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -1572,11 +1572,8 @@ function _drawPlanOverlay(ctx, cw, ch, pose){
       ctx.setLineDash([]);
     }
   }
-  // ── Scale legend (bottom-left) + mode badge ────────────────────────────
-  ctx.fillStyle = 'rgba(122, 160, 192, 0.7)';
-  ctx.font = 'bold 10px monospace';
-  ctx.textAlign = 'left';
-  ctx.fillText(`±${radiusM} m  ·  1 m grid  ·  ${mode === 'track' ? 'TRACK-UP' : 'N-UP'}`, 6, ch - 6);
+  // Slice 14.3 — bottom-left scale/mode badge removed per Steven's request.
+  // Mode is already shown by the compass-button label in the top-right.
 }
 function _drawPerspOverlay(ctx, cw, ch, target){
   // Minimal: cut/fill colour ring at lower-centre (where the blade-tip
