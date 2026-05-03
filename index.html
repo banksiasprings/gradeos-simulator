@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GradeOS Simulator v0.9 · SW v132</title>
+<title>GradeOS Simulator v0.9 · SW v133</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <!-- Slice 11.5 — GLTF model loader (Three.js example loaders are global scripts, not modules) -->
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -1361,34 +1361,24 @@ function _drawLongOverlay(ctx, cw, ch, target){
   ctx.fillText('GRADE: ' + (grade>=0?'+':'') + grade.toFixed(2) + '%', cw - 8, 14);
 }
 function _drawPlanOverlay(ctx, cw, ch, pose){
-  // Slice 13 — the dozer SPRITE is now the heading indicator (it rotates
-  // with the machine). We no longer draw a separate yellow icon. We DO
-  // still draw the alignment polyline and recorded points, transformed
-  // into the sprite's rotated reference frame so they appear to slide
-  // past as the machine moves and turns.
+  // Slice 13.1 — NORTH-UP plan view. The map orientation stays fixed
+  // (+Z always up in image). The dozer SPRITE rotates with heading to
+  // show machine orientation (sprite rotation handled in _cabDrawPaneSprite).
+  // World features (alignment line, recorded points) are translated to
+  // be centred on the machine but NOT rotated. As you turn, the dozer
+  // icon spins; the world appears to stay still around it.
   if(typeof selectedGuidanceLine === 'undefined') return;
   if(!pose){ return; }
-  // The sprite was drawn with: translate(cw/2, ch/2) + rotate(heading).
-  // To overlay world points onto the same image space, we apply the
-  // same transform here: machine at origin, world rotated by heading.
   const radiusM = 30;
   const ppm = Math.min(cw, ch) / (radiusM * 2); // pixels per metre
   const cx = cw / 2, cy = ch / 2;
   const mx = pose.centre ? pose.centre.x : 0;
   const mz = pose.centre ? pose.centre.z : 0;
-  // Convert (worldX, worldZ) to pane pixels in machine-centric, heading-up frame.
-  const heading = pose.heading || 0;
-  const cosH = Math.cos(heading), sinH = Math.sin(heading);
-  const w2p = (wx, wz) => {
-    // Translate so machine is origin.
-    const dx = wx - mx, dz = wz - mz;
-    // Rotate world so machine's heading points up in image. Sim convention:
-    // heading=0 → +Z forward → +Z should be up (-Y) in image. Then a heading
-    // increases clockwise from above. We rotate world by -heading.
-    const rx = dx * cosH - dz * sinH;
-    const rz = dx * sinH + dz * cosH;
-    return { x: cx + rx * ppm, y: cy - rz * ppm };
-  };
+  // Translate-only (north-up): machine at centre, +X = right, +Z = up.
+  const w2p = (wx, wz) => ({
+    x: cx + (wx - mx) * ppm,
+    y: cy - (wz - mz) * ppm,
+  });
   // Recorded points (orange dots)
   if(window._cabRecordedPoints && window._cabRecordedPoints.length){
     ctx.fillStyle = 'rgba(232, 160, 32, 0.85)';
@@ -1963,7 +1953,17 @@ function cabLoadState(){
       if(o.layout)cabPaneState.layout=o.layout;
       if(o.panes)cabPaneState.panes={...cabPaneState.panes,...o.panes};
       if(Array.isArray(o.ribbon))cabPaneState.ribbon=o.ribbon.slice(0,5);
-      if(Array.isArray(o.toolbar))cabPaneState.toolbar=o.toolbar;
+      if(Array.isArray(o.toolbar)){
+        cabPaneState.toolbar=o.toolbar.slice();
+        // Slice 13.1 — auto-add the Designs button for users whose
+        // persisted toolbar was saved before Slice 13. We insert it
+        // after Record if possible so it sits with the job-related tools.
+        if(!cabPaneState.toolbar.includes('designs')){
+          const recIdx=cabPaneState.toolbar.indexOf('record');
+          const insertAt=recIdx>=0?recIdx+1:Math.min(2,cabPaneState.toolbar.length);
+          cabPaneState.toolbar.splice(insertAt,0,'designs');
+        }
+      }
       if(o.sys)Object.assign(cabSysState,o.sys);
       // Apply system-side state at load
       if(typeof window.SIM_BLADE_MOUNTING==='object'&&window.SIM_BLADE_MOUNTING){
@@ -3884,6 +3884,7 @@ body.cab-led-align-hidden #cab-offsets > .cab-offset-cell:not(.cab-offset-cell-h
   <div id="cab-right-toolbar">
     <button class="cab-tool-btn" id="cab-tool-focus" onclick="cabToolTap('focus')" title="Cycle blade focus">●</button>
     <button class="cab-tool-btn" id="cab-tool-record" onclick="cabToolTap('record')" title="Record point">📍</button>
+    <button class="cab-tool-btn" id="cab-tool-designs" onclick="cabToolTap('designs')" title="Designs Panel">📐</button>
     <button class="cab-tool-btn" id="cab-tool-changeview" onclick="cabToolTap('changeview')" title="Change view">⊞</button>
     <button class="cab-tool-btn" id="cab-tool-overview" onclick="cabToolTap('overview')" title="Overview screen">🌐</button>
     <button class="cab-tool-btn" id="cab-tool-overlays" onclick="cabToolTap('overlays')" title="Overlays">👁</button>
@@ -6697,8 +6698,11 @@ function updateMachine(dt){
     lastHistorySnap=performance.now();
   }
   if(!autoSteer){
-    if(keys['ArrowLeft']||keys['a']||keys['A'])machinePos.hdg+=turn*dt;
-    if(keys['ArrowRight']||keys['d']||keys['D'])machinePos.hdg-=turn*dt;
+    // Slice 13.1 — steering convention fix. Was A/← turned right (hdg+=)
+    // and D/→ turned left (hdg-=) — backwards from standard WASD. Now
+    // matches user expectation: A/← turns left, D/→ turns right.
+    if(keys['ArrowLeft']||keys['a']||keys['A'])machinePos.hdg-=turn*dt;
+    if(keys['ArrowRight']||keys['d']||keys['D'])machinePos.hdg+=turn*dt;
   }
   machinePos.x=Math.max(-SZ/2+3,Math.min(SZ/2-3,machinePos.x));
   machinePos.z=Math.max(-SZ/2+3,Math.min(SZ/2-3,machinePos.z));
