@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GradeOS Simulator v0.8 · SW v111</title>
+<title>GradeOS Simulator v0.8 · SW v112</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <!-- Slice 1 — blade-pose seam. See CONTEXT.md, ADR-0002. -->
 <script type="module" src="./src/product/guidance/blade-pose.js"></script>
@@ -11,6 +11,10 @@
 <!-- Slice 2 — design surface + blade-target seam. See CONTEXT.md, ADR-0001. -->
 <script type="module" src="./src/product/design/design-surface.js"></script>
 <script type="module" src="./src/product/guidance/blade-target.js"></script>
+<!-- Slice 3 — NMEA bridge: round-trips sim GPS through real-hardware data path. See CONTEXT.md, ADR-0003. -->
+<script type="module" src="./src/product/positioning/nmea-parse.js"></script>
+<script type="module" src="./src/product/positioning/local-frame.js"></script>
+<script type="module" src="./src/sim/fake-gps/nmea-stream.js"></script>
 <script>
 
 // ── TOOLBAR: 3-BUTTON CONSOLIDATION ─────────────────────────────────────
@@ -3153,12 +3157,22 @@ function updateMachine(dt){
     // Override pitch/roll with device IMU (tabletPitch=beta, tabletRoll=gamma)
     activeGrp2.rotation.x=-tabletPitch*Math.PI/180*0.4;
     activeGrp2.rotation.z=-tabletRoll*Math.PI/180*0.4;
-    // ── SLICE 1 SEAM (tablet path) — blade pose from sim-shell GPS antennas ─
-    // See CONTEXT.md (Slice 1) and ADR-0002. NO terrain. NO design here.
+    // ── SLICE 1+3 SEAM (tablet path) — blade pose, optionally via NMEA round-trip ─
+    // See CONTEXT.md (Slices 1 + 3) and ADR-0002 / ADR-0003.
     const BH2=1.7;
     const _bladeMounting2=(typeof window!=='undefined'&&window.SIM_BLADE_MOUNTING)||{antennaA:{dx:0,dy:-0.5,dz:0},antennaB:{dx:0,dy:-0.5,dz:0}};
     let bladePose2=null;
-    if(typeof bladeAntennasFromMachinePos==='function'&&typeof computeBladePose==='function'){
+    if(typeof window.nmeaFromMachinePos==='function'&&typeof window.nmeaParseSentence==='function'&&window.SIM_DEFAULT_FRAME&&typeof computeBladePose==='function'){
+      const _nmea2=window.nmeaFromMachinePos(machinePos,mel2,BH2,_bladeMounting2,window.SIM_DEFAULT_FRAME);
+      const _fixA2=window.nmeaParseSentence(_nmea2.sentenceA);
+      const _fixB2=window.nmeaParseSentence(_nmea2.sentenceB);
+      if(_fixA2&&_fixB2){
+        const _gpsA2=window.SIM_DEFAULT_FRAME.geodeticToLocal(_fixA2.lat,_fixA2.lon,_fixA2.altitudeM);
+        const _gpsB2=window.SIM_DEFAULT_FRAME.geodeticToLocal(_fixB2.lat,_fixB2.lon,_fixB2.altitudeM);
+        bladePose2=computeBladePose(_gpsA2,_gpsB2,_bladeMounting2);
+      }
+    }
+    if(!bladePose2&&typeof bladeAntennasFromMachinePos==='function'&&typeof computeBladePose==='function'){
       const _ant2=bladeAntennasFromMachinePos(machinePos,mel2,BH2,_bladeMounting2);
       bladePose2=computeBladePose(_ant2.gps1,_ant2.gps2,_bladeMounting2);
     }
@@ -3279,14 +3293,27 @@ function updateMachine(dt){
   const rgt=gElev(machinePos.x+Math.cos(machinePos.hdg)*2,machinePos.z-Math.sin(machinePos.hdg)*2);
   activeGrp.rotation.z=Math.atan2(mel-rgt,2)*0.4;
   activeGrp.rotation.x=-Math.atan2(fwd-mel,2)*0.4;
-  // ── SLICE 1 SEAM — blade pose from sim-shell GPS antennas ──────────────
-  // See CONTEXT.md (Slice 1) and ADR-0002. NO terrain. NO design. NO cut/fill here.
+  // ── SLICE 1+3 SEAM — blade pose, optionally via NMEA round-trip ──────────
+  // See CONTEXT.md (Slices 1 + 3) and ADR-0002 / ADR-0003. NO terrain. NO design here.
   const BH=1.7;
   // Perp vector kept locally for the cut-sim block below (sim machine kinematics, not pose).
   const perpX=Math.cos(machinePos.hdg),perpZ=-Math.sin(machinePos.hdg);
   const _bladeMounting=(typeof window!=='undefined'&&window.SIM_BLADE_MOUNTING)||{antennaA:{dx:0,dy:-0.5,dz:0},antennaB:{dx:0,dy:-0.5,dz:0}};
   let bladePose=null;
-  if(typeof bladeAntennasFromMachinePos==='function'&&typeof computeBladePose==='function'){
+  // Slice 3 path: machinePos → NMEA bytes → parse → local-frame → blade pose.
+  // Same shape as the eventual real-F9P data path; round-trip is exact in the sim.
+  if(typeof window.nmeaFromMachinePos==='function'&&typeof window.nmeaParseSentence==='function'&&window.SIM_DEFAULT_FRAME&&typeof computeBladePose==='function'){
+    const _nmea=window.nmeaFromMachinePos(machinePos,mel,BH,_bladeMounting,window.SIM_DEFAULT_FRAME);
+    const _fixA=window.nmeaParseSentence(_nmea.sentenceA);
+    const _fixB=window.nmeaParseSentence(_nmea.sentenceB);
+    if(_fixA&&_fixB){
+      const _gpsA=window.SIM_DEFAULT_FRAME.geodeticToLocal(_fixA.lat,_fixA.lon,_fixA.altitudeM);
+      const _gpsB=window.SIM_DEFAULT_FRAME.geodeticToLocal(_fixB.lat,_fixB.lon,_fixB.altitudeM);
+      bladePose=computeBladePose(_gpsA,_gpsB,_bladeMounting);
+    }
+  }
+  // Fallback: direct sim path (Slice 1 only) — used if Slice 3 modules haven't loaded yet.
+  if(!bladePose&&typeof bladeAntennasFromMachinePos==='function'&&typeof computeBladePose==='function'){
     const _ant=bladeAntennasFromMachinePos(machinePos,mel,BH,_bladeMounting);
     bladePose=computeBladePose(_ant.gps1,_ant.gps2,_bladeMounting);
   }
