@@ -17,7 +17,7 @@
 'use strict';
 
 const DOZER_GLTF_URL = './assets/dozer/scene.gltf';
-const SPRITE_CACHE_KEY = 'gradeos-dozer-sprites-v1';
+const SPRITE_CACHE_KEY = 'gradeos-dozer-sprites-v2'; // bumped: new lighting + cameras + tip marker
 
 let _dozerModelGroup = null;     // cached normalised model (THREE.Group)
 let _dozerModelLoading = null;   // Promise<Group> while loading
@@ -106,6 +106,14 @@ function _normaliseDozer(group){
   group.position.x = -centre2.x;
   group.position.z = -centre2.z;
   group.position.y = -box2.min.y;
+  // Slice 11.7 — figure out which axis is the dozer's length, store on the
+  // group so cameras can pick the right view. Most GLTF dozers come in
+  // facing +X; some face +Z. Heuristic: longest horizontal axis = length.
+  group.updateMatrixWorld(true);
+  const box3 = new THREE.Box3().setFromObject(group);
+  const size3 = new THREE.Vector3(); box3.getSize(size3);
+  group.userData.lengthAxis = (size3.x >= size3.z) ? 'x' : 'z';
+  group.userData.bbox = box3;
 }
 
 function _cloneGroup(group){ return group.clone(true); }
@@ -125,27 +133,70 @@ function renderDozerSprite(view, w, h){
   const doRender = (dozer) => {
     const renderer = _ensureSpriteRenderer(w, h);
     const scene = new THREE.Scene();
-    scene.add(new THREE.AmbientLight(0xffffff, 0.55));
-    const key = new THREE.DirectionalLight(0xffffff, 0.85);
+    // Slice 11.7 — brighter lighting (was a touch dark per Steven).
+    scene.add(new THREE.AmbientLight(0xffffff, 0.95));
+    const key = new THREE.DirectionalLight(0xffffff, 1.10);
     key.position.set(5, 8, 4); scene.add(key);
-    const fill = new THREE.DirectionalLight(0xffffff, 0.35);
+    const fill = new THREE.DirectionalLight(0xffffff, 0.55);
     fill.position.set(-3, 5, -2); scene.add(fill);
+    const back = new THREE.DirectionalLight(0xffffff, 0.35);
+    back.position.set(0, 4, -6); scene.add(back);
     if(dozer) scene.add(dozer);
+
+    // Slice 11.7 — Determine model's long axis ('x' or 'z'). Cameras place
+    // the side / blade views relative to that so they show what the names
+    // imply: side = view of the dozer's long flank; blade = front-on with
+    // the blade visible.
+    const lengthAxis = (dozer && dozer.userData && dozer.userData.lengthAxis) || 'z';
+    const _bbox = dozer && dozer.userData && dozer.userData.bbox;
+    const front = _bbox ? (lengthAxis === 'x' ? _bbox.max.x : _bbox.max.z) : 2.5;
+    const bottom = _bbox ? _bbox.min.y : 0;
+
+    // Slice 11.7 — Add a bright reference marker at the front-bottom of
+    // the blade. Operator uses this point as the cut/fill reference.
+    if(_bbox){
+      const markerGeo = new THREE.SphereGeometry(0.10, 16, 12);
+      const markerMat = new THREE.MeshBasicMaterial({color: 0xff2233});
+      const marker = new THREE.Mesh(markerGeo, markerMat);
+      if(lengthAxis === 'x') marker.position.set(front, bottom, 0);
+      else                  marker.position.set(0, bottom, front);
+      scene.add(marker);
+      // Small ring on the ground to show where the cutting edge sits.
+      const ringGeo = new THREE.RingGeometry(0.18, 0.28, 24);
+      const ringMat = new THREE.MeshBasicMaterial({color: 0xff2233, side: THREE.DoubleSide});
+      const ring = new THREE.Mesh(ringGeo, ringMat);
+      ring.rotation.x = -Math.PI/2;
+      ring.position.copy(marker.position);
+      ring.position.y = bottom + 0.005;
+      scene.add(ring);
+    }
 
     const aspect = w / h;
     let camera;
+    // Slice 11.7 — cameras place themselves based on the model's actual
+    // long-axis orientation, so 'side' always shows the long flank and
+    // 'blade' always shows the blade head-on regardless of how the GLTF
+    // came in oriented.
     if(view === 'side'){
+      // Side view = look at the dozer perpendicular to its travel direction.
       const halfH = 3.0;
       camera = new THREE.OrthographicCamera(-halfH*aspect, halfH*aspect, halfH, -halfH, 0.1, 100);
-      camera.position.set(15, 1.7, 0); camera.lookAt(0, 1.7, 0);
+      if(lengthAxis === 'x'){ camera.position.set(0, 1.7, 15); camera.lookAt(0, 1.7, 0); }
+      else                  { camera.position.set(15, 1.7, 0); camera.lookAt(0, 1.7, 0); }
     } else if(view === 'top'){
       const halfH = 3.0;
       camera = new THREE.OrthographicCamera(-halfH*aspect, halfH*aspect, halfH, -halfH, 0.1, 100);
-      camera.position.set(0, 20, 0); camera.up.set(0, 0, -1); camera.lookAt(0, 0, 0);
+      camera.position.set(0, 20, 0);
+      // Forward = up in image
+      if(lengthAxis === 'x') camera.up.set(-1, 0, 0);
+      else                   camera.up.set(0, 0, -1);
+      camera.lookAt(0, 0, 0);
     } else if(view === 'blade'){
+      // Blade view = look at the dozer head-on with blade facing camera.
       const halfH = 2.6;
       camera = new THREE.OrthographicCamera(-halfH*aspect, halfH*aspect, halfH, -halfH, 0.1, 100);
-      camera.position.set(0, 1.7, 15); camera.lookAt(0, 1.7, 0);
+      if(lengthAxis === 'x'){ camera.position.set(15, 1.7, 0); camera.lookAt(0, 1.7, 0); }
+      else                  { camera.position.set(0, 1.7, 15); camera.lookAt(0, 1.7, 0); }
     } else {
       camera = new THREE.PerspectiveCamera(35, aspect, 0.1, 100);
       camera.position.set(8, 5, 8); camera.lookAt(0, 1.5, 0);
