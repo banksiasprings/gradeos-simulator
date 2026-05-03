@@ -220,19 +220,6 @@ Folders are created lazily — each slice creates the directories it needs. We d
 
 ---
 
-## Decisions log
-
-### 2026-05-03
-- **Identity = real machine control product, simulator-first.**
-- **End-user = owner-operator (farmer + small contractor).** C/D/E user types deferred indefinitely.
-- **v1.0 ships indicate-only.** Auto-blade is on the long-term roadmap for factory-prep'd machines; architecture must keep a pluggable blade-target output seam so auto-blade is a future adapter swap, not a rewrite. (See [ADR-0001](docs/adr/0001-indicate-only-with-pluggable-blade-output.md).)
-- **Auto-steer (machine path control) is out of scope for v1.0 product.** Sim-shell-only demo feature.
-- **Workflow B (in-app design) is the canonical happy path.** Workflow A (design-file import) deferred post-v1.0. Workflow C (no design) is a degenerate case of B.
-- **v1.0 = real grading job at Banksia Springs.** Indicate-only on Pi5 + F9P. Single binary acceptance test. Scope cuts above are explicit.
-- **Architecture: incremental vertical-slice extraction, native ES modules, no build step.** Each slice cuts top-to-bottom for one small thing; sim must keep working at every commit.
-
----
-
 ## Slice 1 — Blade pose (locked 2026-05-03)
 
 **The first vertical slice extracts blade-pose computation only. NOT blade-target. NOT cut/fill. NOT design comparison.**
@@ -303,6 +290,51 @@ Use **blade pose** for "where the blade is" and **blade target** for "where the 
   - **H-Align Offset moved to centre cell** (was right). New order: Elevation | H-Align | Working Surface. Spatial mapping with the centre LED bar above.
   - **Two new text ribbon catalog items**: `offlineDist` (signed mm distance to selected line, "ON LINE" when within 50 mm) and `chainage` (distance along line / total length).
   - **LANDED 2026-05-03 (SW v126).** Note: this slice deliberately accepts higher GPU cost (rendering scene N times per frame instead of once) to give Steven the views he can actually test with. Lite Mode still applies (pixel ratio 1, no shadows). Sim demotion cleanup is the long-term answer to the per-frame cost.
+
+- **Slice 11 = Sprite-based cab panes (multi-viewport rolled back)**. Steven's CPU couldn't keep up with rendering the scene N times per frame (Slice 10's tradeoff). The new approach: render the dozer ONCE at boot to four PNG sprites (`perspective`, `top`, `side`, `blade`), then each cab pane is a 2D canvas that draws the static sprite. Per-pane LIVE overlays (Slice 12) carry the dynamic information. New modules: `src/sim/render/dozer-model.js` (clean primitive dozer mesh — bodies, tracks, blade, ROPS) and `src/sim/render/dozer-sprites.js` (off-screen Three.js renderer + sprite cache). Pane content is now sprite + 2D overlay, not a 3D viewport. **LANDED 2026-05-03 (SW v127).**
+
+- **Slice 11.5 = Sketchfab-quality dozer model (loaded GLTF)** — Steven preferred a high-detail downloaded bulldozer over the clean primitive shapes. `dozer-sprites.js` now loads `assets/dozer/scene.gltf` (1 MB GLTF + 8.5 MB textures, symlinked from outside the repo so no asset bloat in git). `_normaliseDozer()` detects which axis is the long axis (`'x'` or `'z'`) and stamps it as `userData.lengthAxis` so cameras can adapt. Removed an unwanted yellow label that the placeholder sprites had. Fixed a dead `_cabPositionThreeCanvas` reference left over from the multi-viewport rollback. **LANDED 2026-05-03 (SW v128).**
+
+- **Slice 11.6 = Single shared sprite renderer + localStorage cache** — The naive sprite generator created a fresh `WebGLRenderer` per sprite, which on Safari triggered a context-flood cascade (browser tops out around 16 contexts). Refactored to a single off-screen renderer reused across all sprites, sequenced through a Promise chain. Rendered sprites also cached in `localStorage` under `gradeos-dozer-sprites-v2`, so subsequent loads skip Three.js entirely. **LANDED 2026-05-03 (SW v129).**
+
+- **Slice 11.7 = Sprite orientation + lighting + tip marker fixes** — Cross-section and long-section sprites were swapped because the GLTF model was facing `+X` natively, not `+Z`. Fixed by detecting the model's actual long-axis (`lengthAxis === 'x'` vs `'z'`) and adapting the side / blade cameras accordingly. Brightened the off-screen scene's lighting (the model was rendering very dark). Added a small red blade-tip cut/fill marker on each sprite — the operator's reference point for cut/fill at the centre of the cutting edge. **LANDED 2026-05-03 (SW v130).**
+
+- **Slice 12 = Live cut/fill + alignment overlays on cab panes**. Each pane's view type gets a tailored 2D overlay drawn on top of its static sprite, reading from cached `BladeTarget` / `BladePose` / `selectedGuidanceLine`:
+  - **`cross`** — design line + tolerance band + cut/fill arrows at each blade tip.
+  - **`long`** — design grade line + centre cut/fill arrow + grade label.
+  - **`plan`** — alignment polyline + recorded points + (later) heading.
+  - **`three`** — minimal cut/fill colour ring at the centre blade-tip marker.
+  - Tolerance band from `cabSysState.defaultToleranceM`. Cut/fill colours: red CUT, green ON-GRADE, blue FILL. **LANDED 2026-05-03 (SW v131).**
+
+- **Slice 13 = Designs toolbar button + plan-sprite-rotates-with-heading + overlay gating**. Three changes that landed together:
+  - Plan-pane sprite rotates with `bladePose.heading` so the dozer image *is* the heading indicator (no separate yellow icon needed).
+  - "Designs" button added to the cab right-toolbar (icon `📐`) — opens the existing legacy Designs panel.
+  - Overlays were drawing fake guidance even when no design was active. Now gated on a real `bladeTarget` having design-derived data; otherwise the LEDs go blank and the overlays show nothing. **LANDED 2026-05-03 (SW v132).**
+
+- **Slice 13.1 = Steering, plan-overlay revert, Designs button visibility**. Three fixes from Steven's first Safari test of Slice 13:
+  - WASD steering was backwards (`A` turned right, `D` turned left). Pre-existing bug exposed by the rotating sprite. Swapped.
+  - Plan overlay had been pinned to "world rotates with heading" + "sprite also rotates", double-counting heading and producing a confusing spinning effect. Reverted to NORTH-UP: world translates only; sprite carries the heading.
+  - Static HTML toolbar didn't include a 'designs' button (only Slice 13's runtime path added it), so users with persisted toolbars saved before Slice 13 never saw it. Added to static HTML AND auto-inserted (after 'record') by `cabLoadState` for older persisted toolbars. **LANDED 2026-05-03 (SW v133).**
+
+- **Slice 14 = Plan-pane N-up / Track-up toggle + 1 m grid** (Google-Maps-style orientation). The cab's plan pane gets two orientation modes selectable via a small SVG compass button in the top-right:
+  - **N-up** (default): map fixed (north always at top); dozer sprite rotates with heading. Same as Slice 13.1.
+  - **Track-up** ("heading-up"): dozer sprite stays pointed up; world translates AND rotates by `+heading` underneath, so the map turns as the machine turns. Matches Google Maps' driving mode.
+  - **1 m reference grid** drawn on the plan pane: faint lines at every 1 m, medium at 5 m, bold at 10 m. Driving in a square is now visually obvious in both modes.
+  - Compass button's N-marker triangle tracks geographic north — straight up in N-up; rotated by `-heading` (CSS) in Track-up to show where actual north is relative to the rotated map. Mode label underneath ("N-UP" / "TRACK") makes the current state obvious.
+  - State persists via `cabSysState.planOrientationMode` through the existing sys-state path. New shared helper `_planW2p` builds the world→pixel transform; the grid, the overlay, and any future plan-view consumers share one definition.
+  - **LANDED 2026-05-03 (SW v134).**
+
+- **Slice 14.1 = Z-order fix + drop coordinate labels + sprite forward-up flip**. Three fixes from Steven's first Track-up test:
+  - Dozer was painted UNDER the grid because `_drawPlanOverlay` (which included the grid) ran AFTER the sprite. Split the grid into a new `_drawPlanGridBackground` pass called BEFORE the sprite. Dozer body now occludes the grid where it sits; alignment line + recorded points + scale legend keep drawing after the sprite (above the dozer).
+  - Removed the `x,z` coordinate labels at every 5 m intersection per Steven's feedback ("just the grid is fine").
+  - Top-view sprite was rendered with forward at IMAGE BOTTOM. Cause: the sim uses a left-handed `+Z = forward, +X = right, +Y = up` convention; Three.js camera math is right-handed; looking straight down can have either forward-up + right-mirrored OR forward-down + right-correct, but not both, without flipping something. Cleanest fix at the canvas: `ctx.scale(1, -1)` when drawing the plan-view sprite. Forward now ends up at image top while +X stays on the right, in both N-up and Track-up modes.
+  - **LANDED 2026-05-03 (SW v135).**
+
+- **Slice 14.2 = Track-up rotation sign fix**. The track-up world rotation was `-heading` when it should have been `+heading`. Sim's machine-forward at heading h is `(sin h, cos h)` in `(X, Z)`; to rotate that vector to `(0, 1)` (which the existing pixel mapping `cy - dz*ppm` sends to screen-up) we need to apply rotation by `+h` (CCW), not `-h`. Symptom Steven reported: dozer always pointing up but the world turning the *wrong direction* under it. Forward-of-machine ended up behind on screen. Compass needle code unaffected — it correctly tracks where geographic +Z lands on screen, which is `(-sin h, cos h)` under the corrected math. **LANDED 2026-05-03 (SW v136).**
+
+- **Slice 14.3 = Drop bottom-left plan-pane scale badge**. Removed the `±30 m · 1 m grid · TRACK-UP` text overlay. The compass-button label in the top-right already shows the mode, and the grid's spacing is self-evident from the line tiers. Dropping the redundant badge unclutters the small cab-pane canvas. **LANDED 2026-05-03 (SW v137).**
+
+- **Slice 14.4 = Smooth heading for cab rendering rotations**. Track-up plan view wobbled visibly while standing still because simulated GPS noise on `bladePose.heading` flowed straight into the world-rotation transform every frame. Introduced `window._cabSmoothedHeading` — an exponential moving average (α = 0.15) applied via a wrap-aware shortest-angle-diff so it tracks raw heading without twitching. Used ONLY by the three rendering rotation sites: `_planW2p`, the plan-sprite's N-up branch, and `cabUpdateCompassIcons`. The raw `bladePose.heading` is left untouched so cut/fill / blade-target math stays precise. **LANDED 2026-05-03 (SW v138).**
 
 - **Slice 9 = Alignment line picker + horizontal alignment offset** (Steven's light-bar follow-up from Slice 7):
   - **`alignment-guidance.js` module**: pure math for perpendicular distance to a polyline + chainage + tangent heading. Returns signed offline distance (right = +, left = −) plus closest-point coords for visualisation. Already accepts a horizontal offset to the line for "grade parallel at offset" workflows.
