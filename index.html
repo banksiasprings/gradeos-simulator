@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GradeOS Simulator v0.9 · SW v140</title>
+<title>GradeOS Simulator v0.9 · SW v141</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <!-- Slice 11.5 — GLTF model loader (Three.js example loaders are global scripts, not modules) -->
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -5073,7 +5073,6 @@ body.cab-led-align-hidden #cab-offsets > .cab-offset-cell:not(.cab-offset-cell-h
         <button class="btn grn" style="width:100%;margin-bottom:3px" onclick="runScenario('housepad')">🏠 House Pad Development</button>
         <button class="btn grn" style="width:100%;margin-bottom:3px" onclick="runScenario('road')">🛣 Road Construction Cut</button>
         <button class="btn grn" style="width:100%;margin-bottom:3px" onclick="runScenario('dam')">🌊 Dam / Retention Wall</button>
-        <button class="btn" style="width:100%;margin-bottom:3px;background:#0d3320;border-color:#1a6040;color:#66bb6a" onclick="runScenario('scout')">🌿 Scout Farm Mapping</button>
       </div>
     </div>
 
@@ -5153,34 +5152,6 @@ body.cab-led-align-hidden #cab-offsets > .cab-offset-cell:not(.cab-offset-cell-h
         <button class="btn blu" style="margin-top:5px" onclick="document.getElementById('gps-import').click()">📡 Import GPS CSV</button>
         <button class="btn red" style="margin-top:3px" onclick="clearSurvey()">Clear Survey Data</button>
         <p style="font-size:10px;color:#4a7aa0;margin-top:5px;line-height:1.6">Supports: Trimble, AgLeader, JD Ops Center exports. Columns auto-detected.</p>
-      </div>
-    </div>
-
-    <!-- GradeOS Scout Simulation -->
-    <div class="spanel">
-      <div class="spanel-hdr" onclick="togglePanel('scout')"><h3>🌿 GradeOS Scout</h3><span class="toggle">▾</span></div>
-      <div class="spanel-body" id="scout-body">
-        <p style="font-size:10px;color:#4a7aa0;line-height:1.6;margin-bottom:5px">Simulate a Scout unit mounted on a farm vehicle. Terrain is mapped passively during normal operations — no dedicated survey runs needed.</p>
-        <div class="row2">
-          <div class="field"><label>Vehicle / Swath</label>
-            <select id="scout-veh" style="width:100%;background:#0a1f35;border:1px solid #1e4a7a;color:#dce8f5;padding:2px 4px;border-radius:3px;font-size:11px">
-              <option value="tractor">🚜 Tractor + Slasher (3m)</option>
-              <option value="harvester">🌾 Harvester (7m)</option>
-              <option value="quad">🏍 Quad Bike (1.2m)</option>
-              <option value="combine">🌾 Combine (9m)</option>
-            </select>
-          </div>
-          <div class="field"><label>Direction</label>
-            <select id="scout-dir" style="width:100%;background:#0a1f35;border:1px solid #1e4a7a;color:#dce8f5;padding:2px 4px;border-radius:3px;font-size:11px">
-              <option value="ew">↔ East-West</option>
-              <option value="ns">↕ North-South</option>
-              <option value="both">⊕ Both (grid)</option>
-            </select>
-          </div>
-        </div>
-        <button class="btn grn" style="margin-top:4px" onclick="runScoutSim()">▶ Simulate Scout Passes</button>
-        <button class="btn red" style="margin-top:3px" onclick="clearSurvey();document.getElementById('scout-stats').textContent=''">✕ Clear Scout Data</button>
-        <div id="scout-stats" style="font-size:10px;color:#66bb6a;margin-top:5px;line-height:1.6"></div>
       </div>
     </div>
 
@@ -5354,7 +5325,6 @@ const passCount=new Uint8Array(N*N);
 let rtkFixType='RTK FIXED';let lastRtkType='RTK FIXED';
 let engineSeconds=0;  // total machine-on time in seconds
 let showGhost=false;let ghostMesh=null;
-let scoutMode=false;  // GradeOS Scout: machine builds terrain DEM as it drives
 let showStripPlan=false;let stripPlanGrp=null;
 const terrainHistory=[];const HIST_MAX=24;let lastHistorySnap=0;
 let isReplaying=false;let replayFrame=0;let replayTimer=null;
@@ -5949,8 +5919,8 @@ function genTerrain(type){
     surveyGrid.fill(1);surveyPointCount=N*N;
     if(!showSurvey){showSurvey=true;document.getElementById('b-survey').classList.add('act');document.getElementById('survey-legend').style.display='block';}
     rebuildSurveyMesh();
-    document.getElementById('scout-stats').innerHTML=
-      `🚁 Drone DEM imported<br>📡 Coverage: <b style="color:#66bb6a">100%</b> · 2,847 images<br>📐 GSD: 2.1 cm/px · RMS: ±18mm`;
+    // Slice 17 — scout-stats element gone; route the drone status to st-hint instead.
+    document.getElementById('st-hint').textContent='🚁 Drone DEM imported · 100% coverage · 2,847 images · GSD 2.1 cm/px · RMS ±18mm';
   }
   // Compute and display elevation range
   const minElev=Math.min(...ground);
@@ -7050,15 +7020,6 @@ function recordAsBuilt(wx,wz,des,gnd){
   }
   // Pass count (increment every pass, up to 10)
   if(passCount[i]<10){passCount[i]++;if(showPassCount)passCountDirty=true;}
-  // Scout mode: mark cells within blade-width as surveyed (builds DEM from driving)
-  if(scoutMode){
-    const SCOUT_W=3; // cells either side of centreline surveyed
-    for(let dz=-1;dz<=1;dz++) for(let dx=-SCOUT_W;dx<=SCOUT_W;dx++){
-      const si=gi(Math.max(0,Math.min(GR,gx+dx)),Math.max(0,Math.min(GR,gz+dz)));
-      if(!surveyGrid[si]){surveyGrid[si]=1;surveyPointCount++;}
-    }
-    if(showSurvey)rebuildSurveyMesh();
-  }
   if(!asBuilt[i]){
     asBuilt[i]=1;asBuiltPasses++;asBuiltArea+=CS*CS;asBuiltTotal++;
     if(onGrade)asBuiltOnGrade++;
@@ -7478,57 +7439,6 @@ function doRedo(){
   undoStack.push({ground:ground.slice(),design:design.slice(),hasD:hasD.slice(),designCount:designCount});
   applyUndoState(redoStack.pop());
   document.getElementById('st-hint').textContent='Redo applied.';
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// GRADEOS SCOUT SIMULATION
-// ═══════════════════════════════════════════════════════════════════
-function runScoutSim(){
-  const veh=document.getElementById('scout-veh').value;
-  const dir=document.getElementById('scout-dir').value;
-  const cfgs={tractor:{swath:1.5,spacing:3},harvester:{swath:3.5,spacing:7},quad:{swath:0.6,spacing:1.5},combine:{swath:4.5,spacing:9}};
-  const cfg=cfgs[veh]||cfgs.tractor;
-  const halfSwath=Math.ceil((cfg.swath/CS)/2);
-  const rowStep=Math.max(1,Math.round(cfg.spacing/CS));
-  let passes=0;
-  if(dir==='ew'||dir==='both'){
-    for(let gz=0;gz<N;gz+=rowStep){
-      for(let gx=0;gx<N;gx++){
-        for(let s=-halfSwath;s<=halfSwath;s++){
-          const gz2=gz+s;if(gz2>=0&&gz2<N)surveyGrid[gi(gx,gz2)]=1;
-        }
-      }
-      passes++;
-    }
-  }
-  if(dir==='ns'||dir==='both'){
-    for(let gx=0;gx<N;gx+=rowStep){
-      for(let gz=0;gz<N;gz++){
-        for(let s=-halfSwath;s<=halfSwath;s++){
-          const gx2=gx+s;if(gx2>=0&&gx2<N)surveyGrid[gi(gx2,gz)]=1;
-        }
-      }
-      passes++;
-    }
-  }
-  const surveyed=Array.from(surveyGrid).filter(v=>v>0).length;
-  const covPct=(surveyed/(N*N)*100).toFixed(0);
-  const siteArea=(GR*CS)*(GR*CS);
-  surveyPointCount=surveyed;
-  const vehNames={tractor:'Tractor',harvester:'Harvester',quad:'Quad Bike',combine:'Combine'};
-  document.getElementById('scout-stats').innerHTML=
-    `✓ ${passes} passes complete<br>`
-    +`📡 Coverage: <b style="color:#66bb6a">${covPct}%</b> (${surveyed.toLocaleString()} cells)<br>`
-    +`🚜 Vehicle: ${vehNames[veh]||veh} — ${cfg.swath}m swath, ${cfg.spacing}m row spacing<br>`
-    +`📏 Site: ${siteArea.toFixed(0)} m² total`;
-  // Auto-enable survey layer to show the coverage
-  if(!showSurvey){
-    showSurvey=true;
-    document.getElementById('b-survey').classList.add('act');
-    document.getElementById('survey-legend').style.display='block';
-  }
-  rebuildSurveyMesh();
-  document.getElementById('st-hint').textContent=`Scout: ${passes} passes, ${covPct}% coverage. Toggle 📡 Survey in Display to show/hide.`;
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -9500,33 +9410,6 @@ function runScenario(type){
       else return 3.0; // embankment crest
     });
     desc='🌊 Dam: pond floor at RL 0.5m, batters to crest at RL 3.0m. Balance before grading.';
-  }else if(type==='scout'){
-    genTerrain('flat');
-    scoutMode=true;
-    surveyGrid.fill(0);surveyPointCount=0;
-    if(!showSurvey){showSurvey=true;document.getElementById('b-survey').classList.add('act');document.getElementById('survey-legend').style.display='block';}
-    rebuildSurveyMesh();
-    if(!autoSteer)toggleAutoSteer();
-    document.getElementById('scout-stats').innerHTML=
-      `🌿 Scout mapping in progress…<br>📡 Coverage: <b id="scout-live-cov" style="color:#66bb6a">0%</b> · <span id="scout-live-pts">0</span> pts`;
-    // Poll until complete or auto-steer stops
-    const scoutPoll=setInterval(()=>{
-      const cov=Math.round(surveyPointCount/(N*N)*100);
-      const lc=document.getElementById('scout-live-cov');const lp=document.getElementById('scout-live-pts');
-      if(lc)lc.textContent=cov+'%';if(lp)lp.textContent=surveyPointCount.toLocaleString();
-      if(!autoSteer||cov>=95){
-        clearInterval(scoutPoll);scoutMode=false;
-        let minH=Infinity,maxH=-Infinity,sumH=0,cnt=0;
-        for(let iz=0;iz<N*N;iz++){if(surveyGrid[iz]){minH=Math.min(minH,ground[iz]);maxH=Math.max(maxH,ground[iz]);sumH+=ground[iz];cnt++;}}
-        const meanH=cnt>0?sumH/cnt:0;
-        document.getElementById('scout-stats').innerHTML=
-          `✅ Scout complete! Coverage: <b style="color:#66bb6a">${cov}%</b><br>`+
-          `📐 ${surveyPointCount.toLocaleString()} pts · Range: ${(maxH-minH).toFixed(2)}m<br>`+
-          `📊 Mean: ${meanH.toFixed(2)}m RL · Ready to design`;
-        document.getElementById('st-hint').textContent='✅ Scout DEM complete — '+cov+'% coverage. Design a grade and start grading!';
-      }
-    },1500);
-    return;
   }
   // Finish up: rebuild and auto-balance
   rebuildDesMesh();buildTolMesh();buildDaylightMesh();buildStakes();
