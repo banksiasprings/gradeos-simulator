@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GradeOS Simulator v0.8 · SW v113</title>
+<title>GradeOS Simulator v0.8 · SW v114</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <!-- Slice 1 — blade-pose seam. See CONTEXT.md, ADR-0002. -->
 <script type="module" src="./src/product/guidance/blade-pose.js"></script>
@@ -71,25 +71,270 @@ function switchDesignTab(tab){
   const tb=document.getElementById('dtab-'+tab);
   if(tb)tb.classList.add('active');
 }
-// ── Slice 4a — Dashboard navigation ────────────────────────────────────
-// App boots with #dashboard visible. Tap Start to enter the work screen.
-// Tap the floating Back button on the work screen to return to dashboard.
+// ── Slice 4a/4b — Navigation ───────────────────────────────────────────
+// Boot:    #dashboard visible.
+// Start:   Dashboard hides, Cab Screen (Slice 4b) shows. The 3D canvas
+//          relocates from #viewport into #cab-centre-pane.
+// Back:    Cab Screen hides, Dashboard shows; canvas relocates back.
 function showDashboard(){
   const d=document.getElementById('dashboard');
   const b=document.getElementById('workscreen-back-btn');
+  const c=document.getElementById('cabscreen');
   if(d)d.classList.remove('hidden');
   if(b)b.classList.remove('show');
-  // Refresh tile data when returning to dashboard.
+  if(c)c.classList.add('hidden');
+  document.body.classList.remove('cab-mode');
+  // Move the 3D canvas back to its original viewport home if needed.
+  cabRestoreCanvas();
   if(typeof refreshDashboardTiles==='function')refreshDashboardTiles();
 }
-function showWorkScreen(){
+function showCabScreen(){
   const d=document.getElementById('dashboard');
+  const c=document.getElementById('cabscreen');
   const b=document.getElementById('workscreen-back-btn');
   if(d)d.classList.add('hidden');
-  if(b)b.classList.add('show');
+  if(c)c.classList.remove('hidden');
+  if(b)b.classList.remove('show');
+  document.body.classList.add('cab-mode');
+  cabRelocateCanvas();
+  cabResizeRenderer();
 }
+// Slice 4a kept showWorkScreen() as the old destination. In Slice 4b
+// it now goes to the cab screen instead. Old name kept for back-compat.
+function showWorkScreen(){ showCabScreen(); }
 function dashboardStart(){
-  showWorkScreen();
+  showCabScreen();
+}
+
+// ── Slice 4b — 3D canvas relocation ────────────────────────────────────
+// The Three.js canvas is created in #viewport at boot. When entering the
+// cab screen, we move its DOM node into the cab's centre pane so it fills
+// that area. When leaving, we move it back. The renderer reference stays
+// valid throughout.
+function cabRelocateCanvas(){
+  const pane=document.getElementById('cab-centre-pane');
+  const placeholder=document.getElementById('cab-centre-placeholder');
+  if(!pane)return;
+  // Find the Three.js canvas — usually the only canvas in #viewport with class three-canvas.
+  const tc=document.querySelector('.three-canvas');
+  if(tc&&tc.parentElement!==pane){
+    if(placeholder)placeholder.style.display='none';
+    pane.appendChild(tc);
+  }
+}
+function cabRestoreCanvas(){
+  const vp=document.getElementById('viewport');
+  if(!vp)return;
+  const tc=document.querySelector('.three-canvas');
+  if(tc&&tc.parentElement!==vp){
+    vp.appendChild(tc);
+  }
+}
+// Tell the renderer the canvas size changed.
+function cabResizeRenderer(){
+  if(typeof renderer==='undefined'||!renderer)return;
+  const pane=document.getElementById('cab-centre-pane');
+  if(!pane)return;
+  // Wait one frame so layout is finalised.
+  requestAnimationFrame(()=>{
+    const w=pane.clientWidth, h=pane.clientHeight;
+    if(w>0&&h>0){
+      renderer.setSize(w,h,false);
+      if(typeof camera!=='undefined'&&camera){
+        camera.aspect=w/h;
+        camera.updateProjectionMatrix();
+      }
+    }
+  });
+}
+// Re-trigger renderer resize on window resize while in cab mode.
+window.addEventListener('resize',()=>{
+  if(document.body.classList.contains('cab-mode'))cabResizeRenderer();
+});
+
+// ── Slice 4b — Cab screen LED bars ─────────────────────────────────────
+// Three LED bars wrap the centre: left vertical (tip A cut/fill), top
+// horizontal (alignment guidance — currently no selectedGuidanceLine,
+// shows placeholder), right vertical (tip B cut/fill).
+//
+// Drawing convention matches industry (and our existing drawLEDBar):
+//   red = cut (blade above design)
+//   green = on grade (within tolerance)
+//   blue = fill (blade below design)
+//   grey = no design / no signal
+function _cabDrawVerticalLEDBar(canvas, mm){
+  if(!canvas)return;
+  const cssW=canvas.clientWidth, cssH=canvas.clientHeight;
+  if(cssW<2||cssH<10)return;
+  canvas.width=cssW; canvas.height=cssH;
+  const ctx=canvas.getContext('2d');
+  ctx.fillStyle='#020a14'; ctx.fillRect(0,0,cssW,cssH);
+  if(mm===null||mm===undefined||isNaN(mm)){
+    // No design — render dim segments + label
+    const segH=12, segGap=2;
+    const maxSeg=Math.floor((cssH-20)/(segH+segGap));
+    ctx.fillStyle='#0a1e30';
+    for(let i=0;i<maxSeg;i++){
+      const y=10+i*(segH+segGap);
+      ctx.fillRect(2,y,cssW-4,segH);
+    }
+    return;
+  }
+  // mm > 0 = blade above design = CUT (red); mm < 0 = blade below design = FILL (blue)
+  const isCut=mm>25, isFill=mm<-25, isOnGrade=!isCut&&!isFill;
+  const MAX=500;
+  const segH=12, segGap=2;
+  const maxSeg=Math.floor((cssH-20)/(segH+segGap));
+  // Centre line (on-grade band) is in the middle; cut lights up upward, fill downward.
+  const half=Math.floor(maxSeg/2);
+  const filledF=Math.min(Math.abs(mm)/MAX,1)*half;
+  const filled=Math.ceil(filledF);
+  const cutCols=['#ef5350','#e53935','#c62828','#8b0000','#4a0000'];
+  const fillCols=['#42a5f5','#1e88e5','#1565c0','#0d47a1','#082954'];
+  for(let i=0;i<maxSeg;i++){
+    // 0 = top, maxSeg-1 = bottom. Centre is at half.
+    const y=10+i*(segH+segGap);
+    let col;
+    if(isOnGrade){
+      // Light up the centre 2 segments green
+      col=(Math.abs(i-half)<=1)?'#00e676':'#0a1e30';
+    }else if(isCut){
+      // Cut lights up from centre going UP (top of bar)
+      const distFromCentre=half-i;
+      col=(distFromCentre>0&&distFromCentre<=filled)?cutCols[Math.min(distFromCentre-1,4)]:'#0a1e30';
+    }else{
+      // Fill lights up from centre going DOWN (bottom of bar)
+      const distFromCentre=i-half;
+      col=(distFromCentre>0&&distFromCentre<=filled)?fillCols[Math.min(distFromCentre-1,4)]:'#0a1e30';
+    }
+    ctx.fillStyle=col;
+    ctx.fillRect(2,y,cssW-4,segH);
+  }
+}
+function _cabDrawHorizontalLEDBar(canvas, offlineDistanceM){
+  if(!canvas)return;
+  const cssW=canvas.clientWidth, cssH=canvas.clientHeight;
+  if(cssW<10||cssH<2)return;
+  canvas.width=cssW; canvas.height=cssH;
+  const ctx=canvas.getContext('2d');
+  ctx.fillStyle='#020a14'; ctx.fillRect(0,0,cssW,cssH);
+  if(offlineDistanceM===null||offlineDistanceM===undefined||isNaN(offlineDistanceM)){
+    // No alignment line selected — render dim with placeholder text
+    ctx.fillStyle='#1a2840'; ctx.fillRect(0,0,cssW,cssH);
+    ctx.fillStyle='#2a4060'; ctx.font='9px monospace'; ctx.textAlign='center';
+    ctx.fillText('— NO ALIGNMENT LINE —',cssW/2,cssH/2+3);
+    return;
+  }
+  // Centre = on-line. Distance scales bar fill left or right.
+  const segW=13, segGap=2;
+  const half=cssW/2;
+  const maxSeg=Math.floor((half-10)/(segW+segGap));
+  const MAX=2.0; // metres
+  const filledF=Math.min(Math.abs(offlineDistanceM)/MAX,1)*maxSeg;
+  const filled=Math.ceil(filledF);
+  const onLine=Math.abs(offlineDistanceM)<0.05; // ±50mm = on the line
+  const colOnLine='#00e676';
+  const colOffLine='#e8a020';
+  const segH=cssH-4;
+  for(let i=0;i<maxSeg;i++){
+    let leftLit=false, rightLit=false;
+    if(onLine){
+      leftLit=rightLit=(i<2);
+    }else if(offlineDistanceM<0){
+      leftLit=(i<filled);
+    }else{
+      rightLit=(i<filled);
+    }
+    const xL=half-(i+1)*(segW+segGap)-segGap-2;
+    const xR=half+i*(segW+segGap)+segGap+2;
+    ctx.fillStyle=leftLit?(onLine?colOnLine:colOffLine):'#0a1e30';
+    ctx.fillRect(xL,2,segW,segH);
+    ctx.fillStyle=rightLit?(onLine?colOnLine:colOffLine):'#0a1e30';
+    ctx.fillRect(xR,2,segW,segH);
+  }
+}
+
+// ── Slice 4b — Cab screen state refresh ────────────────────────────────
+// Called every animation frame from updateMachine() to refresh all cab UI.
+function cabScreenUpdate(bladeTarget, bladePose){
+  if(!document.body.classList.contains('cab-mode'))return;
+  // LED bars
+  _cabDrawVerticalLEDBar(
+    document.getElementById('cab-led-tipA'),
+    bladeTarget&&bladeTarget.tipA?bladeTarget.tipA.cutFillMm:null
+  );
+  _cabDrawVerticalLEDBar(
+    document.getElementById('cab-led-tipB'),
+    bladeTarget&&bladeTarget.tipB?bladeTarget.tipB.cutFillMm:null
+  );
+  // Top alignment bar — placeholder until selectedGuidanceLine exists.
+  _cabDrawHorizontalLEDBar(document.getElementById('cab-led-align'), null);
+  // Bottom readouts
+  const r1v=document.getElementById('cab-readout-1-value');
+  const r1c=bladeTarget&&bladeTarget.centre?bladeTarget.centre.cutFillMm:null;
+  if(r1v){
+    if(r1c===null||isNaN(r1c)){
+      r1v.textContent='—'; r1v.className='cab-readout-value';
+    }else if(Math.abs(r1c)<25){
+      r1v.textContent='ON GD'; r1v.className='cab-readout-value ongrade';
+    }else{
+      r1v.textContent=(r1c>0?'+':'')+r1c.toFixed(0)+' mm';
+      r1v.className='cab-readout-value '+(r1c>0?'cut':'fill');
+    }
+  }
+  const r2v=document.getElementById('cab-readout-2-value');
+  const r2x=bladePose?bladePose.crossSlope:null;
+  if(r2v){
+    r2v.textContent=(r2x===null||isNaN(r2x))?'—':((r2x>=0?'+':'')+r2x.toFixed(2)+'%');
+    r2v.className='cab-readout-value';
+  }
+  const r3v=document.getElementById('cab-readout-3-value');
+  const r3g=bladeTarget?bladeTarget.longGrade:null;
+  if(r3v){
+    r3v.textContent=(r3g===null||isNaN(r3g))?'—':((r3g>=0?'+':'')+r3g.toFixed(2)+'%');
+    r3v.className='cab-readout-value';
+  }
+  // Top-centre offset numerics
+  const eo=document.getElementById('cab-offset-elev');
+  if(eo&&typeof vOffset!=='undefined'){
+    eo.textContent=(vOffset>=0?'+':'')+vOffset.toFixed(3)+' m';
+  }
+  const wo=document.getElementById('cab-offset-working');
+  if(wo){
+    // Working surface offset isn't yet wired (Slice 4 follow-up); show 0 for now.
+    wo.textContent='+0.000 m';
+  }
+  // Status bar refresh
+  const sbProj=document.getElementById('cab-statusbar-project');
+  if(sbProj)sbProj.textContent='Project: (default)';
+  const sbDes=document.getElementById('cab-statusbar-design');
+  if(sbDes){
+    let designName='No design';
+    if(typeof designLibrary!=='undefined'&&designLibrary.length>0){
+      const active=designLibrary.find(d=>d.state==='active');
+      designName=active?active.name:`${designLibrary.length} design(s)`;
+    }
+    sbDes.textContent=designName;
+  }
+  const sbRtkDot=document.getElementById('cab-statusbar-rtk-dot');
+  const sbRtkText=document.getElementById('cab-statusbar-rtk-text');
+  const rtk=(typeof rtkFixType!=='undefined')?rtkFixType:'—';
+  if(sbRtkDot)sbRtkDot.style.background=rtk==='RTK FIXED'?'#27ae60':(rtk==='RTK FLOAT'?'#e8a020':'#ef5350');
+  if(sbRtkText)sbRtkText.textContent=rtk;
+}
+
+// Slice 4b — Right-side toolbar tap handlers (stubs for now; Slice 4c wires them)
+function cabToolTap(which){
+  console.log('Cab toolbar tap:', which, '— wiring in Slice 4c');
+  // Minimal Slice 4b behaviours so things aren't completely dead:
+  if(which==='focus'&&typeof setBladeFocus==='function'){
+    const next={center:'tipA',tipA:'tipB',tipB:'center'}[(typeof bladeFocus!=='undefined'?bladeFocus:'center')];
+    setBladeFocus(next);
+  }else if(which==='systemsettings'&&typeof openGPSPanel==='function'){
+    // Temporary route to GPS panel until proper System Settings exists.
+    document.body.classList.remove('cab-mode');
+    openGPSPanel();
+  }
 }
 function dashboardTileTap(which){
   // Slice 4a: tiles are informational only. Slice 4b will wire each tile
@@ -1111,6 +1356,189 @@ body.field-mode #field-rtk{display:flex}
 }
 #workscreen-back-btn.show{display:block}
 #workscreen-back-btn:hover{background:#ffb830}
+
+/* ═══════════════════════════════════════════════════════════════════
+   CAB SCREEN — Slice 4b
+   Trimble-style operator work screen. CSS grid layout:
+     5 rows: status / offsets / alignment LED / centre / bottom strip
+     4 cols: LED-A / centre / LED-B / right toolbar
+   The 3D canvas relocates into #cab-centre-pane on cab activation.
+   When body has .cab-mode class, the old topbar/UI hides and the
+   cab screen takes over the viewport.
+   ═══════════════════════════════════════════════════════════════════ */
+#cabscreen{
+  position:fixed; inset:0;
+  background:#0a1520;
+  z-index:7500;
+  display:grid;
+  grid-template-columns:36px 1fr 36px 56px;
+  grid-template-rows:36px 44px 24px 1fr 64px;
+  font-family:'Segoe UI',Arial,sans-serif;
+  color:#dce8f5;
+  overflow:hidden;
+}
+#cabscreen.hidden{display:none}
+body.cab-mode #topbar,
+body.cab-mode #drawer-bg,
+body.cab-mode #drawer{display:none !important}
+body.cab-mode #viewport{position:absolute; inset:auto; pointer-events:none; opacity:0}
+/* Hide the workscreen-back-btn when cab screen is active — cab has its own back. */
+body.cab-mode #workscreen-back-btn{display:none !important}
+
+/* Row 1 — Yellow status bar across all 4 columns */
+#cab-statusbar{
+  grid-column:1 / -1; grid-row:1;
+  background:#e8a020;
+  color:#0a1520;
+  display:flex; align-items:center; gap:10px;
+  padding:0 12px;
+  font-size:13px; font-weight:700;
+  border-bottom:2px solid #b87a08;
+}
+#cab-back-btn{
+  background:transparent; border:1px solid #0a1520;
+  color:#0a1520;
+  padding:2px 10px; font-size:14px; font-weight:800;
+  border-radius:3px; cursor:pointer;
+}
+#cab-back-btn:hover{background:rgba(0,0,0,.1)}
+.cab-statusbar-sep{color:#5a3d04; font-weight:400}
+#cab-statusbar-spacer{flex:1}
+#cab-statusbar-rtk-dot{
+  width:10px; height:10px; border-radius:50%;
+  background:#27ae60;
+  box-shadow:0 0 8px rgba(39,174,96,.6);
+}
+
+/* Row 2 — Two top-centre offset numerics */
+#cab-offsets{
+  grid-column:2 / 3; grid-row:2;
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+  padding:4px 16px;
+  background:#08111c;
+  border-bottom:1px solid #1a2840;
+}
+.cab-offset-cell{
+  display:flex; flex-direction:column;
+  align-items:center; justify-content:center;
+}
+.cab-offset-label{
+  font-size:9px; color:#7aa0c0;
+  letter-spacing:1.2px;
+  text-transform:uppercase;
+}
+.cab-offset-value{
+  font-family:'Menlo',monospace;
+  font-size:18px; font-weight:700;
+  color:#e8a020;
+  margin-top:1px;
+}
+
+/* Row 3 — Top horizontal alignment LED bar */
+#cab-led-align{
+  grid-column:2 / 3; grid-row:3;
+  width:100%; height:24px;
+  background:#020a14;
+  display:block;
+}
+
+/* Rows 2-5, Cols 1+3 — Vertical LED bars (left tipA, right tipB) */
+#cab-led-tipA{
+  grid-column:1; grid-row:2 / 6;
+  width:36px; height:100%;
+  background:#020a14;
+  display:block;
+}
+#cab-led-tipB{
+  grid-column:3; grid-row:2 / 6;
+  width:36px; height:100%;
+  background:#020a14;
+  display:block;
+}
+
+/* Row 4 — Centre pane (where the 3D canvas lives) */
+#cab-centre-pane{
+  grid-column:2; grid-row:4;
+  background:#08131f;
+  position:relative;
+  overflow:hidden;
+}
+#cab-centre-placeholder{
+  position:absolute; inset:0;
+  display:flex; align-items:center; justify-content:center;
+  color:#2a4060; font-size:14px;
+  pointer-events:none;
+}
+/* When the 3D canvas is moved here it fills the pane */
+#cab-centre-pane > canvas.three-canvas{
+  width:100% !important;
+  height:100% !important;
+  display:block;
+}
+
+/* Rows 2-5, Col 4 — Right-side icon toolbar */
+#cab-right-toolbar{
+  grid-column:4; grid-row:2 / 6;
+  background:#0d1f35;
+  border-left:1px solid #1a2840;
+  display:flex; flex-direction:column;
+  padding:6px 4px;
+  gap:6px;
+}
+.cab-tool-btn{
+  background:#132843;
+  border:1px solid #1e4a7a;
+  color:#a8c0d8;
+  padding:10px 4px;
+  font-size:18px;
+  border-radius:5px;
+  cursor:pointer;
+  transition:all .12s;
+}
+.cab-tool-btn:hover{
+  background:#e8a020;
+  border-color:#e8a020;
+  color:#0a1520;
+}
+.cab-tool-btn:active{transform:translateY(1px)}
+
+/* Row 5 — Bottom readout strip across centre (also overlapping into right toolbar?
+   Actually this is for column 2 only; right toolbar continues down) */
+#cab-bottom-strip{
+  grid-column:2; grid-row:5;
+  background:#0d1f35;
+  border-top:1px solid #1a2840;
+  display:flex; align-items:center;
+  padding:0 10px;
+  gap:10px;
+}
+.cab-readout{
+  flex:1;
+  display:flex; align-items:center; gap:8px;
+  padding:6px 10px;
+  background:#08131f;
+  border-radius:4px;
+  border:1px solid #1a2840;
+}
+.cab-readout-icon{
+  font-size:18px;
+  color:#7aa0c0;
+}
+.cab-readout-label{
+  font-size:9px; color:#7aa0c0;
+  letter-spacing:1px; text-transform:uppercase;
+}
+.cab-readout-value{
+  font-family:'Menlo',monospace;
+  font-size:18px; font-weight:700;
+  color:#e0e8f0;
+  margin-top:1px;
+}
+.cab-readout-value.cut{color:#ef5350}
+.cab-readout-value.fill{color:#42a5f5}
+.cab-readout-value.ongrade{color:#66bb6a}
 </style>
 </head>
 <body>
@@ -1166,6 +1594,79 @@ body.field-mode #field-rtk{display:flex}
 
 <!-- Floating back button — only visible on the work screen, returns to dashboard. -->
 <button id="workscreen-back-btn" onclick="showDashboard()" title="Back to dashboard">◀ Dashboard</button>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     CAB SCREEN — Slice 4b
+     The Trimble-style operator work screen. Replaces the old cluttered UI.
+     See CONTEXT.md → "Cab screen topology adopted".
+     ═══════════════════════════════════════════════════════════════════ -->
+<div id="cabscreen" class="hidden">
+  <!-- Row 1: Yellow status bar across the top -->
+  <div id="cab-statusbar">
+    <button id="cab-back-btn" onclick="showDashboard()" title="Back to dashboard">◀</button>
+    <span id="cab-statusbar-project">Project: (default)</span>
+    <span class="cab-statusbar-sep">·</span>
+    <span id="cab-statusbar-design">No design</span>
+    <span id="cab-statusbar-spacer"></span>
+    <span id="cab-statusbar-rtk-dot"></span>
+    <span id="cab-statusbar-rtk-text">RTK FIXED</span>
+    <span class="cab-statusbar-sep">·</span>
+    <span id="cab-statusbar-machine">Banksia D6 Dozer</span>
+  </div>
+  <!-- Row 2: Two top-centre offset numerics -->
+  <div id="cab-offsets">
+    <div class="cab-offset-cell">
+      <div class="cab-offset-label">ELEV OFFSET</div>
+      <div class="cab-offset-value" id="cab-offset-elev">+0.00 m</div>
+    </div>
+    <div class="cab-offset-cell">
+      <div class="cab-offset-label">WORKING SURFACE</div>
+      <div class="cab-offset-value" id="cab-offset-working">+0.00 m</div>
+    </div>
+  </div>
+  <!-- Row 3: Top horizontal LED bar = alignment guidance -->
+  <canvas id="cab-led-align" class="cab-led-h"></canvas>
+  <!-- Row 4: Three columns — Left LED, Centre Pane, Right LED, plus Right Toolbar -->
+  <canvas id="cab-led-tipA" class="cab-led-v"></canvas>
+  <div id="cab-centre-pane">
+    <!-- The 3D canvas (#viewport-managed) gets relocated here on cab-screen activation. -->
+    <div id="cab-centre-placeholder">3D / Plan / Cross-section view</div>
+  </div>
+  <canvas id="cab-led-tipB" class="cab-led-v"></canvas>
+  <div id="cab-right-toolbar">
+    <button class="cab-tool-btn" id="cab-tool-focus" onclick="cabToolTap('focus')" title="Cycle blade focus">●</button>
+    <button class="cab-tool-btn" id="cab-tool-record" onclick="cabToolTap('record')" title="Record point">📍</button>
+    <button class="cab-tool-btn" id="cab-tool-changeview" onclick="cabToolTap('changeview')" title="Change view">⊞</button>
+    <button class="cab-tool-btn" id="cab-tool-overview" onclick="cabToolTap('overview')" title="Overview screen">🌐</button>
+    <button class="cab-tool-btn" id="cab-tool-overlays" onclick="cabToolTap('overlays')" title="Overlays">👁</button>
+    <button class="cab-tool-btn" id="cab-tool-worksettings" onclick="cabToolTap('worksettings')" title="Work settings">▤</button>
+    <button class="cab-tool-btn" id="cab-tool-systemsettings" onclick="cabToolTap('systemsettings')" title="System settings">⚙</button>
+  </div>
+  <!-- Row 5: Bottom configurable readout strip (Slice 4b: 3 hardcoded defaults) -->
+  <div id="cab-bottom-strip">
+    <div class="cab-readout">
+      <span class="cab-readout-icon" id="cab-readout-1-icon">⚪</span>
+      <div>
+        <div class="cab-readout-label" id="cab-readout-1-label">Centre Cut/Fill</div>
+        <div class="cab-readout-value" id="cab-readout-1-value">—</div>
+      </div>
+    </div>
+    <div class="cab-readout">
+      <span class="cab-readout-icon" id="cab-readout-2-icon">⤡</span>
+      <div>
+        <div class="cab-readout-label" id="cab-readout-2-label">Cross-slope</div>
+        <div class="cab-readout-value" id="cab-readout-2-value">—</div>
+      </div>
+    </div>
+    <div class="cab-readout">
+      <span class="cab-readout-icon" id="cab-readout-3-icon">⤴</span>
+      <div>
+        <div class="cab-readout-label" id="cab-readout-3-label">Long Grade</div>
+        <div class="cab-readout-value" id="cab-readout-3-value">—</div>
+      </div>
+    </div>
+  </div>
+</div>
 
 <div id="topbar">
   <button id="hamburger-btn" onclick="toggleDrawer()" title="Menu">☰</button>
@@ -3491,6 +3992,8 @@ function updateMachine(dt){
     updateTextRibbon(lMM2,cMM2,rMM2,grade2,elevDisp2,xslope2);
     drawLEDBar(lMM2,rMM2);
     if(splitMode)updateBladePanel(lMM2,cMM2,rMM2,grade2,elevDisp2,xslope2);
+    // Slice 4b — refresh the new cab screen UI from the same data sources.
+    if(typeof cabScreenUpdate==='function')cabScreenUpdate(bladeTarget2,bladePose2);
     // Heading in status bar
     const hdgDeg2=Math.round((machinePos.hdg*180/Math.PI%360+360)%360);
     const spdEl2=document.getElementById('st-speed');
@@ -3655,6 +4158,8 @@ function updateMachine(dt){
   updateTextRibbon(lMM,cMM,rMM,grade,elevDisp,xslope);
   drawLEDBar(lMM,rMM);
   if(splitMode)updateBladePanel(lMM,cMM,rMM,grade,elevDisp,xslope);
+  // Slice 4b — refresh the new cab screen UI from the same data sources.
+  if(typeof cabScreenUpdate==='function')cabScreenUpdate(bladeTarget,bladePose);
   // Smooth blade height animation (lerp to target)
   if(focusMM!==null){
     bladeTargetY=0.45-Math.max(-0.8,Math.min(0.8,focusMM/1000))*0.5;
