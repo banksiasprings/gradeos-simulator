@@ -170,6 +170,7 @@ Total hardware cost target: **under $2,000 AUD per machine** vs. $50,000+ for Tr
 
 | Version | Date | Highlights |
 |---------|------|-----------|
+| v0.9 | May 2026 | Architecture rewrite (product/sim seam, NMEA bridge, Project hierarchy), Trimble-style cab screen with multi-pane layouts + configurable text ribbon + right toolbar, two-layer offset model (elevation + working surface), Profile Designer (universal line-based design tool), Performance Mode toggle |
 | v0.8 | Apr 2026 | Field/Operator Mode with 3 live profile windows |
 | v0.7 | Apr 2026 | Scout scenario, survey coverage mesh, ghost overlay |
 | v0.6 | Apr 2026 | Replay system, pass heat map, daylight line, grade strips |

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GradeOS Simulator v0.8 · SW v122</title>
+<title>GradeOS Simulator v0.9 · SW v123</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <!-- Slice 1 — blade-pose seam. See CONTEXT.md, ADR-0002. -->
 <script type="module" src="./src/product/guidance/blade-pose.js"></script>
@@ -3237,7 +3237,7 @@ body.cab-led-align-hidden #cab-centre-pane{grid-row:3 / 5}
 <div id="dashboard">
   <div id="db-statusbar">
     <span class="db-statusbar-title">GRADE<span style="color:#000">OS</span></span>
-    <span class="db-statusbar-version">v0.8</span>
+    <span class="db-statusbar-version">v0.9</span>
     <span class="db-statusbar-spacer"></span>
     <span class="db-statusbar-machine" id="db-statusbar-machine">Banksia D6 Dozer</span>
     <span class="db-statusbar-rtk-dot" id="db-statusbar-rtk-dot"></span>
@@ -3274,7 +3274,7 @@ body.cab-led-align-hidden #cab-centre-pane{grid-row:3 / 5}
     <button id="db-start-btn" onclick="dashboardStart()">Start</button>
   </div>
   <div id="db-footer">
-    <span>GradeOS · open-source machine control · v0.8</span>
+    <span>GradeOS · open-source machine control · v0.9</span>
   </div>
 </div>
 
@@ -3724,7 +3724,7 @@ body.cab-led-align-hidden #cab-centre-pane{grid-row:3 / 5}
 
 <div id="topbar">
   <button id="hamburger-btn" onclick="toggleDrawer()" title="Menu">☰</button>
-  <div id="logo">GRADE<span>OS</span> <span style="font-size:10px;color:#4a7aa0;font-weight:400">v0.8</span><br><span style="font-size:8px;color:#4a7aa0;font-weight:400;letter-spacing:.5px;text-transform:uppercase;line-height:1">Built by operators, for operators</span></div>
+  <div id="logo">GRADE<span>OS</span> <span style="font-size:10px;color:#4a7aa0;font-weight:400">v0.9</span><br><span style="font-size:8px;color:#4a7aa0;font-weight:400;letter-spacing:.5px;text-transform:uppercase;line-height:1">Built by operators, for operators</span></div>
   <div id="topbar-spacer"></div>
   <div class="topbar-right-btns">
     <div id="gps-status-dot" style="width:10px;height:10px;border-radius:50%;background:#27ae60;flex-shrink:0;margin-right:6px"></div>
@@ -3994,7 +3994,7 @@ body.cab-led-align-hidden #cab-centre-pane{grid-row:3 / 5}
           <div id="ver-info" style="font-size:10px;color:#7aabcc;background:#071525;border:1px solid #1e4a7a;border-radius:4px;padding:8px 10px;margin-bottom:8px;line-height:1.8">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
               <span style="color:#4a7aa0;text-transform:uppercase;letter-spacing:.5px;font-size:9px">Your version</span>
-              <span id="ver-current" style="color:#e8a020;font-weight:700;font-family:monospace">v0.8 · SW&nbsp;v43</span>
+              <span id="ver-current" style="color:#e8a020;font-weight:700;font-family:monospace">v0.9 · SW&nbsp;v43</span>
             </div>
             <div style="display:flex;justify-content:space-between;align-items:center">
               <span style="color:#4a7aa0;text-transform:uppercase;letter-spacing:.5px;font-size:9px">Latest</span>
@@ -4447,7 +4447,7 @@ body.cab-led-align-hidden #cab-centre-pane{grid-row:3 / 5}
     display:flex;justify-content:space-between;align-items:center">
     <div>
       <span style="font-size:16px;font-weight:900;letter-spacing:2px;color:#fff">GRADE<span style="color:#e8a020">OS</span></span>
-      <span style="font-size:10px;color:#4a7aa0;margin-left:8px">v0.8 — Built by operators, for operators</span>
+      <span style="font-size:10px;color:#4a7aa0;margin-left:8px">v0.9 — Built by operators, for operators</span>
     </div>
     <button onclick="togglePitchCard()" style="background:none;border:1px solid #1e4a6a;color:#4a7aa0;cursor:pointer;padding:2px 8px;border-radius:4px;font-size:11px">✕ P</button>
   </div>
@@ -11635,7 +11635,7 @@ async function checkForUpdate(){
       showUpdateToast('Installing update…');
       _waitAndReload(registration.installing);
     }else{
-      const cur=document.getElementById('ver-current')?.textContent||'v0.8';
+      const cur=document.getElementById('ver-current')?.textContent||'v0.9';
       if(verLatestEl){verLatestEl.style.color='#66bb6a';verLatestEl.textContent=cur+' \u2713 Up to date';}
       showUpdateToast('Already up to date \u2713',3000);
     }
@@ -12307,7 +12307,7 @@ if('serviceWorker' in navigator){
       if(swKey){
         const swVer=swKey.replace('gradeos-',''); // e.g. "v32"
         const el=document.getElementById('ver-current');
-        if(el) el.textContent='v0.8 \u00b7 SW\u00a0'+swVer;
+        if(el) el.textContent='v0.9 \u00b7 SW\u00a0'+swVer;
       }
     });
   });
