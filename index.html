@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GradeOS Simulator v0.9 · SW v133</title>
+<title>GradeOS Simulator v0.9 · SW v134</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <!-- Slice 11.5 — GLTF model loader (Three.js example loaders are global scripts, not modules) -->
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -356,6 +356,8 @@ const _CAB_VIEWTYPE_NAMES={three:'3D View',plan:'Plan',cross:'Cross-section',lon
 function cabRefreshPaneCanvases(){
   // Slice 4e — also refresh zoom controls when panes change
   setTimeout(cabAddZoomControlsToPanes, 0);
+  // Slice 14 — refresh compass toggle on plan panes too
+  setTimeout(()=>{ if(typeof cabAddCompassToPanes==='function') cabAddCompassToPanes(); }, 0);
   // Slice 11.5 — re-render sprites so panes pick up new view types immediately.
   if(typeof cabRenderAllPaneSprites === 'function') setTimeout(cabRenderAllPaneSprites, 0);
   const visiblePaneCount={'1single':1,'2vertical':2,'2horizontal':2,'1big2small':3,'3equal':3}[cabPaneState.layout]||3;
@@ -587,6 +589,63 @@ function cabAddZoomControlsToPanes(){
   }
   // Slice 4f — also (re)attach pinch + wheel zoom listeners on each pane content.
   cabAttachPinchZoom();
+}
+
+// ── Slice 14 — Compass orientation toggle for Plan panes ───────────────
+// Each plan-view pane gets a small compass button in the top-right that
+// shows the current orientation mode (N-up vs Track-up). Tapping toggles.
+// The compass icon's needle ALWAYS points to true north — in N-up that's
+// straight up; in Track-up it rotates by -heading so it shows where north
+// actually is relative to the rotated map.
+function cabAddCompassToPanes(){
+  for(let i=1;i<=3;i++){
+    const content=document.getElementById('cab-pane-'+i+'-content');
+    if(!content)continue;
+    content.querySelectorAll('.cab-pane-compass').forEach(z=>z.remove());
+    const type=cabPaneState.panes[i];
+    if(type!=='plan')continue; // only on plan panes
+    const wrap=document.createElement('button');
+    wrap.className='cab-pane-compass';
+    wrap.type='button';
+    wrap.title='Toggle N-up / Track-up';
+    wrap.setAttribute('data-pane-idx',String(i));
+    wrap.onclick=cabTogglePlanOrientation;
+    // Inline SVG compass: outer ring + N-marker triangle. The whole SVG
+    // rotates via CSS transform updated by cabUpdateCompassIcons() so the
+    // N marker tracks geographic north.
+    wrap.innerHTML=`
+      <svg class="cab-pane-compass-svg" viewBox="-12 -12 24 24" width="28" height="28" aria-hidden="true">
+        <circle cx="0" cy="0" r="10.5" fill="rgba(13,31,53,.85)" stroke="#1e4a7a" stroke-width="1"/>
+        <polygon points="0,-9 -3.4,2 0,-1 3.4,2" fill="#e8a020" stroke="#fff5d8" stroke-width="0.4"/>
+        <text x="0" y="-3.3" text-anchor="middle" font-family="monospace" font-size="6" font-weight="700" fill="#0a1520">N</text>
+      </svg>
+      <span class="cab-pane-compass-label"></span>`;
+    content.appendChild(wrap);
+  }
+  cabUpdateCompassIcons();
+}
+function cabTogglePlanOrientation(){
+  const cur=(cabSysState && cabSysState.planOrientationMode) || 'north';
+  cabSysState.planOrientationMode = (cur==='north') ? 'track' : 'north';
+  if(typeof cabPersistState==='function') cabPersistState();
+  cabUpdateCompassIcons();
+  if(typeof cabRenderAllPaneSprites==='function') cabRenderAllPaneSprites();
+}
+function cabUpdateCompassIcons(){
+  const mode=(cabSysState && cabSysState.planOrientationMode) || 'north';
+  const pose=window._cabLastPose;
+  const heading=(pose && pose.heading!=null) ? pose.heading : 0;
+  // In Track-up, the world has been rotated by -heading, so geographic
+  // north (which was screen-up in N-up) now sits at angle -heading from
+  // screen-up. Rotate the SVG by -heading so the N-marker points there.
+  const deg = (mode==='track') ? (-heading * 180 / Math.PI) : 0;
+  document.querySelectorAll('.cab-pane-compass').forEach(btn=>{
+    btn.classList.toggle('is-track', mode==='track');
+    const svg=btn.querySelector('.cab-pane-compass-svg');
+    if(svg) svg.style.transform=`rotate(${deg.toFixed(1)}deg)`;
+    const lbl=btn.querySelector('.cab-pane-compass-label');
+    if(lbl) lbl.textContent = (mode==='track') ? 'TRACK' : 'N-UP';
+  });
 }
 
 // ── Slice 4f — Pinch-to-zoom + wheel-to-zoom on panes ─────────────────
@@ -915,6 +974,7 @@ const cabSysState={
   showLEDRight:true,    // Slice 7 — right tip cut/fill light bar
   showLEDAlign:true,    // Slice 7 — top alignment light bar
   perfMode:'lite',      // Slice 8 — 'lite' or 'full'
+  planOrientationMode:'north', // Slice 14 — 'north' (N-up) or 'track' (heading-up)
 };
 function cabOpenSystemSettings(){
   // Populate fields from current state
@@ -1196,18 +1256,26 @@ function _cabDrawPaneSprite(paneIdx){
   const dw = iw * s, dh = ih * s;
   const dx = (cw - dw) / 2, dy = (ch - dh) / 2;
   // Slice 13 — for the top/plan view, rotate the sprite to match the
-  // machine's heading. The dozer image IS the heading indicator —
-  // operator sees the dozer rotate as they steer, no separate icon needed.
+  // machine's heading in N-up mode (the dozer image IS the heading
+  // indicator — operator sees the dozer rotate as they steer).
+  // Slice 14 — in track-up mode, the WORLD rotates underneath instead,
+  // so the sprite is drawn upright (always pointing screen-up).
   // Cross/long views stay machine-relative (sprite always shows the
   // same side of the dozer regardless of heading).
   if(view === 'plan'){
-    const pose = window._cabLastPose;
-    const heading = (pose && pose.heading != null) ? pose.heading : 0;
-    ctx.save();
-    ctx.translate(cw / 2, ch / 2);
-    ctx.rotate(heading);  // canvas rotates clockwise for +ve angles; matches sim heading convention
-    ctx.drawImage(img, -dw/2, -dh/2, dw, dh);
-    ctx.restore();
+    const mode = (cabSysState && cabSysState.planOrientationMode) || 'north';
+    if(mode === 'north'){
+      const pose = window._cabLastPose;
+      const heading = (pose && pose.heading != null) ? pose.heading : 0;
+      ctx.save();
+      ctx.translate(cw / 2, ch / 2);
+      ctx.rotate(heading);  // canvas rotates clockwise for +ve angles; matches sim heading convention
+      ctx.drawImage(img, -dw/2, -dh/2, dw, dh);
+      ctx.restore();
+    } else {
+      // Track-up: sprite points up; world rotates around it (handled in _drawPlanOverlay).
+      ctx.drawImage(img, dx, dy, dw, dh);
+    }
   } else {
     ctx.drawImage(img, dx, dy, dw, dh);
   }
@@ -1361,25 +1429,91 @@ function _drawLongOverlay(ctx, cw, ch, target){
   ctx.fillText('GRADE: ' + (grade>=0?'+':'') + grade.toFixed(2) + '%', cw - 8, 14);
 }
 function _drawPlanOverlay(ctx, cw, ch, pose){
-  // Slice 13.1 — NORTH-UP plan view. The map orientation stays fixed
-  // (+Z always up in image). The dozer SPRITE rotates with heading to
-  // show machine orientation (sprite rotation handled in _cabDrawPaneSprite).
-  // World features (alignment line, recorded points) are translated to
-  // be centred on the machine but NOT rotated. As you turn, the dozer
-  // icon spins; the world appears to stay still around it.
+  // Slice 14 — TWO orientation modes, controlled by cabSysState.planOrientationMode:
+  //   'north' (N-up): world translates only; dozer sprite rotates with heading.
+  //   'track' (heading-up): world translates AND rotates by -heading; sprite stays upright.
+  // The world->pixel transform `w2p()` encapsulates the mode difference so the
+  // rest of the rendering code is mode-agnostic.
+  // A 1 m grid is drawn underneath everything so motion is visible against
+  // the ground; major lines every 5 m, even bolder every 10 m, with metre labels
+  // on the 5 m lines.
   if(typeof selectedGuidanceLine === 'undefined') return;
   if(!pose){ return; }
+  const mode = (cabSysState && cabSysState.planOrientationMode) || 'north';
   const radiusM = 30;
   const ppm = Math.min(cw, ch) / (radiusM * 2); // pixels per metre
   const cx = cw / 2, cy = ch / 2;
   const mx = pose.centre ? pose.centre.x : 0;
   const mz = pose.centre ? pose.centre.z : 0;
-  // Translate-only (north-up): machine at centre, +X = right, +Z = up.
-  const w2p = (wx, wz) => ({
-    x: cx + (wx - mx) * ppm,
-    y: cy - (wz - mz) * ppm,
-  });
-  // Recorded points (orange dots)
+  const heading = (pose.heading != null) ? pose.heading : 0;
+  // World→pixel transform. In track-up we rotate the world by -heading so
+  // the machine's forward direction (its heading vector) maps to screen-up.
+  const cosNH = Math.cos(-heading), sinNH = Math.sin(-heading);
+  const w2p = (wx, wz) => {
+    const dx = wx - mx, dz = wz - mz;
+    if(mode === 'track'){
+      // Rotate world so machine's heading is up. +Z forward, +X right, screen-up = -y.
+      const rx = dx * cosNH - dz * sinNH;
+      const rz = dx * sinNH + dz * cosNH;
+      return { x: cx + rx * ppm, y: cy - rz * ppm };
+    }
+    return { x: cx + dx * ppm, y: cy - dz * ppm };
+  };
+  // ── 1 m grid (drawn first, sits behind everything) ─────────────────────
+  // Determine which world coordinates are visible. In N-up the visible
+  // window is axis-aligned (radiusM either side of machine); in track-up
+  // it's still a square but rotated, so we need a slightly bigger search
+  // bound. Diagonal radius covers all rotations.
+  const halfM = radiusM;
+  const searchHalf = mode === 'track' ? halfM * Math.SQRT2 + 2 : halfM + 2;
+  const minX = Math.floor(mx - searchHalf);
+  const maxX = Math.ceil (mx + searchHalf);
+  const minZ = Math.floor(mz - searchHalf);
+  const maxZ = Math.ceil (mz + searchHalf);
+  // Three line tiers: 1 m (faint), 5 m (medium), 10 m (bold).
+  const tier = (n) => (n % 10 === 0) ? 'bold' : (n % 5 === 0) ? 'med' : 'fine';
+  const colors = {
+    fine: 'rgba(70, 95, 130, 0.18)',
+    med:  'rgba(110, 145, 180, 0.32)',
+    bold: 'rgba(150, 185, 220, 0.45)',
+  };
+  const widths = { fine: 1, med: 1, bold: 1.5 };
+  // Draw vertical lines (constant world X)
+  for(let wx = minX; wx <= maxX; wx++){
+    const t = tier(wx);
+    ctx.strokeStyle = colors[t];
+    ctx.lineWidth = widths[t];
+    ctx.beginPath();
+    const a = w2p(wx, minZ);
+    const b = w2p(wx, maxZ);
+    ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+  }
+  // Draw horizontal lines (constant world Z)
+  for(let wz = minZ; wz <= maxZ; wz++){
+    const t = tier(wz);
+    ctx.strokeStyle = colors[t];
+    ctx.lineWidth = widths[t];
+    ctx.beginPath();
+    const a = w2p(minX, wz);
+    const b = w2p(maxX, wz);
+    ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+  }
+  // Metre labels at 5 m intersections that fall inside the canvas.
+  ctx.fillStyle = 'rgba(150, 185, 220, 0.55)';
+  ctx.font = '9px monospace';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  for(let wx = Math.ceil(minX/5)*5; wx <= maxX; wx += 5){
+    for(let wz = Math.ceil(minZ/5)*5; wz <= maxZ; wz += 5){
+      const pt = w2p(wx, wz);
+      if(pt.x < 4 || pt.x > cw - 30 || pt.y < 4 || pt.y > ch - 12) continue;
+      ctx.fillText(`${wx},${wz}`, pt.x + 2, pt.y + 2);
+    }
+  }
+  ctx.textBaseline = 'alphabetic';
+  // ── Recorded points (orange dots) ──────────────────────────────────────
   if(window._cabRecordedPoints && window._cabRecordedPoints.length){
     ctx.fillStyle = 'rgba(232, 160, 32, 0.85)';
     window._cabRecordedPoints.forEach(p => {
@@ -1388,7 +1522,7 @@ function _drawPlanOverlay(ctx, cw, ch, pose){
       ctx.beginPath(); ctx.arc(pt.x, pt.y, 3, 0, Math.PI*2); ctx.fill();
     });
   }
-  // Selected guidance line (cyan polyline)
+  // ── Selected guidance line (cyan polyline) ─────────────────────────────
   if(selectedGuidanceLine && selectedGuidanceLine.points && selectedGuidanceLine.points.length >= 2){
     ctx.strokeStyle = 'rgba(102, 200, 255, 0.95)';
     ctx.lineWidth = 2.5;
@@ -1422,11 +1556,11 @@ function _drawPlanOverlay(ctx, cw, ch, pose){
       ctx.setLineDash([]);
     }
   }
-  // Scale legend (bottom-left)
+  // ── Scale legend (bottom-left) + mode badge ────────────────────────────
   ctx.fillStyle = 'rgba(122, 160, 192, 0.7)';
   ctx.font = 'bold 10px monospace';
   ctx.textAlign = 'left';
-  ctx.fillText(`±${radiusM} m`, 6, ch - 6);
+  ctx.fillText(`±${radiusM} m  ·  1 m grid  ·  ${mode === 'track' ? 'TRACK-UP' : 'N-UP'}`, 6, ch - 6);
 }
 function _drawPerspOverlay(ctx, cw, ch, target){
   // Minimal: cut/fill colour ring at lower-centre (where the blade-tip
@@ -1453,6 +1587,8 @@ function cabRenderAllPaneSprites(){
   const layout = (cabPaneState && cabPaneState.layout) || '1big2small';
   const visible = {'1single':1,'2vertical':2,'2horizontal':2,'1big2small':3,'3equal':3}[layout] || 3;
   for(let i = 1; i <= visible; i++) _cabDrawPaneSprite(i);
+  // Slice 14 — update compass icon needle (cheap; just spins an SVG).
+  if(typeof cabUpdateCompassIcons === 'function') cabUpdateCompassIcons();
 }
 // Re-render on resize / layout change / pane swap.
 window.addEventListener('resize', () => { if(document.body.classList.contains('cab-mode')) cabRenderAllPaneSprites(); });
@@ -3745,6 +3881,41 @@ body.cab-led-align-hidden #cab-offsets > .cab-offset-cell:not(.cab-offset-cell-h
 .cab-pane-zoom-btn:hover{background:#e8a020; color:#0a1520; border-color:#e8a020}
 .cab-pane-zoom-btn:disabled{opacity:.35; cursor:not-allowed}
 .cab-pane-zoom-btn:disabled:hover{background:rgba(13,31,53,.85); color:#e0e8f0; border-color:#1e4a7a}
+
+/* ── Slice 14 — Plan-pane orientation compass toggle (top-right) ────── */
+.cab-pane-compass{
+  position:absolute;
+  top:6px; right:6px;
+  z-index:10;
+  display:flex; flex-direction:column; align-items:center;
+  background:transparent;
+  border:none;
+  padding:0;
+  cursor:pointer;
+  pointer-events:auto;
+  outline:none;
+}
+.cab-pane-compass-svg{
+  display:block;
+  transition:transform .18s ease-out;
+  filter:drop-shadow(0 1px 2px rgba(0,0,0,.6));
+}
+.cab-pane-compass:hover .cab-pane-compass-svg{
+  filter:drop-shadow(0 1px 3px rgba(232,160,32,.6));
+}
+.cab-pane-compass-label{
+  margin-top:2px;
+  font:700 8px monospace;
+  color:#e8a020;
+  background:rgba(13,31,53,.85);
+  padding:1px 4px;
+  border-radius:2px;
+  border:1px solid #1e4a7a;
+  letter-spacing:.5px;
+}
+.cab-pane-compass.is-track .cab-pane-compass-label{
+  color:#66c8ff; border-color:#66c8ff;
+}
 </style>
 </head>
 <body>
