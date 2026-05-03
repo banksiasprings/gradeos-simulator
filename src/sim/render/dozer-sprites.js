@@ -2,30 +2,56 @@
 //
 // SIM-SHELL VISUALISATION ASSET.
 //
-// Render a clean dozer from fixed angles to data URLs that the cab
-// screen panes use as static background images. Path B from Slice 11.
+// Renders the dozer GLTF (downloaded into ./assets/dozer/) at fixed
+// camera angles to PNG data URLs that the cab screen panes use as
+// static background images.
 //
-// Slice 11.5 — model source switched from box primitives to a real GLTF
-// model loaded from /assets/dozer/scene.gltf (a downloaded Sketchfab
-// bulldozer). Falls back to the built-in primitive model if the GLTF
-// load fails.
+// Slice 11.6 fix:
+//   - SHARED offscreen WebGLRenderer reused across all 4 sprite renders
+//     (was: 4 separate contexts → exceeds browser cap → context loss
+//     cascade kills the main scene renderer).
+//   - SEQUENTIAL renders (one at a time) instead of parallel.
+//   - localStorage cache of rendered data URLs keyed by version, so we
+//     only pay the GLTF load + render cost once per cache version.
 
 'use strict';
 
 const DOZER_GLTF_URL = './assets/dozer/scene.gltf';
+const SPRITE_CACHE_KEY = 'gradeos-dozer-sprites-v1';
+
 let _dozerModelGroup = null;     // cached normalised model (THREE.Group)
 let _dozerModelLoading = null;   // Promise<Group> while loading
 let _dozerModelStatus = 'idle';  // 'idle' | 'loading' | 'ready' | 'error'
 
+let _spriteRenderer = null;      // single shared offscreen renderer
+let _spriteCanvas = null;        // its canvas
+let _renderInFlight = null;      // serialise the queue
+
+function _ensureSpriteRenderer(w, h){
+  if(_spriteRenderer){
+    if(_spriteCanvas.width !== w || _spriteCanvas.height !== h){
+      _spriteCanvas.width = w; _spriteCanvas.height = h;
+      _spriteRenderer.setSize(w, h, false);
+    }
+    return _spriteRenderer;
+  }
+  _spriteCanvas = document.createElement('canvas');
+  _spriteCanvas.width = w; _spriteCanvas.height = h;
+  _spriteRenderer = new THREE.WebGLRenderer({
+    canvas: _spriteCanvas,
+    alpha: true,
+    antialias: true,
+    preserveDrawingBuffer: true,
+  });
+  _spriteRenderer.setClearColor(0x000000, 0);
+  _spriteRenderer.setPixelRatio(1);
+  _spriteRenderer.setSize(w, h, false);
+  return _spriteRenderer;
+}
+
 /**
- * Async-load and normalise the dozer model.
- *
- * Normalisation:
- *   1. Centre the bounding box on origin (X/Z), rest on ground (Y=0).
- *   2. Scale so the longest axis is ~5 m (typical dozer length).
- *   3. Rotate so the dozer faces +Z (sim convention) — best-effort heuristic.
- *
- * Returns a fresh Group clone on each call (renderers consume + dispose).
+ * Load the dozer GLTF, normalise it (centre + scale + ground), cache
+ * the THREE.Group. Subsequent calls return clones from the cache.
  */
 function loadDozerModel(){
   if(_dozerModelGroup) return Promise.resolve(_cloneGroup(_dozerModelGroup));
@@ -34,6 +60,7 @@ function loadDozerModel(){
     return Promise.reject(new Error('GLTFLoader not available'));
   }
   _dozerModelStatus = 'loading';
+  console.log('[dozer-sprites] loading', DOZER_GLTF_URL);
   const loader = new THREE.GLTFLoader();
   _dozerModelLoading = new Promise((resolve, reject) => {
     loader.load(
@@ -45,10 +72,12 @@ function loadDozerModel(){
           _dozerModelGroup = root;
           _dozerModelStatus = 'ready';
           _dozerModelLoading = null;
+          console.log('[dozer-sprites] model ready');
           resolve(_cloneGroup(root));
         } catch(e){
           _dozerModelStatus = 'error';
           _dozerModelLoading = null;
+          console.warn('[dozer-sprites] normalise error', e);
           reject(e);
         }
       },
@@ -56,7 +85,7 @@ function loadDozerModel(){
       (err) => {
         _dozerModelStatus = 'error';
         _dozerModelLoading = null;
-        console.warn('Dozer GLTF load failed, will use fallback model:', err);
+        console.warn('[dozer-sprites] GLTF load failed:', err);
         reject(err);
       }
     );
@@ -64,77 +93,43 @@ function loadDozerModel(){
   return _dozerModelLoading;
 }
 
-/**
- * Centre and scale the imported model. Many Sketchfab models come in
- * with arbitrary scale and origin — normalise so it fits cleanly into
- * our sprite frames.
- */
 function _normaliseDozer(group){
-  // Compute bounding box
   const box = new THREE.Box3().setFromObject(group);
-  const size = new THREE.Vector3();
-  const centre = new THREE.Vector3();
-  box.getSize(size);
-  box.getCenter(centre);
-  // Heuristic: longest horizontal axis = dozer length, scale to ~5 m.
+  const size = new THREE.Vector3(); box.getSize(size);
   const longest = Math.max(size.x, size.y, size.z);
   if(longest > 0.1){
-    const scale = 5.0 / longest;
-    group.scale.setScalar(scale);
+    group.scale.setScalar(5.0 / longest);
   }
-  // Re-compute box after scaling
   group.updateMatrixWorld(true);
   const box2 = new THREE.Box3().setFromObject(group);
-  const size2 = new THREE.Vector3(); box2.getSize(size2);
   const centre2 = new THREE.Vector3(); box2.getCenter(centre2);
-  // Translate: centre on (0, 0, 0) horizontally, rest on ground (min.y = 0).
   group.position.x = -centre2.x;
   group.position.z = -centre2.z;
   group.position.y = -box2.min.y;
 }
 
-function _cloneGroup(group){
-  // Deep-clone for use in a temp scene without affecting the cached one.
-  return group.clone(true);
-}
+function _cloneGroup(group){ return group.clone(true); }
 
-/**
- * Get a placeholder dozer (box primitives) used while the GLTF loads
- * or if it failed.
- */
 function _getFallbackDozer(){
-  if(typeof window.buildCleanDozer === 'function') return window.buildCleanDozer();
-  return null;
+  return (typeof window.buildCleanDozer === 'function') ? window.buildCleanDozer() : null;
 }
 
 /**
- * Render the dozer at a given view angle to a PNG data URL.
- *
- * Returns a Promise that resolves to the data URL once the GLTF model
- * is loaded. If the GLTF fails, falls back to the primitive model.
+ * Render the dozer at one view to a data URL. Reuses the shared
+ * offscreen renderer to avoid context flood. Single render at a time.
  */
-function renderDozerSprite(view, w, h, opts){
-  if(typeof THREE === 'undefined'){
-    console.warn('renderDozerSprite: THREE not ready');
-    return Promise.resolve('');
-  }
+function renderDozerSprite(view, w, h){
+  if(typeof THREE === 'undefined') return Promise.resolve('');
   w = w || 600; h = h || 450;
 
-  const renderWith = (dozer) => {
-    const canvas = document.createElement('canvas');
-    canvas.width = w; canvas.height = h;
-    const renderer = new THREE.WebGLRenderer({canvas, alpha: true, antialias: true});
-    renderer.setClearColor(0x000000, 0);
-    renderer.setPixelRatio(1);
-    renderer.setSize(w, h, false);
-
+  const doRender = (dozer) => {
+    const renderer = _ensureSpriteRenderer(w, h);
     const scene = new THREE.Scene();
     scene.add(new THREE.AmbientLight(0xffffff, 0.55));
     const key = new THREE.DirectionalLight(0xffffff, 0.85);
     key.position.set(5, 8, 4); scene.add(key);
     const fill = new THREE.DirectionalLight(0xffffff, 0.35);
     fill.position.set(-3, 5, -2); scene.add(fill);
-
     if(dozer) scene.add(dozer);
 
     const aspect = w / h;
@@ -142,67 +137,86 @@ function renderDozerSprite(view, w, h, opts){
     if(view === 'side'){
       const halfH = 3.0;
       camera = new THREE.OrthographicCamera(-halfH*aspect, halfH*aspect, halfH, -halfH, 0.1, 100);
-      camera.position.set(15, 1.7, 0);
-      camera.lookAt(0, 1.7, 0);
+      camera.position.set(15, 1.7, 0); camera.lookAt(0, 1.7, 0);
     } else if(view === 'top'){
       const halfH = 3.0;
       camera = new THREE.OrthographicCamera(-halfH*aspect, halfH*aspect, halfH, -halfH, 0.1, 100);
-      camera.position.set(0, 20, 0);
-      camera.up.set(0, 0, -1);
-      camera.lookAt(0, 0, 0);
+      camera.position.set(0, 20, 0); camera.up.set(0, 0, -1); camera.lookAt(0, 0, 0);
     } else if(view === 'blade'){
       const halfH = 2.6;
       camera = new THREE.OrthographicCamera(-halfH*aspect, halfH*aspect, halfH, -halfH, 0.1, 100);
-      camera.position.set(0, 1.7, 15);
-      camera.lookAt(0, 1.7, 0);
+      camera.position.set(0, 1.7, 15); camera.lookAt(0, 1.7, 0);
     } else {
       camera = new THREE.PerspectiveCamera(35, aspect, 0.1, 100);
-      camera.position.set(8, 5, 8);
-      camera.lookAt(0, 1.5, 0);
+      camera.position.set(8, 5, 8); camera.lookAt(0, 1.5, 0);
     }
 
     renderer.render(scene, camera);
-    const url = canvas.toDataURL('image/png');
+    const url = _spriteCanvas.toDataURL('image/png');
 
-    // Clean up GPU resources.
-    renderer.dispose();
+    // Dispose the temp scene contents (but NOT the shared renderer).
     scene.traverse(obj => {
       if(obj.geometry) obj.geometry.dispose();
       if(obj.material){
-        if(Array.isArray(obj.material)) obj.material.forEach(m => { if(m.map) m.map.dispose(); m.dispose(); });
-        else { if(obj.material.map) obj.material.map.dispose(); obj.material.dispose(); }
+        const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+        mats.forEach(m => { if(m.map) m.map.dispose(); m.dispose(); });
       }
     });
-
     return url;
   };
 
-  return loadDozerModel().then(renderWith).catch(() => {
-    // Fallback to primitive model.
-    return renderWith(_getFallbackDozer());
-  });
+  // Serialise: queue this render after any in-flight one completes.
+  const previous = _renderInFlight || Promise.resolve();
+  const next = previous.then(() => loadDozerModel().then(doRender).catch(() => doRender(_getFallbackDozer())));
+  _renderInFlight = next.catch(() => null); // swallow for chain
+  return next;
 }
 
-/**
- * Generate the 4 standard cab-screen sprites as Image objects, ready
- * for ctx.drawImage. The function returns the cache object immediately
- * (with possibly-loading Image objects); each Image fires `load` when
- * its sprite is ready.
- *
- * @returns {{side: HTMLImageElement, top: HTMLImageElement, blade: HTMLImageElement, perspective: HTMLImageElement}}
- */
 let _dozerSpriteCache = null;
 function getDozerSprites(){
   if(_dozerSpriteCache) return _dozerSpriteCache;
+  // First, try to restore from localStorage (already-rendered URLs).
   const cache = {};
-  const views = ['side','top','blade','perspective'];
-  views.forEach(view => {
-    const img = new Image();
-    cache[view] = img;
-    renderDozerSprite(view).then(url => {
-      if(url) img.src = url;
+  let restored = false;
+  try {
+    const persisted = localStorage.getItem(SPRITE_CACHE_KEY);
+    if(persisted){
+      const obj = JSON.parse(persisted);
+      ['side','top','blade','perspective'].forEach(view => {
+        if(obj[view]){
+          const img = new Image();
+          img.src = obj[view];
+          cache[view] = img;
+        }
+      });
+      if(Object.keys(cache).length === 4) restored = true;
+    }
+  } catch(e){}
+
+  if(!restored){
+    // No cached sprites — kick off renders. Each Image is filled when
+    // its render completes. Renders are sequential per renderDozerSprite's
+    // queue.
+    ['side','top','blade','perspective'].forEach(view => {
+      const img = cache[view] || new Image();
+      cache[view] = img;
+      renderDozerSprite(view).then(url => {
+        if(!url) return;
+        img.src = url;
+        // Persist the latest cache to localStorage.
+        try {
+          const out = {};
+          ['side','top','blade','perspective'].forEach(v => {
+            if(cache[v] && cache[v].src) out[v] = cache[v].src;
+          });
+          localStorage.setItem(SPRITE_CACHE_KEY, JSON.stringify(out));
+        } catch(e){
+          // Quota exceeded? Skip persistence.
+        }
+      });
     });
-  });
+  }
+
   _dozerSpriteCache = cache;
   return cache;
 }
@@ -212,6 +226,12 @@ function clearDozerSpriteCache(){
   _dozerModelGroup = null;
   _dozerModelLoading = null;
   _dozerModelStatus = 'idle';
+  try { localStorage.removeItem(SPRITE_CACHE_KEY); } catch(e){}
+  if(_spriteRenderer){
+    _spriteRenderer.dispose();
+    _spriteRenderer = null;
+    _spriteCanvas = null;
+  }
 }
 
 function getDozerModelStatus(){ return _dozerModelStatus; }
