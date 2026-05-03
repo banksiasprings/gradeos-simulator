@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GradeOS Simulator v0.9 · SW v123</title>
+<title>GradeOS Simulator v0.9 · SW v124</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <!-- Slice 1 — blade-pose seam. See CONTEXT.md, ADR-0002. -->
 <script type="module" src="./src/product/guidance/blade-pose.js"></script>
@@ -17,6 +17,8 @@
 <script type="module" src="./src/sim/fake-gps/nmea-stream.js"></script>
 <!-- Slice 6 — Profile Designer: universal line-based design tool. See CONTEXT.md GQ-6. -->
 <script type="module" src="./src/product/design/profile-designer.js"></script>
+<!-- Slice 9 — Alignment guidance (perpendicular distance to selected polyline). -->
+<script type="module" src="./src/product/guidance/alignment-guidance.js"></script>
 <script>
 
 // ── TOOLBAR: 3-BUTTON CONSOLIDATION ─────────────────────────────────────
@@ -641,7 +643,19 @@ function cabScreenUpdate(bladeTarget,bladePose){
   // LED bars (unchanged from Slice 4b)
   _cabDrawVerticalLEDBar(document.getElementById('cab-led-tipA'),bladeTarget&&bladeTarget.tipA?bladeTarget.tipA.cutFillMm:null);
   _cabDrawVerticalLEDBar(document.getElementById('cab-led-tipB'),bladeTarget&&bladeTarget.tipB?bladeTarget.tipB.cutFillMm:null);
-  _cabDrawHorizontalLEDBar(document.getElementById('cab-led-align'),null);
+  // Slice 9 — top alignment LED bar driven by selectedGuidanceLine + horizontal offset.
+  let _alignDist = null;
+  if(selectedGuidanceLine && bladePose && typeof window.computeAlignmentGuidance === 'function'){
+    const focusXZ = (typeof bladeFocus !== 'undefined' && bladeFocus === 'tipA') ? bladePose.tipA :
+                    (typeof bladeFocus !== 'undefined' && bladeFocus === 'tipB') ? bladePose.tipB :
+                    bladePose.centre;
+    const ag = window.computeAlignmentGuidance(focusXZ, selectedGuidanceLine, horizontalAlignmentOffset||0);
+    if(ag) _alignDist = ag.offlineDistanceM;
+    window._cabLastAlignment = ag; // for debug + status bar
+  }else{
+    window._cabLastAlignment = null;
+  }
+  _cabDrawHorizontalLEDBar(document.getElementById('cab-led-align'),_alignDist);
   // Dynamic readouts
   cabPaneState.ribbon.forEach((key,i)=>{
     const v=_cabComputeReadout(key,bladeTarget,bladePose);
@@ -656,6 +670,9 @@ function cabScreenUpdate(bladeTarget,bladePose){
   if(eo&&typeof vOffset!=='undefined')eo.textContent=(vOffset>=0?'+':'')+vOffset.toFixed(3)+' m';
   const wo=document.getElementById('cab-offset-working');
   if(wo&&typeof workingSurfaceOffset!=='undefined')wo.textContent=(workingSurfaceOffset>=0?'+':'')+workingSurfaceOffset.toFixed(3)+' m';
+  // Slice 9 — H-align offset live display
+  const ho=document.getElementById('cab-offset-halign');
+  if(ho&&typeof horizontalAlignmentOffset!=='undefined')ho.textContent=(horizontalAlignmentOffset>=0?'+':'')+horizontalAlignmentOffset.toFixed(3)+' m';
   // Status bar
   const sbDes=document.getElementById('cab-statusbar-design');
   if(sbDes){
@@ -663,6 +680,10 @@ function cabScreenUpdate(bladeTarget,bladePose){
     if(typeof designLibrary!=='undefined'&&designLibrary.length>0){
       const a=designLibrary.find(d=>d.state==='active');
       n=a?a.name:`${designLibrary.length} design(s)`;
+    }
+    // Slice 9 — also show selected guidance line name
+    if(selectedGuidanceLine&&selectedGuidanceLine.name){
+      n += `  ╱ ${selectedGuidanceLine.name}`;
     }
     sbDes.textContent=n;
   }
@@ -762,11 +783,12 @@ const CAB_TOOLBAR_CATALOG=[
   {key:'overview',       label:'Overview Screen',   icon:'🌐'},
   {key:'overlays',       label:'Overlays',          icon:'👁'},
   {key:'profile',        label:'Profile Designer',  icon:'⌒'},  // Slice 6
+  {key:'selectline',     label:'Select Guidance Line', icon:'╱'}, // Slice 9
   {key:'editribbon',     label:'Edit Text Ribbon',  icon:'≡'},
   {key:'worksettings',   label:'Work Settings',     icon:'▤'},
   {key:'systemsettings', label:'System Settings',   icon:'⚙'},
 ];
-const CAB_TOOLBAR_DEFAULT=['focus','record','changeview','overview','profile','worksettings','systemsettings'];
+const CAB_TOOLBAR_DEFAULT=['focus','record','changeview','overview','profile','selectline','worksettings','systemsettings'];
 let _cabToolbarDraft=[];
 function cabOpenEditToolbar(){
   _cabToolbarDraft=[...cabPaneState.toolbar];
@@ -909,6 +931,8 @@ function cabSysSetIncrement(m){
   if(lbl)lbl.textContent='(±'+Math.round(m*1000)+' mm)';
   const lblWs=document.getElementById('cab-offset-ws-incr-label');
   if(lblWs)lblWs.textContent='(±'+Math.round(m*1000)+' mm)';
+  const lblHa=document.getElementById('cab-offset-halign-incr-label');
+  if(lblHa)lblHa.textContent='(±'+Math.round(m*1000)+' mm)';
   cabPersistState();
 }
 // Slice 4e — Inline +/- bump from the cab screen
@@ -1094,6 +1118,100 @@ function cabActivateRadio(id,on){
   if(!el)return;
   if(on)el.classList.add('active');
   else el.classList.remove('active');
+}
+
+// ── Slice 9 — Selected guidance line + horizontal alignment offset ────
+// State: the line that drives the top alignment LED bar (and any future
+// horizontal-guidance UI). Persisted in localStorage.
+let selectedGuidanceLine = null;       // { name, points: [{x,z}], source } or null
+let horizontalAlignmentOffset = 0;     // metres, perpendicular offset (right of travel = +)
+
+function cabOpenSelectLine(){
+  cabRefreshSelectLineUI();
+  cabOpenOverlay('cab-overlay-selectline');
+}
+function cabRefreshSelectLineUI(){
+  const active = document.getElementById('cab-selectline-active');
+  if(active){
+    if(selectedGuidanceLine){
+      active.textContent = `${selectedGuidanceLine.name} — ${selectedGuidanceLine.points.length} pts (${selectedGuidanceLine.source||'unknown'})`;
+      active.style.color = '#5fc88f';
+    }else{
+      active.textContent = '— None selected —';
+      active.style.color = '#7aa0c0';
+    }
+  }
+}
+function cabSelectLineFromRecorded(){
+  const pts = (window._cabRecordedPoints || []).map(p => ({x: p.x, z: p.z}));
+  if(pts.length < 2){
+    alert('Need at least 2 recorded points. Use 📍 Record Point in the toolbar to capture some first.');
+    return;
+  }
+  selectedGuidanceLine = {
+    name: `Recorded points (${pts.length})`,
+    points: pts,
+    source: 'recorded',
+  };
+  cabPersistState();
+  cabRefreshSelectLineUI();
+  cabFlashStatus(`Guidance line set: ${selectedGuidanceLine.name}`);
+}
+function cabSelectLineFromManual(){
+  const wrap = document.getElementById('cab-selectline-manual-wrap');
+  if(wrap)wrap.style.display = (wrap.style.display==='none')?'flex':'none';
+  // Pre-fill with current line if it was manual
+  const ta = document.getElementById('cab-selectline-manual');
+  if(ta && selectedGuidanceLine && selectedGuidanceLine.source==='manual'){
+    ta.value = selectedGuidanceLine.points.map(p => `${p.x.toFixed(2)},${p.z.toFixed(2)}`).join('\n');
+  }
+}
+function cabSelectLineApplyManual(){
+  const ta = document.getElementById('cab-selectline-manual');
+  if(!ta)return;
+  const pts = [];
+  ta.value.split(/\n/).forEach(line => {
+    const t = line.trim();
+    if(!t || t.startsWith('#'))return;
+    const parts = t.split(/[\s,]+/).map(parseFloat);
+    if(parts.length >= 2 && isFinite(parts[0]) && isFinite(parts[1])){
+      pts.push({x: parts[0], z: parts[1]});
+    }
+  });
+  if(pts.length < 2){
+    alert('Polyline needs at least 2 points (format: x,z per line).');
+    return;
+  }
+  selectedGuidanceLine = {
+    name: `Manual line (${pts.length} pts)`,
+    points: pts,
+    source: 'manual',
+  };
+  cabPersistState();
+  cabRefreshSelectLineUI();
+  cabFlashStatus(`Guidance line set: ${selectedGuidanceLine.name}`);
+}
+function cabClearSelectedLine(){
+  selectedGuidanceLine = null;
+  cabPersistState();
+  cabRefreshSelectLineUI();
+  cabFlashStatus('Guidance line cleared');
+}
+
+// Horizontal alignment offset — same +/- pattern as elevation/working surface.
+function cabSetHAlignOffset(m){
+  if(!isFinite(m))return;
+  m = Math.max(-5, Math.min(5, m));
+  horizontalAlignmentOffset = m;
+  window.horizontalAlignmentOffset = m;
+  const v = document.getElementById('cab-offset-halign');
+  if(v)v.textContent = (m>=0?'+':'') + m.toFixed(3) + ' m';
+  cabPersistState();
+}
+function cabBumpHAlign(direction){
+  const cur = (typeof horizontalAlignmentOffset !== 'undefined') ? horizontalAlignmentOffset : 0;
+  const step = cabSysState.bumpIncrementM || 0.010;
+  cabSetHAlignOffset(cur + direction * step);
 }
 
 // ── Slice 6 — Profile Designer ─────────────────────────────────────────
@@ -1448,6 +1566,8 @@ function cabToolTap(which){
     cabRecordPoint();  // Slice 4f
   }else if(which==='profile'){
     cabOpenProfileDesigner();  // Slice 6
+  }else if(which==='selectline'){
+    cabOpenSelectLine();  // Slice 9
   }else if(which==='overview'){
     console.log('Overview screen — wired in a future slice');
   }else if(which==='overlays'){
@@ -1470,7 +1590,11 @@ function cabPersistState(){
       offsets:{
         elevation:(typeof vOffset!=='undefined')?vOffset:0,
         workingSurface:(typeof workingSurfaceOffset!=='undefined')?workingSurfaceOffset:0,
+        // Slice 9 — horizontal alignment offset
+        horizontalAlignment:(typeof horizontalAlignmentOffset!=='undefined')?horizontalAlignmentOffset:0,
       },
+      // Slice 9 — selected guidance line
+      guidanceLine: selectedGuidanceLine,
     }));
   }catch(e){}
 }
@@ -1502,6 +1626,15 @@ function cabLoadState(){
           window.workingSurfaceOffset=o.offsets.workingSurface;
           try{workingSurfaceOffset=o.offsets.workingSurface;}catch(e){}
         }
+        // Slice 9 — horizontal alignment offset
+        if(o.offsets.horizontalAlignment!=null){
+          horizontalAlignmentOffset=o.offsets.horizontalAlignment;
+          window.horizontalAlignmentOffset=horizontalAlignmentOffset;
+        }
+      }
+      // Slice 9 — selected guidance line
+      if(o.guidanceLine&&Array.isArray(o.guidanceLine.points)&&o.guidanceLine.points.length>=2){
+        selectedGuidanceLine=o.guidanceLine;
       }
     }
   }catch(e){}
@@ -1530,6 +1663,8 @@ function cabInit(){
   if(lbl)lbl.textContent='(±'+Math.round((cabSysState.bumpIncrementM||0.010)*1000)+' mm)';
   const lblWs=document.getElementById('cab-offset-ws-incr-label');
   if(lblWs)lblWs.textContent='(±'+Math.round((cabSysState.bumpIncrementM||0.010)*1000)+' mm)';
+  const lblHa=document.getElementById('cab-offset-halign-incr-label');
+  if(lblHa)lblHa.textContent='(±'+Math.round((cabSysState.bumpIncrementM||0.010)*1000)+' mm)';
 }
 if(document.readyState==='loading'){
   document.addEventListener('DOMContentLoaded',cabInit);
@@ -2680,11 +2815,11 @@ body.cab-mode #workscreen-back-btn{display:none !important}
   box-shadow:0 0 8px rgba(39,174,96,.6);
 }
 
-/* Row 2 — Two top-centre offset numerics */
+/* Row 2 — Three top-centre offset numerics (Slice 9 added H-align offset) */
 #cab-offsets{
   grid-column:2 / 3; grid-row:2;
   display:grid;
-  grid-template-columns:1fr 1fr;
+  grid-template-columns:1fr 1fr 1fr;
   gap:8px;
   padding:4px 16px;
   background:#08111c;
@@ -3317,6 +3452,15 @@ body.cab-led-align-hidden #cab-centre-pane{grid-row:3 / 5}
         <button class="cab-offset-btn cab-offset-btn-up" onclick="cabBumpWorking(1)" title="Increment working surface offset by current step">+</button>
       </div>
     </div>
+    <!-- Slice 9 — Horizontal alignment offset (perpendicular to selected guidance line) -->
+    <div class="cab-offset-cell">
+      <div class="cab-offset-label">H-ALIGN OFFSET <span id="cab-offset-halign-incr-label" style="font-size:9px;color:#5a7a98;font-weight:400">(±10 mm)</span></div>
+      <div class="cab-offset-controls">
+        <button class="cab-offset-btn cab-offset-btn-down" onclick="cabBumpHAlign(-1)" title="Move target line left of current">←</button>
+        <div class="cab-offset-value" id="cab-offset-halign" onclick="cabSetHAlignOffset(0)" title="Tap to zero">+0.000 m</div>
+        <button class="cab-offset-btn cab-offset-btn-up" onclick="cabBumpHAlign(1)" title="Move target line right of current">→</button>
+      </div>
+    </div>
   </div>
   <!-- Row 3: Top horizontal LED bar = alignment guidance -->
   <canvas id="cab-led-align" class="cab-led-h"></canvas>
@@ -3513,6 +3657,39 @@ body.cab-led-align-hidden #cab-centre-pane{grid-row:3 / 5}
           <button class="cab-radio" id="cab-work-vgm-2points" onclick="cabWorkSetVGM('2points')">2-Points</button>
         </div>
         <div class="cab-field-hint">How cut/fill is measured along the blade. Only Centre and 2-Points wired in Slice 4d; the rest land in a later slice.</div>
+      </div>
+    </div>
+    <div class="cab-overlay-footer">
+      <button class="cab-btn-cancel" onclick="cabCloseAllOverlays()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Select Guidance Line — Slice 9 -->
+<div id="cab-overlay-selectline" class="cab-overlay hidden" onclick="cabCloseAllOverlays(event)">
+  <div class="cab-overlay-box cab-overlay-box-tall" onclick="event.stopPropagation()" style="min-width:520px">
+    <div class="cab-overlay-title">SELECT GUIDANCE LINE</div>
+    <div class="cab-overlay-subtitle">Pick a polyline as the centre LED bar's reference. The bar shows perpendicular "offline" distance to the line.</div>
+    <div class="cab-form" style="max-height:55vh">
+      <div class="cab-field">
+        <label class="cab-field-label">Active line</label>
+        <div id="cab-selectline-active" style="font-size:13px;color:#a8c0d8;font-family:'Menlo',monospace;background:#08131f;border:1px solid #1a2840;border-radius:4px;padding:10px">— None selected —</div>
+      </div>
+      <div class="cab-field">
+        <label class="cab-field-label">Available sources</label>
+        <div class="cab-field-row">
+          <button class="cab-btn-secondary" onclick="cabSelectLineFromRecorded()">Use recorded points</button>
+          <button class="cab-btn-secondary" onclick="cabSelectLineFromManual()">Manual entry…</button>
+          <button class="cab-btn-secondary" onclick="cabClearSelectedLine()">Clear</button>
+        </div>
+        <div class="cab-field-hint" id="cab-selectline-hint">Recorded points come from the 📍 Record Point button. Drive to a corner, tap, drive to next corner, tap, etc. Need ≥2 points.</div>
+      </div>
+      <div class="cab-field" id="cab-selectline-manual-wrap" style="display:none">
+        <label class="cab-field-label">Manual polyline</label>
+        <textarea id="cab-selectline-manual" rows="4" style="width:100%;background:#08131f;border:1px solid #1a2840;color:#dce8f5;font-family:'Menlo',monospace;font-size:12px;padding:6px;border-radius:3px" placeholder="Format: x,z (one per line). Min 2 points."></textarea>
+        <div class="cab-field-row">
+          <button class="cab-btn-apply" onclick="cabSelectLineApplyManual()">Apply</button>
+        </div>
       </div>
     </div>
     <div class="cab-overlay-footer">
