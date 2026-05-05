@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GradeOS Simulator v0.9 · SW v156</title>
+<title>GradeOS Simulator v0.9 · SW v157</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <!-- Slice 11.5 — GLTF model loader (Three.js example loaders are global scripts, not modules) -->
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -3145,13 +3145,13 @@ function cabToolTap(which){
     cabOpenSystemSettings();
   }else if(which==='record'){
     cabRecordPoint();  // Slice 4f
-  }else if(which==='profile'){
-    cabOpenProfileDesigner();  // Slice 6
-  }else if(which==='designs'){
-    // Slice 13 — open legacy Designs panel above the cab. The panel's
-    // inherent z-index puts it above the cab UI; the operator can close
-    // it back to the cab.
-    if(typeof openDesignPanel === 'function') openDesignPanel('designs');
+  }else if(which==='profile' || which==='designs'){
+    // Slice 32 — the 📐 toolbar button now opens the new 3-step wizard
+    // (Slices 24-31) instead of the legacy single-modal Designs panel.
+    // The two keys are aliased so existing toolbar configs ('designs')
+    // and any future ones ('profile') both land on the wizard.
+    // To get the legacy library list, use Job Setup from the Dashboard.
+    cabOpenProfileDesigner();
   }else if(which==='selectline'){
     cabOpenSelectLine();  // Slice 9
   }else if(which==='overview'){
