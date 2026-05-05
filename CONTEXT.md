@@ -371,6 +371,34 @@ Use **blade pose** for "where the blade is" and **blade target** for "where the 
 
 **Wizard plan complete.** All 8 slices (24–31) shipped over two overnight sessions. Math seam (`extrudeProfileAlongPolyline`) preserved throughout — wizard is purely a UI wrapper around the same product-layer extrusion math.
 
+- **Slice 32 = wizard wired to cab toolbar (SW v157).** The wizard was unreachable from the cab UI — the 📐 Designs toolbar button still routed to `openDesignPanel('designs')` (the legacy single-modal flow). Aliased the `'profile'` and `'designs'` toolbar keys onto `cabOpenProfileDesigner` in `cabToolTap` so default toolbar configs land on the wizard. The legacy Designs panel is still reachable from the Dashboard's Job Setup tile (kept for the design library / project chooser, which the wizard intentionally doesn't include per A2 "always create-new").
+
+---
+
+## Open follow-ups (post-Slice 32)
+
+Captured before context-switch so they're not lost:
+
+### GradeOS
+
+- **Browser end-to-end test of the wizard never landed.** Chrome MCP extension disconnected during the planned test of Slice 32. Code paths verified (Node syntax check, all 3 inline JS blocks parse, wizard funcs exist). What's NOT verified: that clicking 📐 opens the wizard, that pointer events on the plan canvas fire correctly, that 3D preview renders, that templates list renders. Click-test in Chrome is the next concrete action.
+- **Slice 21+ — Sim demolition Phase 2 deferred.** Removing terrain mesh / WASD / auto-steer / fake-GPS pipeline still needs a replacement seam (CONTEXT decision options: `?dev=1` query toggle, or wait for F9P NMEA bring-up). Don't touch without that decision.
+- **Profile Designer follow-ups noted in plan:**
+  - Step 2 / Focus tile is a stub (B2 decision: deferred). Captures section profile by driving to known offsets — math is involved (3+ focus points to fit a profile). A future slice.
+  - 3D preview shows design surface only — no terrain underneath. Would be a value-add (cut/fill before-apply visualisation) but explicitly deferred at Slice 30.
+  - Templates are global; per-project scope migrates when Project hierarchy lands.
+  - Anonymous Firebase Auth-style ownership enforcement on member doc writes — deferred until templates → IndexedDB migration.
+
+### Session ledger 2026-05-04 → 2026-05-06
+
+- Overnight sessions 1-3: Slices 13.1, 14, 14.1, 14.2, 14.3, 14.4 (cab plan-pane wizardry leading up to wizard plan).
+- Overnight sessions 3-4: Slices 15-20 (sim demolition Phase 1 — pitch card, fleet, scout, demo scenarios, replay/ghost, labelling).
+- Overnight session 4: Slices 22, 23, 23.1 (cross-section rear view, ground grid in 3D, zoom for all panes, Topo/mapping cleanup).
+- Overnight session 5: Slices 24, 25, 26, 27 (Profile Designer wizard scaffold + source pickers + on-plan canvas + live labels).
+- Overnight session 6: Slices 14.5 (Eco Mode), 28, 29, 30, 31 (finger-draw, Width A/B, 3D preview, templates).
+- This morning: Slice 32 (toolbar wire-up).
+- **45+ commits total this session block.** All on `origin/claude/agitated-einstein-53b234`. Branch is currently 45+ commits ahead of `main`.
+
 - **Slice 9 = Alignment line picker + horizontal alignment offset** (Steven's light-bar follow-up from Slice 7):
   - **`alignment-guidance.js` module**: pure math for perpendicular distance to a polyline + chainage + tangent heading. Returns signed offline distance (right = +, left = −) plus closest-point coords for visualisation. Already accepts a horizontal offset to the line for "grade parallel at offset" workflows.
   - **`selectedGuidanceLine` state** in cab: `{name, points, source}`. Persisted to localStorage. Survives reload.
